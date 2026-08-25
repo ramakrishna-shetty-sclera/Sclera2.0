@@ -113,6 +113,30 @@ To stop: `Ctrl+C` in the service terminals (or `dapr stop --app-id sclera-proced
 / `--app-id sclera-inspection-service`), then `docker compose down` if you also want
 the infrastructure gone (note: this wipes Keycloak — re-run `setup-keycloak.ps1` next time).
 
+### Fully containerized alternative
+
+No JDK/Maven/Dapr CLI needed on the host — everything (services, Dapr sidecars,
+infrastructure) runs in Docker:
+
+```powershell
+docker compose --profile app up -d --build    # first build takes a few minutes
+.\setup-keycloak.ps1                          # if Keycloak is fresh
+```
+
+Ports and usage are identical to host mode (8095/8096, tokens from
+`localhost:8180`). Don't mix modes — the host `run-*.ps1` scripts and the `app`
+profile fight over the same ports. Notes on how it works:
+
+- `Dockerfile` is a multi-stage build (`MODULE` build-arg selects the service);
+  it installs the sclera-common jar into the build container itself.
+- Each service gets a `daprd` sidecar sharing its network namespace, mirroring
+  what `dapr run` does on the host.
+- Sidecars discover each other through a sqlite name-resolution database on a
+  shared volume (`docker/dapr/config.yaml`) — the self-hosted mDNS default
+  doesn't work across containers.
+
+Stop with `docker compose --profile app down`.
+
 Keycloak note: the compose file starts a blank Keycloak at `http://localhost:8180`
 (admin/admin). Run `.\setup-keycloak.ps1` to create the `sclera` realm, the
 `sclera-app` client (password grant enabled) and a `testuser`/`testuser` user with

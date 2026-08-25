@@ -1,6 +1,12 @@
 # Local infrastructure for the Sclera application-plane services.
 #   docker compose up -d
 # Postgres gets one database per service (created by docker/postgres-init).
+#
+# Fully containerized option (builds and runs the services + Dapr sidecars too):
+#   docker compose --profile app up -d --build
+# The services keep ports 8095/8096 on the host; get tokens from localhost:8180
+# as usual. Don't run this while the host `run-*.ps1` scripts are running —
+# they use the same ports.
 services:
   postgres:
     image: postgres:16-alpine
@@ -58,5 +64,112 @@ services:
     ports:
       - "8180:8180"
 
+  # ------------------------------------------------------------------
+  # `app` profile: the two services + Dapr sidecars, fully containerized.
+  # Each daprd shares its app's network namespace (network_mode: service:...)
+  # so app and sidecar talk over localhost, same as `dapr run` on the host.
+  # Tokens minted from http://localhost:8180 stay valid: the issuer check uses
+  # keycloak.issuer-base-url (default localhost:8180) while JWKS is fetched
+  # in-network via KEYCLOAK_URL=http://keycloak:8180.
+  # ------------------------------------------------------------------
+  procedure-service:
+    profiles: ["app"]
+    build:
+      context: .
+      args:
+        MODULE: sclera-procedure-service
+    container_name: sclera-procedure-service
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/sclera_procedure
+      SCLERA_REDIS_HOST: redis
+      SCLERA_KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      KEYCLOAK_URL: http://keycloak:8180
+      SCLERA_DAPR_HEALTH_ENABLED: "true"
+    ports:
+      - "8095:8095"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      keycloak:
+        condition: service_started
+
+  procedure-dapr:
+    profiles: ["app"]
+    image: daprio/daprd:1.18.3
+    container_name: sclera-procedure-dapr
+    network_mode: "service:procedure-service"
+    # daprd's default user (nonroot) cannot create the sqlite name-resolution
+    # db on the root-owned shared volume
+    user: "0:0"
+    command:
+      [
+        "./daprd",
+        "--app-id", "sclera-procedure-service",
+        "--app-port", "8095",
+        "--dapr-http-port", "3500",
+        "--dapr-grpc-port", "50001",
+        "--config", "/dapr/config.yaml",
+      ]
+    volumes:
+      - ./docker/dapr:/dapr:ro
+      - dapr-nr:/dapr-nr
+    depends_on:
+      - procedure-service
+
+  inspection-service:
+    profiles: ["app"]
+    build:
+      context: .
+      args:
+        MODULE: sclera-inspection-service
+    container_name: sclera-inspection-service
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/sclera_inspection
+      SCLERA_REDIS_HOST: redis
+      SCLERA_KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      KEYCLOAK_URL: http://keycloak:8180
+      SCLERA_DAPR_HEALTH_ENABLED: "true"
+    ports:
+      - "8096:8096"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      keycloak:
+        condition: service_started
+
+  inspection-dapr:
+    profiles: ["app"]
+    image: daprio/daprd:1.18.3
+    container_name: sclera-inspection-dapr
+    network_mode: "service:inspection-service"
+    # daprd's default user (nonroot) cannot create the sqlite name-resolution
+    # db on the root-owned shared volume
+    user: "0:0"
+    command:
+      [
+        "./daprd",
+        "--app-id", "sclera-inspection-service",
+        "--app-port", "8096",
+        "--dapr-http-port", "3500",
+        "--dapr-grpc-port", "50001",
+        "--config", "/dapr/config.yaml",
+      ]
+    volumes:
+      - ./docker/dapr:/dapr:ro
+      - dapr-nr:/dapr-nr
+    depends_on:
+      - inspection-service
+
 volumes:
   postgres-data:
+  dapr-nr:

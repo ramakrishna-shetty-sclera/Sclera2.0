@@ -1,0 +1,10 @@
+.git/
+.idea/
+.vscode/
+.claude/
+__MACOSX/
+target/
+**/target/
+*.iml
+*.log
+sclera-common-guide.html
