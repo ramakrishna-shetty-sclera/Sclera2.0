@@ -1,0 +1,51 @@
+# Local development profile — localhost dependencies, verbose logging, Swagger on.
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/${SCLERA_DB_NAME:sclera_procedure}
+    username: ${SCLERA_DB_USER:sclera}
+    password: ${SCLERA_DB_PASSWORD:sclera}
+    hikari:
+      minimum-idle: 2
+      maximum-pool-size: 10
+      connection-timeout: 5000
+
+  jpa:
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  data:
+    redis:
+      host: ${SCLERA_REDIS_HOST:localhost}
+      port: ${SCLERA_REDIS_PORT:6379}
+      timeout: 3s
+
+keycloak:
+  # sclera-common's MultiRealmJwtDecoderConfig fetches JWKS from `keycloak.url`
+  # (jar default http://keycloak:8080, unreachable outside k8s/compose networks)
+  url: ${KEYCLOAK_URL:http://localhost:8180}
+  internal-url: ${KEYCLOAK_INTERNAL_URL:http://localhost:8180}
+  browser-url: ${KEYCLOAK_BROWSER_URL:http://localhost:8180}
+  realm: ${KEYCLOAK_REALM:sclera}
+
+springdoc:
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui/index.html
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+
+sclera:
+  health:
+    dapr:
+      # Flip to true when running under `dapr run` with a sidecar
+      enabled: ${SCLERA_DAPR_HEALTH_ENABLED:false}
+
+logging:
+  level:
+    root: INFO
+    com.sclera: DEBUG
+    org.springframework.security: DEBUG
+    org.apache.kafka: WARN

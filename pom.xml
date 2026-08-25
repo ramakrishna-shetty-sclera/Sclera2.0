@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+        sclera-common 0.1.0-SNAPSHOT is compiled against Spring Boot 3.3.7 / Java 21
+        (see sclera-common-guide.html). The services stay on 3.3.7 until the platform
+        team ships a Boot 4.x build of sclera-common — bump only this parent version then.
+    -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.7</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.sclera</groupId>
+    <artifactId>sclera-application-plane</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>Sclera Application Plane</name>
+    <description>Aggregator for Sclera application-plane services (inspection, procedure)</description>
+
+    <modules>
+        <module>sclera-procedure-service</module>
+        <module>sclera-inspection-service</module>
+    </modules>
+
+    <properties>
+        <java.version>21</java.version>
+        <sclera-common.version>0.1.0-SNAPSHOT</sclera-common.version>
+        <dapr-sdk.version>1.13.1</dapr-sdk.version>
+        <springdoc.version>2.6.0</springdoc.version>
+        <logstash-logback.version>7.4</logstash-logback.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.sclera</groupId>
+                <artifactId>sclera-common</artifactId>
+                <version>${sclera-common.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.dapr</groupId>
+                <artifactId>dapr-sdk</artifactId>
+                <version>${dapr-sdk.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springdoc</groupId>
+                <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+                <version>${springdoc.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.logstash.logback</groupId>
+                <artifactId>logstash-logback-encoder</artifactId>
+                <version>${logstash-logback.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+</project>

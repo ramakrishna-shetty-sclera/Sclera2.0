@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sclera 2.0 logback template — copy into each service's src/main/resources as
+  logback-spring.xml. Implements Requirement 46 (Logging & Observability).
+
+  Profiles:
+    - dev / local-docker  → console pattern with color, MDC fields visible
+    - test                → console (test-friendly)
+    - staging / prod      → JSON via logstash-logback-encoder, async appender
+
+  MDC fields propagated automatically: correlationId, requestId, userId, orgId,
+  traceId, spanId. Populated by MdcFilter and JwtClaimExtractionFilter.
+
+  scan="true" enables runtime log-level changes without restart.
+-->
+<configuration scan="true" scanPeriod="30 seconds">
+
+    <springProperty scope="context" name="appName" source="spring.application.name" defaultValue="sclera"/>
+
+    <!-- ====================================================================
+         DEV / TEST / LOCAL-DOCKER : console pattern (human-readable, colored)
+         ==================================================================== -->
+    <springProfile name="dev | test | local-docker">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %highlight(%-5level) [%thread] %cyan(%logger{36}) [corr=%X{correlationId:-} user=%X{userId:-} org=%X{orgId:-} trace=%X{traceId:-}] - %msg%n</pattern>
+            </encoder>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+
+        <logger name="com.sclera" level="INFO"/>
+        <logger name="org.springframework" level="WARN"/>
+        <logger name="org.hibernate" level="WARN"/>
+        <logger name="org.hibernate.SQL" level="DEBUG"/>
+        <logger name="org.hibernate.orm.jdbc.bind" level="TRACE"/>
+    </springProfile>
+
+    <!-- ====================================================================
+         STAGING / PROD : JSON to stdout via logstash-logback-encoder
+         ==================================================================== -->
+    <springProfile name="staging | prod">
+        <appender name="JSON_STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <includeContext>false</includeContext>
+                <includeMdc>true</includeMdc>
+                <fieldNames>
+                    <timestamp>timestamp</timestamp>
+                    <message>message</message>
+                    <thread>thread</thread>
+                    <logger>logger</logger>
+                    <level>level</level>
+                </fieldNames>
+                <customFields>{"app":"${appName}"}</customFields>
+                <includeMdcKeyName>correlationId</includeMdcKeyName>
+                <includeMdcKeyName>requestId</includeMdcKeyName>
+                <includeMdcKeyName>userId</includeMdcKeyName>
+                <includeMdcKeyName>orgId</includeMdcKeyName>
+                <includeMdcKeyName>traceId</includeMdcKeyName>
+                <includeMdcKeyName>spanId</includeMdcKeyName>
+            </encoder>
+        </appender>
+
+        <appender name="ASYNC" class="ch.qos.logback.classic.AsyncAppender">
+            <appender-ref ref="JSON_STDOUT"/>
+            <queueSize>5000</queueSize>
+            <discardingThreshold>0</discardingThreshold>
+            <neverBlock>true</neverBlock>
+            <includeCallerData>false</includeCallerData>
+        </appender>
+
+        <root level="WARN">
+            <appender-ref ref="ASYNC"/>
+        </root>
+
+        <logger name="com.sclera" level="INFO"/>
+        <logger name="org.springframework" level="WARN"/>
+        <logger name="org.hibernate" level="WARN"/>
+        <logger name="org.springframework.security" level="WARN"/>
+    </springProfile>
+
+</configuration>

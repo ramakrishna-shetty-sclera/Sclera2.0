@@ -1,0 +1,80 @@
+# Production profile — no default credentials, JSON logs, Swagger UI off.
+spring:
+  datasource:
+    url: ${SCLERA_DB_URL}
+    username: ${SCLERA_DB_USER}
+    password: ${SCLERA_DB_PASSWORD}
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+      connection-timeout: 3000
+      validation-timeout: 2000
+      leak-detection-threshold: 30000
+
+  jpa:
+    show-sql: false
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 100
+        order_inserts: true
+        order_updates: true
+
+  data:
+    redis:
+      cluster:
+        nodes: ${SCLERA_REDIS_CLUSTER_NODES}
+        max-redirects: 3
+      password: ${SCLERA_REDIS_PASSWORD}
+      ssl:
+        enabled: true
+      timeout: 2s
+
+  kafka:
+    bootstrap-servers: ${SCLERA_KAFKA_BOOTSTRAP_SERVERS}
+
+server:
+  port: ${SERVER_PORT:8095}
+  tomcat:
+    threads:
+      max: 200
+      min-spare: 10
+    accept-count: 100
+
+keycloak:
+  internal-url: ${KEYCLOAK_INTERNAL_URL}
+  browser-url: ${KEYCLOAK_BROWSER_URL}
+  realm: ${KEYCLOAK_REALM:sclera}
+
+springdoc:
+  swagger-ui:
+    enabled: false
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+
+sclera:
+  event-listener:
+    signing-secret: ${SCLERA_INTERNAL_SIGNING_SECRET}
+
+logging:
+  level:
+    root: WARN
+    com.sclera: INFO
+    org.springframework: WARN
+    org.hibernate: WARN
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      slo:
+        http.server.requests: 100ms,300ms,1s

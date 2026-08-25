@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Shared Logback per-layer level defaults for every Sclera service.
+    Implements Requirement 33.6.
+
+    Service-specific logback-spring.xml files include this fragment via:
+        <include resource="logback-spring-defaults.xml"/>
+
+    Levels follow the production policy:
+      - root        : INFO
+      - com.sclera  : INFO  (override in service to DEBUG when investigating)
+      - service layer (com.sclera.controlplane.*.service) : INFO
+      - data layer  (org.hibernate, com.zaxxer.hikari)    : WARN
+      - framework   (org.springframework)                  : WARN
+      - third party (io.lettuce, com.github.benmanes)     : WARN
+-->
+<included>
+
+    <logger name="com.sclera" level="INFO"/>
+    <logger name="com.sclera.controlplane" level="INFO"/>
+
+    <!-- Service-layer baseline -->
+    <logger name="com.sclera.controlplane.identity.service" level="INFO"/>
+    <logger name="com.sclera.controlplane.org.service" level="INFO"/>
+    <logger name="com.sclera.controlplane.federation.service" level="INFO"/>
+    <logger name="com.sclera.controlplane.gateway" level="INFO"/>
+
+    <!-- Frameworks -->
+    <logger name="org.springframework" level="WARN"/>
+    <logger name="org.springframework.web" level="WARN"/>
+    <logger name="org.springframework.security" level="WARN"/>
+    <logger name="org.springframework.cache" level="WARN"/>
+
+    <!-- Persistence -->
+    <logger name="org.hibernate" level="WARN"/>
+    <logger name="org.hibernate.SQL" level="WARN"/>
+    <logger name="org.hibernate.type" level="WARN"/>
+    <logger name="org.hibernate.orm.deprecation" level="ERROR"/>
+    <logger name="com.zaxxer.hikari" level="WARN"/>
+    <logger name="org.flywaydb" level="INFO"/>
+
+    <!-- Networking / clients -->
+    <logger name="io.lettuce" level="WARN"/>
+    <logger name="reactor.netty" level="WARN"/>
+    <logger name="org.apache.http" level="WARN"/>
+
+    <!-- Caches -->
+    <logger name="com.github.benmanes.caffeine" level="WARN"/>
+
+</included>
