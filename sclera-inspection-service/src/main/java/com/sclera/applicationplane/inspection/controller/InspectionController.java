@@ -33,6 +33,7 @@ public class InspectionController {
     private final InspectionService service;
 
     public InspectionController(InspectionService service) {
+
         this.service = service;
     }
 
