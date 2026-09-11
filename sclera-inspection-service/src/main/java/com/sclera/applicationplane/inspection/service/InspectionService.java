@@ -86,9 +86,13 @@ public class InspectionService {
         }
 
         Set<UUID> knownQuestionIds = questionIdsOf(inspection);
+        Set<UUID> seen = new HashSet<>();
         inspection.replaceAnswers(request.answers().stream().map(item -> {
             if (!knownQuestionIds.contains(item.questionId())) {
                 throw new ValidationException("Unknown question id: " + item.questionId());
+            }
+            if (!seen.add(item.questionId())) {
+                throw new ValidationException("Duplicate answer for question id: " + item.questionId());
             }
             InspectionAnswer answer = new InspectionAnswer();
             answer.setQuestionId(item.questionId());

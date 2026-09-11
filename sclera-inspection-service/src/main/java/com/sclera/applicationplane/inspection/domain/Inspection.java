@@ -16,7 +16,11 @@ import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -83,10 +87,26 @@ public class Inspection {
     private OffsetDateTime updatedAt;
 
     public void replaceAnswers(List<InspectionAnswer> newAnswers) {
-        answers.clear();
-        newAnswers.forEach(a -> {
-            a.setInspection(this);
-            answers.add(a);
+        // Update matching rows in place rather than clear-and-readd: Hibernate flushes
+        // inserts before orphan deletes, so delete+reinsert of the same question would
+        // violate uq_inspection_question(inspection_id, question_id).
+        Map<UUID, InspectionAnswer> byQuestionId = new HashMap<>();
+        answers.forEach(a -> byQuestionId.put(a.getQuestionId(), a));
+
+        Set<UUID> incomingIds = new HashSet<>();
+        newAnswers.forEach(a -> incomingIds.add(a.getQuestionId()));
+        answers.removeIf(a -> !incomingIds.contains(a.getQuestionId()));
+
+        newAnswers.forEach(incoming -> {
+            InspectionAnswer current = byQuestionId.get(incoming.getQuestionId());
+            if (current != null) {
+                current.setAnswerValue(incoming.getAnswerValue());
+                current.setScore(incoming.getScore());
+                current.setComment(incoming.getComment());
+            } else {
+                incoming.setInspection(this);
+                answers.add(incoming);
+            }
         });
     }
 

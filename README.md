@@ -137,6 +137,41 @@ profile fight over the same ports. Notes on how it works:
 
 Stop with `docker compose --profile app down`.
 
+## Frontend (`frontend/`)
+
+A React + Vite + TypeScript app covering the full flow: login (Keycloak) →
+author/publish templates → create, run and complete inspections.
+
+```powershell
+cd frontend
+npm install      # first time only
+npm run dev      # http://localhost:5173
+```
+
+Sign in with the Keycloak test user (`testuser` / `testuser` from
+`setup-keycloak.ps1`). The backend services and Keycloak must be running.
+
+The frontend talks to everything through the **API gateway** (see the "API
+gateway integration" section below) — it never calls the services directly.
+
+Notes:
+
+- The Vite dev server proxies `/api` → the gateway (8080) and `/auth` →
+  Keycloak (8180, used only by the dev login path). The browser stays
+  same-origin, so no backend CORS changes are needed.
+- Auth is the gateway's BFF model: an HttpOnly `sclera-session` cookie plus a
+  readable `sclera-csrf` cookie mirrored into the `X-CSRF-Token` header (with
+  the `X-Requested-With: sclera-spa` sentinel) on every mutating request. No
+  tokens are stored in the browser. `frontend/src/api/client.ts` handles this.
+- The login page offers two paths, both ending in a gateway session cookie:
+  the **dev direct login** (Keycloak password grant → the gateway's
+  `POST /api/auth/test-exchange`, which mints a session from the token) and
+  the **SSO redirect** button (production `POST /api/v1/auth/login` →
+  full-page redirect to Keycloak → `/api/v1/auth/callback`).
+- All responses are unwrapped from the sclera-common
+  `{success, data, pagination, error, meta}` envelope in
+  `frontend/src/api/client.ts`.
+
 Keycloak note: the compose file starts a blank Keycloak at `http://localhost:8180`
 (admin/admin). Run `.\setup-keycloak.ps1` to create the `sclera` realm, the
 `sclera-app` client (password grant enabled) and a `testuser`/`testuser` user with
@@ -150,6 +185,57 @@ $tok = (Invoke-RestMethod -Method Post `
   -Uri http://localhost:8180/realms/sclera/protocol/openid-connect/token `
   -Body @{ grant_type='password'; client_id='sclera-app'; username='testuser'; password='testuser' }).access_token
 ```
+
+## API gateway integration (`sclera2.0v-api-gateway/`)
+
+The control-plane Spring Cloud Gateway is the single entry point for the SPA.
+Two routes were added to `sclera2.0v-api-gateway/src/main/resources/application.yml`
+for the application-plane services:
+
+| Route id | Path predicate | Downstream (env var) |
+|---|---|---|
+| `procedure-service` | `/api/v1/question-templates/**` | `PROCEDURE_SERVICE_URL` (`:8095`) |
+| `inspection-service` | `/api/v1/inspections/**` | `INSPECTION_SERVICE_URL` (`:8096`) |
+
+The gateway validates the BFF session, relays the user's Keycloak access token
+to the service as `Authorization: Bearer` (so `ScleraJwtConverter` still reads
+`org_id` from the JWT), and enforces CSRF on mutating requests.
+
+### Building the gateway locally
+
+The gateway's Maven parent (`com.sclera:sclera-control-plane`) is not published
+in this workspace. A local stub lives at `jars/sclera-control-plane-parent.pom`
+(Spring Boot 3.3.7 + Spring Cloud 2023.0.6 BOM, plus the transitive deps the
+shipped `sclera-common` jar needs at runtime but doesn't declare: `spring-boot-
+starter-web` for the servlet `ResponseEnvelopeAdvice`, `caffeine`, `spring-boot-
+starter-aop`, and `nimbus-jose-jwt` 10.x for `JWSAlgorithm.Ed25519`). Install it,
+plus an empty `sclera-common-test` stub, then build (tests are skipped — they
+need ArchUnit/Spring-Cloud-Contract not on the local classpath):
+
+```powershell
+mvn install:install-file "-Dfile=jars/sclera-control-plane-parent.pom" `
+  "-DgroupId=com.sclera" "-DartifactId=sclera-control-plane" `
+  "-Dversion=0.1.0-SNAPSHOT" "-Dpackaging=pom"
+mvn -f sclera2.0v-api-gateway/pom.xml clean package "-Dmaven.test.skip=true"
+```
+
+### Running the gateway
+
+```powershell
+.\setup-keycloak.ps1        # creates the confidential sclera-bff client (secret: dev-bff-secret)
+.\run-api-gateway.ps1       # starts it on :8080
+```
+
+`run-api-gateway.ps1` sets the dev environment: downstream URLs, `KEYCLOAK_URL`,
+the `sclera-bff` client secret, non-Secure cookies (`BFF_COOKIE_SECURE=false`),
+`SCLERA_BFF_TEST_EXCHANGE_ENABLED=true` (for the SPA dev login), and the HMAC
+`sclera.event-listener.signing-secret`. The gateway runs **without** a Dapr
+sidecar locally; use `/actuator/health/readiness` (plain `/actuator/health`
+reports DOWN without the sidecar).
+
+Full local stack order: `docker compose up -d` → `.\setup-keycloak.ps1` →
+`.\run-procedure-service.ps1` + `.\run-inspection-service.ps1` →
+`.\run-api-gateway.ps1` → `cd frontend; npm run dev`.
 
 ## Typical flow
 

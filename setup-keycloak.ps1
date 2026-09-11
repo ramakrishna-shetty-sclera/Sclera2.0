@@ -6,7 +6,14 @@
 #   realm  sclera
 #   client sclera-app       public + direct-access grants (password grant for local testing)
 #                           with mappers: user attrs org_id / org_type -> token claims
+#   client sclera-bff       confidential, authorization-code flow — used by the API gateway's
+#                           BFF login (sclera2.0v-api-gateway). Secret: dev-bff-secret
+#                           (pass to the gateway via BFF_TENANT_CLIENT_SECRET).
 #   user   testuser/testuser  org_id=11111111-1111-1111-1111-111111111111, org_type=CLIENT
+#
+# Both clients also map org_id -> tenant_id claim: the gateway's claim extraction
+# (JwtClaimExtractionFilter / test-exchange orgId resolution) reads tenant_id,
+# while ScleraJwtConverter in the app-plane services reads org_id.
 #
 # ScleraJwtConverter requires org_id to be a UUID and org_type in {PLATFORM, CLIENT, VENDOR};
 # roles come from realm_access.roles. See sclera-common-guide.html.
@@ -58,19 +65,43 @@ else {
     "client '$clientId' created"
 }
 
-# Mappers: user attributes -> token claims (org_id, org_type)
-$mappers = Invoke-Kc GET "/realms/$realm/clients/$clientUuid/protocol-mappers/models"
-foreach ($attr in 'org_id', 'org_type') {
-    if ($mappers | Where-Object name -eq "map-$attr") { "mapper 'map-$attr' already exists"; continue }
-    Invoke-Kc POST "/realms/$realm/clients/$clientUuid/protocol-mappers/models" @{
-        name = "map-$attr"; protocol = 'openid-connect'; protocolMapper = 'oidc-usermodel-attribute-mapper'
-        config = @{
-            'user.attribute' = $attr; 'claim.name' = $attr; 'jsonType.label' = 'String'
-            'access.token.claim' = 'true'; 'id.token.claim' = 'true'; 'userinfo.token.claim' = 'true'
+# Mappers: user attributes -> token claims. claim.name may differ from the
+# attribute (org_id is additionally exposed as tenant_id for the gateway).
+function Set-ClientMappers($targetClientUuid, $clientLabel) {
+    $mappers = Invoke-Kc GET "/realms/$realm/clients/$targetClientUuid/protocol-mappers/models"
+    foreach ($pair in @('org_id', 'org_id'), @('org_type', 'org_type'), @('org_id', 'tenant_id')) {
+        $attr, $claim = $pair
+        $name = "map-$claim"
+        if ($mappers | Where-Object name -eq $name) { "mapper '$name' already exists on $clientLabel"; continue }
+        Invoke-Kc POST "/realms/$realm/clients/$targetClientUuid/protocol-mappers/models" @{
+            name = $name; protocol = 'openid-connect'; protocolMapper = 'oidc-usermodel-attribute-mapper'
+            config = @{
+                'user.attribute' = $attr; 'claim.name' = $claim; 'jsonType.label' = 'String'
+                'access.token.claim' = 'true'; 'id.token.claim' = 'true'; 'userinfo.token.claim' = 'true'
+            }
         }
+        "mapper '$name' created on $clientLabel"
     }
-    "mapper 'map-$attr' created"
 }
+Set-ClientMappers $clientUuid $clientId
+
+# BFF client for the API gateway (confidential, authorization-code + PKCE).
+# Redirect URI covers the gateway's /api/v1/auth/callback on localhost:8080.
+$bffClientId = 'sclera-bff'
+$bffSecret = 'dev-bff-secret'
+$existingBff = Invoke-Kc GET "/realms/$realm/clients?clientId=$bffClientId"
+if ($existingBff) { $bffUuid = $existingBff[0].id; "client '$bffClientId' already exists" }
+else {
+    Invoke-Kc POST "/realms/$realm/clients" @{
+        clientId = $bffClientId; enabled = $true; publicClient = $false; protocol = 'openid-connect'
+        secret = $bffSecret; standardFlowEnabled = $true; directAccessGrantsEnabled = $false
+        redirectUris = @('http://localhost:8080/*'); webOrigins = @('http://localhost:8080')
+        attributes = @{ 'post.logout.redirect.uris' = 'http://localhost:5173/*##http://localhost:8080/*' }
+    }
+    $bffUuid = (Invoke-Kc GET "/realms/$realm/clients?clientId=$bffClientId")[0].id
+    "client '$bffClientId' created (secret: $bffSecret)"
+}
+Set-ClientMappers $bffUuid $bffClientId
 
 # Test user (attributes re-applied on every run — they are dropped if the user
 # was created before the unmanaged-attribute policy was enabled)
