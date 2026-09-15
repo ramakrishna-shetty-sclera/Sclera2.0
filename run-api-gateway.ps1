@@ -26,6 +26,12 @@ $env:BFF_ADMIN_CLIENT_SECRET = 'unused-locally'   # sclera-admin realm not provi
 $env:APP_BASE_URL = 'http://localhost:8080'
 $env:FRONTEND_URL = 'http://localhost:5173'
 
+# CORS allow-list (CorsWebFilter runs at highest precedence and REJECTS any
+# request carrying an Origin the list doesn't contain — browsers always send
+# Origin on POST, so without this the SPA's login/exchange gets a 403 with an
+# empty body). Must be exact origins, no wildcards (wildcards throw at startup).
+$env:SCLERA_ALLOWED_ORIGINS = 'http://localhost:5173,http://localhost:8080'
+
 # Local HTTP dev: non-Secure cookies, allow localhost return origins,
 # enable the test-exchange endpoint the frontend's dev login uses.
 $env:BFF_COOKIE_SECURE = 'false'

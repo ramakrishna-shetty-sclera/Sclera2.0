@@ -27,6 +27,7 @@
     <modules>
         <module>sclera-procedure-service</module>
         <module>sclera-inspection-service</module>
+        <module>sclera-helper-service</module>
     </modules>
 
     <properties>
