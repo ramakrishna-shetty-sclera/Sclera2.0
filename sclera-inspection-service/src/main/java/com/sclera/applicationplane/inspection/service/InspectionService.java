@@ -3,6 +3,7 @@ package com.sclera.applicationplane.inspection.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sclera.applicationplane.inspection.authz.FgaAuthorizationService;
 import com.sclera.applicationplane.inspection.client.ProcedureTemplateClient;
 import com.sclera.applicationplane.inspection.client.TemplateSnapshot;
 import com.sclera.applicationplane.inspection.domain.Inspection;
@@ -35,15 +36,18 @@ public class InspectionService {
     private final ProcedureTemplateClient templateClient;
     private final InspectionEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
+    private final FgaAuthorizationService fga;
 
     public InspectionService(InspectionRepository repository,
                              ProcedureTemplateClient templateClient,
                              InspectionEventPublisher eventPublisher,
-                             ObjectMapper objectMapper) {
+                             ObjectMapper objectMapper,
+                             FgaAuthorizationService fga) {
         this.repository = repository;
         this.templateClient = templateClient;
         this.eventPublisher = eventPublisher;
         this.objectMapper = objectMapper;
+        this.fga = fga;
     }
 
     public InspectionResponse create(CreateInspectionRequest request) {
@@ -66,7 +70,12 @@ public class InspectionService {
         inspection.setAssigneeId(request.assigneeId());
         inspection.setScheduledFor(request.scheduledFor());
         inspection.setNotes(request.notes());
-        return toResponse(repository.save(inspection));
+        Inspection saved = repository.save(inspection);
+
+        // FGA tuples (org link + creator/assignee, one round trip). A failed write
+        // throws, rolling back the insert so no inspection exists that nobody can access.
+        fga.grantCreated("inspection", saved.getId(), saved.getCreatedBy(), saved.getAssigneeId());
+        return toResponse(saved);
     }
 
     public InspectionResponse start(UUID id) {

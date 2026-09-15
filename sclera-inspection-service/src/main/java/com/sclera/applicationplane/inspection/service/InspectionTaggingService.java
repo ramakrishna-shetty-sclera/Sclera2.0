@@ -18,11 +18,18 @@ import com.sclera.controlplane.common.exception.BusinessRuleException;
 import com.sclera.controlplane.common.exception.ResourceNotFoundException;
 import com.sclera.controlplane.common.security.OrgContext;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Mutations run inside a transaction and end with repository.save — managed
+ * aggregate dirty-tracking would usually suffice, but the explicit save keeps
+ * the JPA and (former) in-memory semantics identical.
+ */
 @Service
+@Transactional
 public class InspectionTaggingService {
 
     private final InspectionTaggingRepository repository;
@@ -50,6 +57,7 @@ public class InspectionTaggingService {
         tp.setProcedureId(request.procedureId());
         tp.setProcedureName(request.procedureName());
         tagging.getTaggedProcedures().add(tp);
+        repository.save(tagging);
         return toResponse(tp);
     }
 
@@ -59,6 +67,7 @@ public class InspectionTaggingService {
         if (!removed) {
             throw new ResourceNotFoundException("Tagged procedure not found: " + taggedProcedureId);
         }
+        repository.save(tagging);
     }
 
     public TargetResponse addTarget(UUID configId, UUID taggedProcedureId, TargetRequest request) {
@@ -77,6 +86,7 @@ public class InspectionTaggingService {
         target.setCondition(trimToNull(request.condition()));
         target.setAssigneeEmail(trimToNull(request.assigneeEmail()));
         tp.getTargets().add(target);
+        repository.save(taggingFor(configId));
         return toResponse(target);
     }
 
@@ -88,6 +98,7 @@ public class InspectionTaggingService {
                 .orElseThrow(() -> new ResourceNotFoundException("Target not found: " + targetId));
         target.setCondition(trimToNull(request.condition()));
         target.setAssigneeEmail(trimToNull(request.assigneeEmail()));
+        repository.save(taggingFor(configId));
         return toResponse(target);
     }
 
@@ -97,6 +108,7 @@ public class InspectionTaggingService {
         if (!removed) {
             throw new ResourceNotFoundException("Target not found: " + targetId);
         }
+        repository.save(taggingFor(configId));
     }
 
     public OuterConditionResponse addCondition(UUID configId, OuterConditionRequest request) {
@@ -107,6 +119,7 @@ public class InspectionTaggingService {
         c.setEmailAlert(request.emailAlert());
         c.setCreateWorkOrder(request.createWorkOrder());
         tagging.getOuterConditions().add(c);
+        repository.save(tagging);
         return toResponse(c);
     }
 
@@ -116,6 +129,7 @@ public class InspectionTaggingService {
         if (!removed) {
             throw new ResourceNotFoundException("Condition not found: " + conditionId);
         }
+        repository.save(tagging);
     }
 
     // ── helpers ───────────────────────────────────────────────────────────

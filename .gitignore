@@ -8,3 +8,9 @@ target/
 _extracted/
 __MACOSX/
 .env
+# copied-in archive of the gateway; the extracted folder is the source of truth
+sclera2.0v-api-gateway.zip
+# TypeScript incremental build state
+*.tsbuildinfo
+# separate repo (ScleraHoldingsLLC/sclera2.0v-api-gateway) - has its own history
+sclera2.0v-api-gateway/

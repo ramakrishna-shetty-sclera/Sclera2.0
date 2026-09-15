@@ -1,0 +1,85 @@
+model
+  schema 1.1
+
+# ============================================================================
+# Sclera authorization model (OpenFGA DSL — human-readable mirror of
+# authorization-model.json, which is what setup-openfga.ps1 actually posts).
+#
+# Identity mapping (see ScleraJwtConverter / OrgContext in sclera-common):
+#   user:<keycloak-sub-uuid>          — the JWT subject
+#   organization:<org_id-uuid>        — the tenant (org_id claim)
+#   inspection:<uuid>, question_template:<uuid>, ...  — domain objects
+#
+# Org-level roles are granted as tuples, e.g.
+#   user:AAAA... admin organization:1111...
+# Per-object tuples (org / creator / assignee) are written by the services
+# when DB-backed resources are created.
+# ============================================================================
+
+type user
+
+type organization
+  relations
+    # --- assignable roles -------------------------------------------------
+    define admin: [user]              # full control over the org's resources
+    define inspector: [user]          # runs inspections / checklists
+    define template_author: [user]    # authors question templates
+    define asset_manager: [user]      # manages locations & assets
+    define viewer: [user]             # read-only
+
+    # --- derived permissions (what the services actually check) -----------
+    define member: viewer or admin or inspector or template_author or asset_manager
+    define can_view: member
+    define can_manage_inspections: admin or inspector
+    define can_manage_templates: admin or template_author
+    define can_manage_assets: admin or asset_manager
+    define can_administer: admin
+
+type inspection
+  relations
+    define org: [organization]
+    define creator: [user]
+    define assignee: [user]
+    define can_view: creator or assignee or can_view from org
+    define can_edit: creator or assignee or can_manage_inspections from org
+    define can_delete: can_manage_inspections from org
+
+type question_template
+  relations
+    define org: [organization]
+    define creator: [user]
+    define can_view: can_view from org
+    define can_edit: creator or can_manage_templates from org
+    define can_publish: can_manage_templates from org
+    define can_delete: can_manage_templates from org
+
+type inspection_config
+  relations
+    define org: [organization]
+    define creator: [user]
+    define can_view: can_view from org
+    define can_edit: creator or can_manage_inspections from org
+    define can_delete: can_manage_inspections from org
+
+type checklist
+  relations
+    define org: [organization]
+    define creator: [user]
+    define assignee: [user]
+    define can_view: creator or assignee or can_view from org
+    define can_edit: creator or assignee or can_manage_inspections from org
+    define can_delete: can_manage_inspections from org
+
+type location
+  relations
+    define org: [organization]
+    define can_view: can_view from org
+    define can_edit: can_manage_assets from org
+    define can_delete: can_manage_assets from org
+
+type asset
+  relations
+    define org: [organization]
+    define can_view: can_view from org
+    define can_edit: can_manage_assets from org
+    define can_delete: can_manage_assets from org

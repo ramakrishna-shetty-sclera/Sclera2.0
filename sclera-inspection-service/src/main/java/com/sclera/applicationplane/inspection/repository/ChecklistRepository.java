@@ -1,41 +1,31 @@
 package com.sclera.applicationplane.inspection.repository;
 
 import com.sclera.applicationplane.inspection.domain.Checklist;
+import com.sclera.applicationplane.inspection.domain.ChecklistSource;
 import com.sclera.applicationplane.inspection.domain.ChecklistStatus;
-import org.springframework.stereotype.Repository;
+import org.springframework.data.jpa.repository.JpaRepository;
 
-import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
-/** Dummy in-memory checklist store. Data is per-process and lost on restart. */
-@Repository
-public class ChecklistRepository {
+/** Checklists in the tenant's schema (search_path routing). */
+public interface ChecklistRepository extends JpaRepository<Checklist, UUID> {
 
-    private final ConcurrentHashMap<UUID, Checklist> store = new ConcurrentHashMap<>();
+    Optional<Checklist> findByIdAndOrgId(UUID id, UUID orgId);
 
-    public Checklist save(Checklist checklist) {
-        store.put(checklist.getId(), checklist);
-        return checklist;
-    }
+    List<Checklist> findAllByOrgIdOrderByCreatedAtDesc(UUID orgId);
 
-    public Optional<Checklist> findByIdAndOrgId(UUID id, UUID orgId) {
-        Checklist c = store.get(id);
-        return (c != null && c.getOrgId().equals(orgId)) ? Optional.of(c) : Optional.empty();
-    }
-
-    public List<Checklist> findAllByOrgId(UUID orgId, UUID configId, ChecklistStatus status) {
-        return store.values().stream()
-                .filter(c -> c.getOrgId().equals(orgId))
+    /**
+     * Optional filters applied in-code over the org's rows — avoids the
+     * combinatorial derived-query explosion; volumes are per-tenant small.
+     */
+    default List<Checklist> findAllByOrgId(UUID orgId, UUID configId, ChecklistStatus status,
+                                           ChecklistSource source) {
+        return findAllByOrgIdOrderByCreatedAtDesc(orgId).stream()
                 .filter(c -> configId == null || configId.equals(c.getConfigId()))
                 .filter(c -> status == null || c.getStatus() == status)
-                .sorted(Comparator.comparing(Checklist::getCreatedAt).reversed())
+                .filter(c -> source == null || c.getSource() == source)
                 .toList();
-    }
-
-    public void delete(Checklist checklist) {
-        store.remove(checklist.getId());
     }
 }

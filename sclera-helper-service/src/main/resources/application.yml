@@ -1,6 +1,6 @@
 # =====================================================================
-# sclera-helper-service — dummy in-memory Locations + Assets CRUD.
-# No database / redis / kafka; data lives in memory and resets on restart.
+# sclera-helper-service — Locations + Assets CRUD, persisted in Postgres
+# (sclera_helper DB, schema-per-tenant).
 # =====================================================================
 
 spring:
@@ -8,6 +8,27 @@ spring:
     name: sclera-${SCLERA_SERVICE_NAME:helper-service}
   profiles:
     default: dev
+
+  datasource:
+    url: jdbc:postgresql://${SCLERA_DB_HOST:localhost}:${SCLERA_DB_PORT:5432}/${SCLERA_DB_NAME:sclera_helper}
+    username: ${SCLERA_DB_USER:sclera}
+    password: ${SCLERA_DB_PASSWORD:sclera}
+    hikari:
+      minimum-idle: 2
+      maximum-pool-size: 10
+      connection-timeout: 5000
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+
+  # Public-schema migrations (table copies for validate + tenant_registry).
+  # Per-tenant schemas are migrated programmatically (MultiTenancyConfig).
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
 
   security:
     oauth2:
@@ -77,6 +98,15 @@ keycloak:
 sclera:
   async:
     enabled: true
+  # OpenFGA fine-grained authorization. The store is resolved by NAME at first
+  # use (created by setup-openfga.ps1). Set SCLERA_FGA_ENABLED=false to run
+  # without OpenFGA (all checks allow; JWT + org scoping still apply).
+  fga:
+    enabled: ${SCLERA_FGA_ENABLED:true}
+    api-url: ${SCLERA_FGA_API_URL:http://localhost:8085}
+    store-name: ${SCLERA_FGA_STORE:sclera}
+    store-id: ${SCLERA_FGA_STORE_ID:}
+    authorization-model-id: ${SCLERA_FGA_MODEL_ID:}
   # Shared with every service that calls (or is called on) /internal/** — HMAC signing
   event-listener:
     signing-secret: ${SCLERA_INTERNAL_SIGNING_SECRET:dev-internal-signing-secret}

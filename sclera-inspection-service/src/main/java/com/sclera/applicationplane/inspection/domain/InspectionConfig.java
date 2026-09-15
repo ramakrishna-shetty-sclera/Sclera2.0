@@ -1,39 +1,82 @@
 package com.sclera.applicationplane.inspection.domain;
 
+import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
 import java.time.OffsetDateTime;
 import java.util.EnumSet;
 import java.util.Set;
 import java.util.UUID;
 
 /**
- * Dummy in-memory inspection configuration (the VDMS "create inspection" form).
- * Held in memory only — resets on restart. Tagging of procedures/assets and the
- * checklist lifecycle come in later steps.
+ * Inspection configuration (the VDMS "create inspection" form). Persisted in
+ * the tenant's schema (schema-per-tenant); org_id is a defense-in-depth
+ * cross-check only.
  */
+@Entity
+@Table(name = "inspection_config")
 public class InspectionConfig {
 
+    @Id
     private UUID id;
+
+    @Column(name = "org_id", nullable = false)
     private UUID orgId;
 
+    @Column(nullable = false, length = 200)
     private String name;
+
+    @Column(length = 50)
     private String code;
+
+    @Column(length = 2000)
     private String description;
 
+    @Column(name = "assignee_email", nullable = false, length = 255)
     private String assigneeEmail;
+
+    @Column(name = "secondary_assignee_email", length = 255)
     private String secondaryAssigneeEmail;
 
+    @Column(length = 100)
     private String category;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
     private Priority priority;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
     private Frequency frequency;
+
+    @Convert(converter = WeekdaysConverter.class)
+    @Column(name = "schedule_days", nullable = false, length = 100)
     private Set<Weekday> scheduleDays = EnumSet.noneOf(Weekday.class);
 
+    @Column(name = "bypass_scan", nullable = false)
     private boolean bypassScan;
+
+    @Column(name = "enable_check_in_out", nullable = false)
     private boolean enableCheckInOut;
+
+    @Column(name = "enable_points", nullable = false)
     private boolean enablePoints;
+
+    @Column(name = "merged_view", nullable = false)
     private boolean mergedView;
 
+    @Column(name = "created_by")
     private UUID createdBy;
+
+    @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
+
+    @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
     public UUID getId() { return id; }

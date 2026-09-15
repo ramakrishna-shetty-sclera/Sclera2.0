@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 
 // testuser's org in the local Keycloak realm (setup-keycloak.ps1); the real
@@ -10,13 +10,17 @@ const DEFAULT_ORG_ID =
 export function LoginPage() {
   const { user, initializing, login, loginSso } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  // Deep link preserved by Layout's redirect (e.g. a scanned /scan/:token QR).
+  const returnTo = (location.state as { from?: string } | null)?.from ?? '/inspections'
+
   if (initializing) return null
-  if (user) return <Navigate to="/inspections" replace />
+  if (user) return <Navigate to={returnTo} replace />
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -24,7 +28,7 @@ export function LoginPage() {
     setError(null)
     try {
       await login(username, password)
-      navigate('/inspections')
+      navigate(returnTo)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')
       setBusy(false)

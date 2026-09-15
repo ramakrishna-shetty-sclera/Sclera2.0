@@ -6,6 +6,7 @@ import com.sclera.applicationplane.helper.dto.AssetResponse;
 import com.sclera.applicationplane.helper.service.AssetService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -36,6 +37,7 @@ public class AssetController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("@fga.checkOrg('can_manage_assets')")
     public AssetResponse create(@Valid @RequestBody AssetRequest request) {
         return service.create(request);
     }
@@ -46,6 +48,7 @@ public class AssetController {
      * @param untagged   optional: true = only assets with no location, false = only tagged
      */
     @GetMapping
+    @PreAuthorize("@fga.checkOrg('can_view')")
     public List<AssetResponse> list(@RequestParam(required = false) AssetType assetType,
                                     @RequestParam(required = false) UUID locationId,
                                     @RequestParam(required = false) Boolean untagged) {
@@ -53,17 +56,20 @@ public class AssetController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("@fga.checkOrg('can_view')")
     public AssetResponse get(@PathVariable UUID id) {
         return service.get(id);
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("@fga.checkOrg('can_manage_assets')")
     public AssetResponse update(@PathVariable UUID id, @Valid @RequestBody AssetRequest request) {
         return service.update(id, request);
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("@fga.checkOrg('can_manage_assets')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }

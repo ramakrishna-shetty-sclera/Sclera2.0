@@ -12,7 +12,7 @@
 
     <artifactId>sclera-helper-service</artifactId>
     <name>Sclera Helper Service</name>
-    <description>Dummy in-memory CRUD for Locations and Assets — consumed by inspection-service later</description>
+    <description>Locations and Assets CRUD, persisted in Postgres (schema-per-tenant) — consumed by inspection-service</description>
 
     <dependencies>
         <!-- Shared platform library: auth, envelope, errors, MDC, health -->
@@ -23,12 +23,30 @@
 
         <!--
             sclera-common is a bare jar (no transitives) — declare everything its
-            classes need at runtime. This service keeps its data in memory, so it
-            deliberately omits JPA / Flyway / Postgres / Redis / Kafka.
+            classes need at runtime.
         -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Persistence: schema-per-tenant Postgres (sclera_helper DB) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -73,6 +91,12 @@
         <dependency>
             <groupId>io.dapr</groupId>
             <artifactId>dapr-sdk</artifactId>
+        </dependency>
+
+        <!-- OpenFGA: fine-grained authorization (relationship tuples + checks) -->
+        <dependency>
+            <groupId>dev.openfga</groupId>
+            <artifactId>openfga-sdk</artifactId>
         </dependency>
 
         <!-- OpenAPI + observability + cache (required by sclera-common configs) -->

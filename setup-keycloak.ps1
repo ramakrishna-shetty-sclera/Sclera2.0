@@ -103,29 +103,34 @@ else {
 }
 Set-ClientMappers $bffUuid $bffClientId
 
-# Test user (attributes re-applied on every run — they are dropped if the user
-# was created before the unmanaged-attribute policy was enabled)
-$users = Invoke-Kc GET "/realms/$realm/users?username=testuser&exact=true"
-if ($users) { $userUuid = $users[0].id; "user 'testuser' already exists" }
-else {
-    Invoke-Kc POST "/realms/$realm/users" @{
-        username = 'testuser'; enabled = $true; email = 'testuser@sclera.local'; emailVerified = $true
-        firstName = 'Test'; lastName = 'User'
+# Test users (attributes re-applied on every run — they are dropped if the user
+# was created before the unmanaged-attribute policy was enabled).
+# testuser2 belongs to a SECOND org — used to prove schema-per-tenant isolation.
+function Set-TestUser($username, $userOrgId, $firstName) {
+    $users = Invoke-Kc GET "/realms/$realm/users?username=$username&exact=true"
+    if ($users) { $userUuid = $users[0].id; "user '$username' already exists" }
+    else {
+        Invoke-Kc POST "/realms/$realm/users" @{
+            username = $username; enabled = $true; email = "$username@sclera.local"; emailVerified = $true
+            firstName = $firstName; lastName = 'User'
+        }
+        $userUuid = (Invoke-Kc GET "/realms/$realm/users?username=$username&exact=true")[0].id
+        "user '$username' created"
     }
-    $userUuid = (Invoke-Kc GET "/realms/$realm/users?username=testuser&exact=true")[0].id
-    "user 'testuser' created"
+    # PUT replaces the whole representation — send it back complete, or Keycloak
+    # clears the other profile fields and flags the account "not fully set up".
+    $rep = Invoke-Kc GET "/realms/$realm/users/$userUuid"
+    @{
+        email = "$username@sclera.local"; emailVerified = $true
+        firstName = $firstName; lastName = 'User'; requiredActions = @()
+        attributes = @{ org_id = @($userOrgId); org_type = @('CLIENT') }
+    }.GetEnumerator() | ForEach-Object { $rep | Add-Member -NotePropertyName $_.Key -NotePropertyValue $_.Value -Force }
+    Invoke-Kc PUT "/realms/$realm/users/$userUuid" $rep
+    "user '$username' attributes set (org_id=$userOrgId, org_type=CLIENT)"
+    Invoke-Kc PUT "/realms/$realm/users/$userUuid/reset-password" @{ type = 'password'; value = $username; temporary = $false }
+    "password set to '$username'"
 }
-# PUT replaces the whole representation — send it back complete, or Keycloak
-# clears the other profile fields and flags the account "not fully set up".
-$rep = Invoke-Kc GET "/realms/$realm/users/$userUuid"
-@{
-    email = 'testuser@sclera.local'; emailVerified = $true
-    firstName = 'Test'; lastName = 'User'; requiredActions = @()
-    attributes = @{ org_id = @($orgId); org_type = @('CLIENT') }
-}.GetEnumerator() | ForEach-Object { $rep | Add-Member -NotePropertyName $_.Key -NotePropertyValue $_.Value -Force }
-Invoke-Kc PUT "/realms/$realm/users/$userUuid" $rep
-"user attributes set (org_id=$orgId, org_type=CLIENT)"
-Invoke-Kc PUT "/realms/$realm/users/$userUuid/reset-password" @{ type = 'password'; value = 'testuser'; temporary = $false }
-"password set to 'testuser'"
+Set-TestUser 'testuser'  $orgId                                  'Test'
+Set-TestUser 'testuser2' '22222222-2222-2222-2222-222222222222'  'Test2'
 
 "`nDone. Token endpoint: $kc/realms/$realm/protocol/openid-connect/token"

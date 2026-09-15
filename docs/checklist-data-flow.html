@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sclera 2.0 — Checklist &amp; Configuration: Data, UI &amp; Backend Flow</title>
+<style>
+  :root {
+    --bg: #f4f6fa;
+    --card: #ffffff;
+    --ink: #1c2733;
+    --muted: #64748b;
+    --line: #e2e8f0;
+    --accent: #2563eb;
+    --accent-soft: #eff6ff;
+    --green: #16a34a;
+    --green-soft: #f0fdf4;
+    --red: #dc2626;
+    --red-soft: #fef2f2;
+    --amber: #d97706;
+    --amber-soft: #fffbeb;
+    --violet: #7c3aed;
+    --violet-soft: #f5f3ff;
+    --code-bg: #0f172a;
+    --code-ink: #e2e8f0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0 0 80px;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: var(--bg); color: var(--ink);
+    line-height: 1.55;
+  }
+  header {
+    background: linear-gradient(120deg, #1e3a8a, #2563eb 55%, #7c3aed);
+    color: #fff; padding: 42px 24px 34px;
+  }
+  header .wrap { max-width: 1180px; margin: 0 auto; }
+  header h1 { margin: 0 0 8px; font-size: 30px; font-weight: 700; }
+  header p { margin: 0; opacity: .9; max-width: 900px; }
+  nav.toc {
+    background: #ffffffd9; backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; z-index: 20;
+  }
+  nav.toc .wrap {
+    max-width: 1180px; margin: 0 auto; padding: 10px 24px;
+    display: flex; gap: 18px; flex-wrap: wrap; font-size: 14px;
+  }
+  nav.toc a { color: var(--accent); text-decoration: none; font-weight: 600; }
+  nav.toc a:hover { text-decoration: underline; }
+  main { max-width: 1180px; margin: 0 auto; padding: 28px 24px; }
+  section { margin-bottom: 56px; }
+  h2 {
+    font-size: 23px; margin: 0 0 6px; padding-top: 8px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  h2 .chip {
+    font-size: 12px; font-weight: 700; letter-spacing: .04em;
+    padding: 3px 10px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent);
+  }
+  h3 { font-size: 17px; margin: 26px 0 10px; }
+  p.lede { color: var(--muted); margin-top: 0; max-width: 920px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; padding: 20px 22px; margin: 16px 0;
+    box-shadow: 0 1px 3px rgba(15,23,42,.05);
+  }
+  /* ------ tables ------ */
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; margin: 10px 0 4px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: #f8fafc; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  td code, li code, p code {
+    background: #f1f5f9; border: 1px solid var(--line); border-radius: 4px;
+    padding: 1px 5px; font-size: 12.5px; font-family: Consolas, "Cascadia Code", monospace;
+  }
+  .tbl-title {
+    display: flex; align-items: baseline; gap: 10px; margin-top: 4px;
+  }
+  .tbl-title .tname {
+    font-family: Consolas, monospace; font-weight: 700; font-size: 16px; color: var(--accent);
+  }
+  .tbl-title .tdesc { color: var(--muted); font-size: 13px; }
+  .pill {
+    display: inline-block; font-size: 11px; font-weight: 700; border-radius: 999px;
+    padding: 1px 8px; vertical-align: 1px;
+  }
+  .pill.pk { background: var(--amber-soft); color: var(--amber); }
+  .pill.fk { background: var(--violet-soft); color: var(--violet); }
+  .pill.req { background: var(--red-soft); color: var(--red); }
+  .pill.enum { background: var(--green-soft); color: var(--green); }
+  /* ------ ER-ish diagram ------ */
+  .er {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 14px; margin: 14px 0;
+  }
+  .er .ent {
+    border: 1.5px solid var(--line); border-radius: 10px; overflow: hidden;
+    background: #fff; font-size: 12.5px;
+  }
+  .er .ent .hd {
+    padding: 7px 12px; font-family: Consolas, monospace; font-weight: 700; color: #fff;
+  }
+  .er .ent ul { margin: 0; padding: 8px 14px 10px; list-style: none; font-family: Consolas, monospace; color: #334155; }
+  .er .ent li { padding: 1.5px 0; }
+  .er .cfg .hd { background: #2563eb; }
+  .er .cl .hd { background: #16a34a; }
+  .er .ext .hd { background: #7c3aed; }
+  .legend { font-size: 12.5px; color: var(--muted); }
+  /* ------ UI mockup ------ */
+  .mock {
+    border: 1px solid var(--line); border-radius: 14px; background: #eef2f7;
+    padding: 18px; max-width: 860px; margin: 14px auto;
+    font-size: 13.5px;
+  }
+  .mock .m-card {
+    background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 12px;
+  }
+  .mock h4 { margin: 0 0 4px; font-size: 18px; }
+  .mock .muted { color: var(--muted); }
+  .mock .small { font-size: 12px; }
+  .badge {
+    display: inline-block; padding: 1px 9px; border-radius: 999px;
+    font-size: 11.5px; font-weight: 700;
+  }
+  .badge-gray { background: #f1f5f9; color: #475569; }
+  .badge-green { background: var(--green-soft); color: var(--green); }
+  .badge-red { background: var(--red-soft); color: var(--red); }
+  .mbtn {
+    display: inline-block; border: 1px solid #cbd5e1; border-radius: 7px;
+    background: #fff; padding: 5px 12px; margin: 3px 4px 3px 0;
+    font-size: 12.5px; font-weight: 600; color: #334155;
+  }
+  .mbtn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .mbtn.danger { border-color: #fca5a5; color: var(--red); }
+  .q {
+    border-left: 3px solid var(--line); padding: 8px 12px; margin: 10px 0; border-radius: 4px;
+  }
+  .q.failed { border-left-color: var(--red); background: var(--red-soft); }
+  .q .qt { font-weight: 600; }
+  .q .req { color: var(--red); }
+  .m-input {
+    border: 1px solid #cbd5e1; border-radius: 6px; background: #fff;
+    padding: 5px 10px; margin: 6px 0; color: #64748b; font-size: 12.5px;
+    max-width: 380px;
+  }
+  .q .extras { font-size: 12px; color: var(--muted); display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .callout {
+    border-left: 4px solid var(--accent); background: var(--accent-soft);
+    padding: 10px 16px; border-radius: 0 8px 8px 0; margin: 14px 0; font-size: 14px;
+  }
+  .callout.warn { border-left-color: var(--amber); background: var(--amber-soft); }
+  /* ------ flow diagram ------ */
+  .flow { margin: 18px 0; }
+  .flow .step {
+    display: grid; grid-template-columns: 46px 1fr; gap: 14px; margin: 0;
+  }
+  .flow .n {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; font-size: 15px;
+    position: relative; z-index: 2;
+  }
+  .flow .step:not(:last-child) .rail { position: relative; }
+  .flow .rail::after {
+    content: ""; position: absolute; left: 16px; top: 34px; bottom: -8px;
+    width: 2px; background: #c7d2fe;
+  }
+  .flow .step:last-child .rail::after { display: none; }
+  .flow .body { padding-bottom: 22px; }
+  .flow .who {
+    font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  }
+  .flow .who.fe { color: var(--accent); }
+  .flow .who.gw { color: var(--violet); }
+  .flow .who.be { color: var(--green); }
+  .flow .who.db { color: var(--amber); }
+  .flow .ttl { font-weight: 700; font-size: 15px; margin: 1px 0 3px; }
+  .flow .body p { margin: 3px 0; font-size: 13.5px; color: #334155; }
+  pre {
+    background: var(--code-bg); color: var(--code-ink);
+    border-radius: 10px; padding: 14px 18px; overflow-x: auto;
+    font-size: 12.5px; line-height: 1.5;
+    font-family: Consolas, "Cascadia Code", monospace;
+  }
+  pre .c { color: #64748b; }
+  pre .k { color: #7dd3fc; }
+  pre .s { color: #86efac; }
+  pre .n { color: #fca5a5; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+  /* status lifecycle */
+  .life { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; font-size: 13px; }
+  .life .st {
+    padding: 4px 14px; border-radius: 999px; font-weight: 700; border: 1.5px solid;
+  }
+  .st.todo { border-color: #94a3b8; color: #475569; background: #f8fafc; }
+  .st.complete { border-color: var(--green); color: var(--green); background: var(--green-soft); }
+  .st.failed { border-color: var(--red); color: var(--red); background: var(--red-soft); }
+  .st.exception { border-color: var(--amber); color: var(--amber); background: var(--amber-soft); }
+  .st.incomplete { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .life .arr { color: var(--muted); }
+  footer { text-align: center; color: var(--muted); font-size: 12.5px; margin-top: 40px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <h1>Checklist &amp; Inspection Configuration — Data, UI &amp; Backend Flow</h1>
+    <p>Sclera 2.0 · <code style="background:rgba(255,255,255,.15);padding:1px 6px;border-radius:4px">sclera-inspection-service</code> — what is stored in the tenant database for an inspection configuration, what a checklist looks like on the UI, and exactly what happens on the backend when checklist answers are saved or submitted.</p>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="wrap">
+    <a href="#arch">1 · Architecture</a>
+    <a href="#config-db">2 · Configuration data</a>
+    <a href="#checklist-db">3 · Checklist data</a>
+    <a href="#ui">4 · UI</a>
+    <a href="#flow">5 · Save flow</a>
+    <a href="#payloads">6 · Payloads &amp; DB rows</a>
+    <a href="#lifecycle">7 · Lifecycle</a>
+  </div>
+</nav>
+
+<main>
+
+<!-- ============================================================ 1 -->
+<section id="arch">
+  <h2><span class="chip">1</span> Architecture at a glance</h2>
+  <p class="lede">The React SPA never talks to the inspection service directly — every call goes through the gateway (session cookie + CSRF header), which forwards it with the org/user identity. The inspection service stores its data <strong>schema-per-tenant</strong> in PostgreSQL. Checklist <em>questions</em> are <strong>not</strong> stored by the inspection service — they are rendered live from the procedure template, fetched from <code>sclera-procedure-service</code>. Only <em>answers</em> (keyed by <code>questionId</code>) are stored with the checklist.</p>
+  <div class="card">
+    <div class="er">
+      <div class="ent ext">
+        <div class="hd">React SPA (frontend)</div>
+        <ul>
+          <li>ChecklistFillPanel.tsx</li>
+          <li>api/checklists.ts</li>
+          <li>api/templates.ts</li>
+        </ul>
+      </div>
+      <div class="ent ext">
+        <div class="hd">Gateway (BFF)</div>
+        <ul>
+          <li>session cookie auth</li>
+          <li>X-CSRF header check</li>
+          <li>routes /api/v1/** </li>
+        </ul>
+      </div>
+      <div class="ent cfg">
+        <div class="hd">sclera-inspection-service</div>
+        <ul>
+          <li>ChecklistController</li>
+          <li>ChecklistService</li>
+          <li>OpenFGA @PreAuthorize</li>
+          <li>tenant schema resolver</li>
+        </ul>
+      </div>
+      <div class="ent cl">
+        <div class="hd">PostgreSQL (tenant schema)</div>
+        <ul>
+          <li>inspection_config</li>
+          <li>tagging_* tables</li>
+          <li>checklist + child tables</li>
+        </ul>
+      </div>
+    </div>
+    <p class="legend">Side channel: <code>ProcedureTemplateClient</code> calls <code>sclera-procedure-service</code> over Dapr service invocation (HMAC-signed) to fetch the question-template snapshot when questions need rendering. The frontend fetches the same template through the gateway (<code>getTemplate(procedureId)</code>) to draw the form.</p>
+  </div>
+</section>
+
+<!-- ============================================================ 2 -->
+<section id="config-db">
+  <h2><span class="chip">2</span> Configuration data stored in the database</h2>
+  <p class="lede">An inspection is configured in two parts: the <strong>inspection config</strong> (the VDMS "create inspection" form — who, when, which options) and the <strong>tagging aggregate</strong> (which procedures the inspection runs, on which assets/locations, plus inspection-wide alert conditions). All rows live in the tenant's schema; <code>org_id</code> is kept as a defense-in-depth cross-check.</p>
+
+  <div class="card">
+    <div class="tbl-title"><span class="tname">inspection_config</span><span class="tdesc">one row per configured inspection (entity <code>InspectionConfig</code>)</span></div>
+    <table>
+      <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+      <tr><td><code>id</code> <span class="pill pk">PK</span></td><td>uuid</td><td>generated by the service</td></tr>
+      <tr><td><code>org_id</code> <span class="pill req">NOT NULL</span></td><td>uuid</td><td>tenant cross-check</td></tr>
+      <tr><td><code>name</code> <span class="pill req">NOT NULL</span></td><td>varchar(200)</td><td>inspection name (denormalized onto every checklist as <code>config_name</code>)</td></tr>
+      <tr><td><code>code</code></td><td>varchar(50)</td><td>optional short code</td></tr>
+      <tr><td><code>description</code></td><td>varchar(2000)</td><td></td></tr>
+      <tr><td><code>assignee_email</code> <span class="pill req">NOT NULL</span></td><td>varchar(255)</td><td>default assignee for generated checklists</td></tr>
+      <tr><td><code>secondary_assignee_email</code></td><td>varchar(255)</td><td></td></tr>
+      <tr><td><code>category</code></td><td>varchar(100)</td><td></td></tr>
+      <tr><td><code>priority</code> <span class="pill enum">ENUM</span></td><td>varchar(20)</td><td><code>Priority</code> stored as string</td></tr>
+      <tr><td><code>frequency</code> <span class="pill enum">ENUM</span> <span class="pill req">NOT NULL</span></td><td>varchar(20)</td><td><code>Frequency</code> stored as string</td></tr>
+      <tr><td><code>schedule_days</code> <span class="pill req">NOT NULL</span></td><td>varchar(100)</td><td><code>Set&lt;Weekday&gt;</code> flattened by <code>WeekdaysConverter</code> (e.g. <code>MON,WED,FRI</code>)</td></tr>
+      <tr><td><code>bypass_scan</code></td><td>boolean</td><td>skip QR/asset scan</td></tr>
+      <tr><td><code>enable_check_in_out</code></td><td>boolean</td><td>copied to each checklist as <code>check_in_required</code></td></tr>
+      <tr><td><code>enable_points</code></td><td>boolean</td><td>scoring toggle</td></tr>
+      <tr><td><code>merged_view</code></td><td>boolean</td><td>UI presentation toggle</td></tr>
+      <tr><td><code>created_by</code></td><td>uuid</td><td></td></tr>
+      <tr><td><code>created_at</code> / <code>updated_at</code> <span class="pill req">NOT NULL</span></td><td>timestamptz</td><td></td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="tbl-title"><span class="tname">inspection_tagging</span><span class="tdesc">aggregate root — one row per config (entity <code>InspectionTagging</code>)</span></div>
+    <table>
+      <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+      <tr><td><code>config_id</code> <span class="pill pk">PK</span> <span class="pill fk">FK→inspection_config</span></td><td>uuid</td><td>created lazily via <code>getOrCreate(configId)</code></td></tr>
+    </table>
+
+    <div class="tbl-title" style="margin-top:18px"><span class="tname">tagging_procedure</span><span class="tdesc">procedures (checklists) tagged to the inspection</span></div>
+    <table>
+      <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+      <tr><td><code>id</code> <span class="pill pk">PK</span></td><td>uuid</td><td>becomes <code>tagged_procedure_id</code> on generated checklists</td></tr>
+      <tr><td><code>config_id</code> <span class="pill fk">FK</span> <span class="pill req">NOT NULL</span></td><td>uuid</td><td>join column to <code>inspection_tagging</code></td></tr>
+      <tr><td><code>procedure_id</code> <span class="pill req">NOT NULL</span></td><td>uuid</td><td>the question-template id in procedure-service</td></tr>
+      <tr><td><code>procedure_name</code> <span class="pill req">NOT NULL</span></td><td>varchar(200)</td><td>denormalized snapshot of the name</td></tr>
+    </table>
+
+    <div class="tbl-title" style="margin-top:18px"><span class="tname">tagging_target</span><span class="tdesc">asset/location a tagged procedure applies to</span></div>
+    <table>
+      <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+      <tr><td><code>id</code> <span class="pill pk">PK</span></td><td>uuid</td><td></td></tr>
+      <tr><td><code>tagging_procedure_id</code> <span class="pill fk">FK</span> <span class="pill req">NOT NULL</span></td><td>uuid</td><td></td></tr>
+      <tr><td><code>target_type</code> <span class="pill enum">ENUM</span> <span class="pill req">NOT NULL</span></td><td>varchar(16)</td><td><code>ASSET</code> | <code>LOCATION</code></td></tr>
+      <tr><td><code>target_id</code> <span class="pill req">NOT NULL</span></td><td>uuid</td><td>id in helper-service (asset/location)</td></tr>
+      <tr><td><code>target_name</code> <span class="pill req">NOT NULL</span></td><td>varchar(200)</td><td>denormalized display name</td></tr>
+      <tr><td><code>target_condition</code></td><td>varchar(1000)</td><td>per-target condition text</td></tr>
+      <tr><td><code>assignee_email</code></td><td>varchar(255)</td><td>overrides the config's default assignee for this target</td></tr>
+    </table>
+
+    <div class="tbl-title" style="margin-top:18px"><span class="tname">tagging_outer_condition</span><span class="tdesc">inspection-wide conditions → email alert / auto work-order</span></div>
+    <table>
+      <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+      <tr><td><code>id</code> <span class="pill pk">PK</span></td><td>uuid</td><td></td></tr>
+      <tr><td><code>config_id</code> <span class="pill fk">FK</span> <span class="pill req">NOT NULL</span></td><td>uuid</td><td></td></tr>
+      <tr><td><code>description</code> <span class="pill req">NOT NULL</span></td><td>varchar(1000)</td><td>the condition text</td></tr>
+      <tr><td><code>email_alert</code></td><td>boolean</td><td>send email when triggered</td></tr>
+      <tr><td><code>create_work_order</code></td><td>boolean</td><td>auto-create a work order when triggered</td></tr>
+    </table>
+  </div>
+
+  <div class="callout">
+    <strong>Generation rule:</strong> <code>POST /api/v1/checklists/generate</code> creates <em>one checklist per tagged procedure × target</em> (or one per procedure if it has no targets). Each checklist snapshots the config name, procedure name, target name and the resolved assignee at generation time — so later edits to the config don't rewrite history.
+  </div>
+</section>
+
+<!-- ============================================================ 3 -->
+<section id="checklist-db">
+  <h2><span class="chip">3</span> Checklist data stored in the database</h2>
+  <p class="lede">A checklist is one fillable instance. Questions live in the procedure template (procedure-service); the inspection service persists only the <strong>answers keyed by <code>questionId</code></strong>, plus lifecycle state and an audit history.</p>
+
+  <div class="card">
+    <div class="tbl-title"><span class="tname">checklist</span><span class="tdesc">the fillable instance (entity <code>Checklist</code>)</span></div>
+    <table>
+      <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+      <tr><td><code>id</code> <span class="pill pk">PK</span></td><td>uuid</td><td></td></tr>
+      <tr><td><code>org_id</code> <span class="pill req">NOT NULL</span></td><td>uuid</td><td>every read/write is scoped <code>findByIdAndOrgId</code></td></tr>
+      <tr><td><code>config_id</code> / <code>config_name</code></td><td>uuid / varchar(220)</td><td>nullable — reactive-service &amp; tagged-procedure checklists have no config</td></tr>
+      <tr><td><code>tagged_procedure_id</code></td><td>uuid</td><td>which tagging row produced it</td></tr>
+      <tr><td><code>procedure_id</code> <span class="pill req">NOT NULL</span></td><td>uuid</td><td>template id — UI uses this to fetch questions</td></tr>
+      <tr><td><code>procedure_name</code> <span class="pill req">NOT NULL</span></td><td>varchar(200)</td><td>snapshot</td></tr>
+      <tr><td><code>target_type</code> <span class="pill enum">ENUM</span></td><td>varchar(16)</td><td><code>ASSET</code> | <code>LOCATION</code> | null</td></tr>
+      <tr><td><code>target_id</code> / <code>target_name</code></td><td>uuid / varchar(200)</td><td>snapshot of the asset/location</td></tr>
+      <tr><td><code>assignee_email</code> <span class="pill req">NOT NULL</span></td><td>varchar(255)</td><td>target override or config default</td></tr>
+      <tr><td><code>status</code> <span class="pill enum">ENUM</span> <span class="pill req">NOT NULL</span></td><td>varchar(24)</td><td><code>TODO · COMPLETE · FAILED · EXCEPTION · INCOMPLETE</code></td></tr>
+      <tr><td><code>source</code> <span class="pill enum">ENUM</span> <span class="pill req">NOT NULL</span></td><td>varchar(24)</td><td><code>INSPECTION · REACTIVE_SERVICE · TAGGED_PROCEDURE · SCHEDULED_SERVICE</code></td></tr>
+      <tr><td><code>due_date</code></td><td>timestamptz</td><td>drives the Incomplete transition</td></tr>
+      <tr><td><code>check_in_required</code> <span class="pill req">NOT NULL</span></td><td>boolean</td><td>copied from config <code>enable_check_in_out</code></td></tr>
+      <tr><td><code>check_in_at</code> / <code>check_out_at</code></td><td>timestamptz</td><td>set by check-in / save&amp;checkout / submit</td></tr>
+      <tr><td><code>exception_reason</code></td><td>varchar(1000)</td><td>filled when moved to Exception</td></tr>
+      <tr><td><code>created_at</code> / <code>updated_at</code> <span class="pill req">NOT NULL</span></td><td>timestamptz</td><td></td></tr>
+    </table>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="tbl-title"><span class="tname">checklist_answer</span><span class="tdesc">@ElementCollection — the saved answers</span></div>
+      <table>
+        <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+        <tr><td><code>checklist_id</code> <span class="pill fk">FK</span></td><td>uuid</td><td>join column</td></tr>
+        <tr><td><code>question_id</code> <span class="pill req">NOT NULL</span></td><td>uuid</td><td>key into the procedure template</td></tr>
+        <tr><td><code>answer_value</code></td><td>text</td><td>JSON-stringified value (string, number, bool, array…)</td></tr>
+        <tr><td><code>failed</code> <span class="pill req">NOT NULL</span></td><td>boolean</td><td>any <code>true</code> ⇒ whole checklist <b>FAILED</b> on submit</td></tr>
+        <tr><td><code>comment</code></td><td>varchar(2000)</td><td>optional inspector note</td></tr>
+      </table>
+      <p class="legend">⚠ Deliberately <b>no</b> unique <code>(checklist_id, question_id)</code> constraint: the save flow replaces the whole collection, and Hibernate flushes inserts before deletes — a unique key would break every re-save.</p>
+    </div>
+    <div class="card">
+      <div class="tbl-title"><span class="tname">checklist_history</span><span class="tdesc">ordered audit trail (<code>seq</code> order column)</span></div>
+      <table>
+        <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+        <tr><td><code>checklist_id</code> <span class="pill fk">FK</span></td><td>uuid</td><td></td></tr>
+        <tr><td><code>seq</code></td><td>int</td><td>insertion order</td></tr>
+        <tr><td><code>occurred_at</code> <span class="pill req">NOT NULL</span></td><td>timestamptz</td><td></td></tr>
+        <tr><td><code>action</code> <span class="pill req">NOT NULL</span></td><td>varchar(64)</td><td><code>GENERATED · CHECK_IN · SAVE · SAVE_AND_CHECKOUT · SUBMIT · EXCEPTION · REOPEN · INCOMPLETE · ASSIGNEE · WORK_ORDER</code></td></tr>
+        <tr><td><code>detail</code></td><td>text</td><td>free-form detail line</td></tr>
+      </table>
+      <div class="tbl-title" style="margin-top:16px"><span class="tname">checklist_work_order</span><span class="tdesc">linked work orders</span></div>
+      <table>
+        <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+        <tr><td><code>checklist_id</code> <span class="pill fk">FK</span></td><td>uuid</td><td></td></tr>
+        <tr><td><code>work_order_id</code></td><td>uuid</td><td>generated id per "Create work order" action</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 4 -->
+<section id="ui">
+  <h2><span class="chip">4</span> What the checklist looks like on the UI</h2>
+  <p class="lede">Route <code>/checklists/:id</code> → <code>ChecklistFillPage</code> → <code>ChecklistFillPanel</code>. On mount it loads the checklist (<code>GET /api/v1/checklists/{id}</code>), then the question template (<code>getTemplate(procedureId)</code>), and hydrates a local <em>draft</em> map <code>{ questionId → { value, failed, comment } }</code> from the stored answers. Question types: <code>TEXT · NUMBER · BOOLEAN · SINGLE_CHOICE · MULTI_CHOICE · DATE · PHOTO · SIGNATURE</code>.</p>
+
+  <div class="mock">
+    <div style="text-align:right; margin-bottom:8px"><span class="mbtn">← Back</span></div>
+
+    <div class="m-card">
+      <h4>Fire Extinguisher Monthly Check</h4>
+      <div class="muted"><span class="badge badge-gray">To-Do</span> · Inspection · Monthly Safety Round · 🖥️ Extinguisher #E-104 · due 20/09/2026</div>
+      <div class="muted small">Assignee: dev.rd2@sclera.com · checked in 15/09/2026, 09:12</div>
+    </div>
+
+    <div class="m-card">
+      <span class="mbtn">Just save</span>
+      <span class="mbtn">Save &amp; checkout</span>
+      <span class="mbtn primary">Submit</span>
+      <span class="mbtn">Add to exception</span>
+      <span class="mbtn">Mark incomplete</span>
+      <span class="mbtn">Update assignee</span>
+      <span class="mbtn">Create work order</span>
+      <span class="mbtn danger">Delete</span>
+    </div>
+
+    <div class="m-card">
+      <h4 style="font-size:15px">Section 1 · Visual inspection</h4>
+      <div class="q">
+        <div class="qt">Is the pressure gauge in the green zone? <span class="req">*</span></div>
+        <div class="muted small">Needle must sit between the two green marks.</div>
+        <div class="m-input">◉ Yes &nbsp;&nbsp; ○ No</div>
+        <div class="extras"><span>☐ Mark failed</span><span class="m-input" style="margin:0">Comment (optional)</span></div>
+      </div>
+      <div class="q failed">
+        <div class="qt">Hose and nozzle free of cracks? <span class="req">*</span></div>
+        <div class="m-input">○ Yes &nbsp;&nbsp; ◉ No</div>
+        <div class="extras"><span>☑ <b>Mark failed</b></span><span class="m-input" style="margin:0">Hairline crack near coupling</span></div>
+      </div>
+      <div class="q">
+        <div class="qt">Gross weight (kg)</div>
+        <div class="m-input">6.2</div>
+        <div class="extras"><span>☐ Mark failed</span></div>
+      </div>
+    </div>
+
+    <div class="m-card">
+      <h4 style="font-size:15px">History</h4>
+      <div class="small"><b>CHECK_IN</b> <span class="muted">· 15/09/2026, 09:12</span></div>
+      <div class="small"><b>GENERATED</b> <span class="muted">· 14/09/2026, 18:00 — Checklist created from inspection Monthly Safety Round</span></div>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <strong>Edit gating on the UI:</strong> the form is editable only when <code>status === 'TODO'</code> <em>and</em> (check-in is not required <em>or</em> already checked in). If check-in is required and missing, only the <b>Check in</b> button shows and inputs are disabled — mirroring the backend guards.
+  </div>
+</section>
+
+<!-- ============================================================ 5 -->
+<section id="flow">
+  <h2><span class="chip">5</span> Backend data flow — saving checklist answers</h2>
+  <p class="lede">What happens end-to-end when the user clicks <b>Just save</b> / <b>Save &amp; checkout</b> / <b>Submit</b>.</p>
+
+  <div class="card flow">
+    <div class="step">
+      <div class="rail"><div class="n">1</div></div>
+      <div class="body">
+        <div class="who fe">Frontend · ChecklistFillPanel</div>
+        <div class="ttl">collect() builds the payload from drafts</div>
+        <p>Every drafted question becomes <code>{ questionId, value: JSON.stringify(value), failed, comment }</code>. Values are always JSON-stringified — a multi-choice answer is stored as <code>"[\"A\",\"B\"]"</code>, a number as <code>"6.2"</code>. On reload, <code>parseValue()</code> JSON-parses them back.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="rail"><div class="n">2</div></div>
+      <div class="body">
+        <div class="who fe">Frontend · api/checklists.ts</div>
+        <div class="ttl">HTTP call through the gateway</div>
+        <p><b>Save:</b> <code>PUT /api/v1/checklists/{id}/answers</code> body <code>{ answers, checkout: false|true }</code>.<br>
+           <b>Submit:</b> <code>POST /api/v1/checklists/{id}/submit</code> body <code>{ answers, checkout: true }</code>.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="rail"><div class="n">3</div></div>
+      <div class="body">
+        <div class="who gw">Gateway (BFF)</div>
+        <div class="ttl">Session + CSRF, then forward with identity</div>
+        <p>Validates the session cookie and CSRF header, resolves the user's org, and forwards the request to <code>sclera-inspection-service</code> with the authenticated principal. A tenant filter maps the org to its PostgreSQL schema (<code>TenantContext</code> → schema-per-tenant connection).</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="rail"><div class="n">4</div></div>
+      <div class="body">
+        <div class="who be">ChecklistController</div>
+        <div class="ttl">Authorization gate</div>
+        <p><code>@PreAuthorize("@fga.checkOrg('can_manage_inspections')")</code> — an OpenFGA check that the caller may manage inspections in this org. <code>@Valid</code> enforces DTO limits (<code>value ≤ 8000</code> chars, <code>comment ≤ 2000</code>, <code>questionId</code> required).</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="rail"><div class="n">5</div></div>
+      <div class="body">
+        <div class="who be">ChecklistService.saveAnswers() — @Transactional</div>
+        <div class="ttl">Business-rule guards, then replace answers</div>
+        <p><b>Guards:</b> ① <code>getOwned</code> — must exist for this org (404 otherwise). ② <code>requireFillable</code> — COMPLETE/FAILED are finalized; INCOMPLETE/EXCEPTION must be reopened first. ③ <code>requireCheckedInIfNeeded</code> — if <code>check_in_required</code> and no <code>check_in_at</code> → "Check in before filling".</p>
+        <p><b>applyAnswers:</b> <code>answers.clear()</code> then re-add each input — a full replace, not a merge (that's why the answer table has no unique question key). Then a history line is appended: <code>SAVE</code> or <code>SAVE_AND_CHECKOUT</code> (which also sets <code>check_out_at</code>), and <code>updated_at</code> is bumped.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="rail"><div class="n">6</div></div>
+      <div class="body">
+        <div class="who db">PostgreSQL (tenant schema)</div>
+        <div class="ttl">One transaction commits everything</div>
+        <p><code>UPDATE checklist …</code> · <code>DELETE/INSERT checklist_answer …</code> (collection replace) · <code>INSERT checklist_history …</code>. All-or-nothing: a guard failure rolls back with a 4xx business error.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="rail"><div class="n">7</div></div>
+      <div class="body">
+        <div class="who be">Response → Frontend</div>
+        <div class="ttl">Full ChecklistResponse comes back; UI re-hydrates</div>
+        <p>The service maps the saved entity to <code>ChecklistResponse</code> (answers + history + work orders included). The panel calls <code>hydrate()</code> — state, drafts and the history card refresh from the server truth, and a "Saved." notice is shown.</p>
+      </div>
+    </div>
+  </div>
+
+  <h3>Submit differs in one step</h3>
+  <div class="card">
+    <p style="margin-top:0">On <code>POST /{id}/submit</code>, after the same guards and optional <code>applyAnswers</code>:</p>
+    <pre><span class="k">boolean</span> anyFailed = c.getAnswers().stream().anyMatch(Answer::isFailed);
+c.setStatus(anyFailed ? <span class="n">FAILED</span> : <span class="s">COMPLETE</span>);
+<span class="k">if</span> (c.getCheckOutAt() == <span class="k">null</span>) c.setCheckOutAt(now);
+c.log(<span class="s">"SUBMIT"</span>, <span class="s">"Marked "</span> + c.getStatus(), now);</pre>
+    <p style="margin-bottom:0">One answer with <code>failed = true</code> fails the entire checklist. Checkout is stamped if it wasn't already, and the checklist becomes read-only (finalized).</p>
+  </div>
+</section>
+
+<!-- ============================================================ 6 -->
+<section id="payloads">
+  <h2><span class="chip">6</span> Example payloads and resulting DB rows</h2>
+  <div class="grid2">
+    <div class="card">
+      <h3 style="margin-top:0">Request — PUT /api/v1/checklists/{id}/answers</h3>
+      <pre>{
+  <span class="k">"answers"</span>: [
+    { <span class="k">"questionId"</span>: <span class="s">"9f1c…q1"</span>,
+      <span class="k">"value"</span>: <span class="s">"true"</span>,
+      <span class="k">"failed"</span>: <span class="n">false</span> },
+    { <span class="k">"questionId"</span>: <span class="s">"9f1c…q2"</span>,
+      <span class="k">"value"</span>: <span class="s">"false"</span>,
+      <span class="k">"failed"</span>: <span class="n">true</span>,
+      <span class="k">"comment"</span>: <span class="s">"Hairline crack near coupling"</span> },
+    { <span class="k">"questionId"</span>: <span class="s">"9f1c…q3"</span>,
+      <span class="k">"value"</span>: <span class="s">"6.2"</span>,
+      <span class="k">"failed"</span>: <span class="n">false</span> }
+  ],
+  <span class="k">"checkout"</span>: <span class="n">false</span>
+}</pre>
+      <p class="legend"><code>value</code> is a JSON-encoded string of whatever the widget produced; the backend treats it as opaque text.</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Rows after commit</h3>
+      <pre><span class="c">-- checklist_answer (collection fully replaced)</span>
+checklist_id | question_id | answer_value | failed | comment
+c0a8…11      | 9f1c…q1     | true         | f      | ∅
+c0a8…11      | 9f1c…q2     | false        | t      | Hairline crack…
+c0a8…11      | 9f1c…q3     | 6.2          | f      | ∅
+
+<span class="c">-- checklist_history (appended)</span>
+seq | occurred_at         | action | detail
+0   | 2026-09-14 18:00+00 | GENERATED | Checklist created from…
+1   | 2026-09-15 09:12+00 | CHECK_IN  | ∅
+2   | 2026-09-15 09:31+00 | SAVE      | Answers saved
+
+<span class="c">-- checklist (touched)</span>
+status = TODO · updated_at = 2026-09-15 09:31+00</pre>
+      <p class="legend">A later <b>Submit</b> with the failed answer present would flip <code>status → FAILED</code>, stamp <code>check_out_at</code>, and append <code>SUBMIT · Marked FAILED</code>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 7 -->
+<section id="lifecycle">
+  <h2><span class="chip">7</span> Checklist status lifecycle</h2>
+  <div class="card">
+    <div class="life">
+      <span class="st todo">TODO</span><span class="arr">— save / save&amp;checkout keep it here —</span>
+      <span class="arr">submit →</span><span class="st complete">COMPLETE</span>
+      <span class="arr">or</span><span class="st failed">FAILED</span><span class="arr">(any answer failed)</span>
+    </div>
+    <div class="life">
+      <span class="st todo">TODO</span><span class="arr">add-to-exception →</span><span class="st exception">EXCEPTION</span>
+      <span class="arr">reopen →</span><span class="st todo">TODO</span>
+    </div>
+    <div class="life">
+      <span class="st todo">TODO</span><span class="arr">mark-incomplete (overdue) →</span><span class="st incomplete">INCOMPLETE</span>
+      <span class="arr">reopen →</span><span class="st todo">TODO</span>
+    </div>
+    <ul style="font-size:13.5px; color:#334155; margin-bottom:0">
+      <li><b>COMPLETE / FAILED</b> are terminal — every mutating endpoint rejects them ("already finalized").</li>
+      <li><b>EXCEPTION / INCOMPLETE</b> cannot be filled directly — they must be reopened to To-Do first.</li>
+      <li>Assignee updates and work-order creation are allowed in any state and are history-logged.</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  Generated from the Sclera 2.0 codebase — <code>sclera-inspection-service</code> (Checklist, InspectionConfig, InspectionTagging entities · ChecklistService · ChecklistController) and <code>frontend</code> (ChecklistFillPanel.tsx · api/checklists.ts).
+</footer>
+
+</main>
+</body>
+</html>

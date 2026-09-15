@@ -8,6 +8,7 @@ import {
   type LocationType,
 } from '../api/locations'
 import { Modal } from '../components/Modal'
+import { TaggedProceduresModal } from '../components/TaggedProceduresModal'
 
 const CHILD_TYPE: Record<LocationType, LocationType | null> = {
   BUILDING: 'FLOOR',
@@ -39,6 +40,7 @@ export function LocationsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editor, setEditor] = useState<EditorState | null>(null)
+  const [proceduresFor, setProceduresFor] = useState<Location | null>(null)
 
   function reload() {
     setLoading(true)
@@ -108,6 +110,9 @@ export function LocationsPage() {
                 + {TYPE_LABEL[childType]}
               </button>
             )}
+            <button className="icon-btn" title="Procedures" onClick={() => setProceduresFor(node)}>
+              📋
+            </button>
             <button
               className="icon-btn"
               title="Edit"
@@ -186,6 +191,15 @@ export function LocationsPage() {
             setEditor(null)
             reload()
           }}
+        />
+      )}
+
+      {proceduresFor && (
+        <TaggedProceduresModal
+          targetType="LOCATION"
+          targetId={proceduresFor.id}
+          targetName={proceduresFor.name}
+          onClose={() => setProceduresFor(null)}
         />
       )}
     </div>

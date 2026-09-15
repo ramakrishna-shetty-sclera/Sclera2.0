@@ -1,42 +1,21 @@
 package com.sclera.applicationplane.helper.repository;
 
 import com.sclera.applicationplane.helper.domain.Asset;
-import org.springframework.stereotype.Repository;
+import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
-/** Dummy in-memory store. Data is per-process and lost on restart. */
-@Repository
-public class AssetRepository {
+/**
+ * Assets in the tenant's schema (search_path routing). The org_id predicates
+ * are the defense-in-depth cross-check on top of schema isolation.
+ */
+public interface AssetRepository extends JpaRepository<Asset, UUID> {
 
-    private final Map<UUID, Asset> store = new ConcurrentHashMap<>();
+    Optional<Asset> findByIdAndOrgId(UUID id, UUID orgId);
 
-    public Asset save(Asset asset) {
-        store.put(asset.getId(), asset);
-        return asset;
-    }
+    List<Asset> findAllByOrgId(UUID orgId);
 
-    public Optional<Asset> findByIdAndOrgId(UUID id, UUID orgId) {
-        Asset a = store.get(id);
-        return (a != null && a.getOrgId().equals(orgId)) ? Optional.of(a) : Optional.empty();
-    }
-
-    public List<Asset> findAllByOrgId(UUID orgId) {
-        return store.values().stream()
-                .filter(a -> a.getOrgId().equals(orgId))
-                .toList();
-    }
-
-    public boolean existsByLocationIdAndOrgId(UUID locationId, UUID orgId) {
-        return store.values().stream()
-                .anyMatch(a -> a.getOrgId().equals(orgId) && locationId.equals(a.getLocationId()));
-    }
-
-    public void delete(Asset asset) {
-        store.remove(asset.getId());
-    }
+    boolean existsByLocationIdAndOrgId(UUID locationId, UUID orgId);
 }

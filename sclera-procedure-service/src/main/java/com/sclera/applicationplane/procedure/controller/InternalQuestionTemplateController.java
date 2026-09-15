@@ -2,6 +2,8 @@ package com.sclera.applicationplane.procedure.controller;
 
 import com.sclera.applicationplane.procedure.dto.QuestionTemplateResponse;
 import com.sclera.applicationplane.procedure.service.QuestionTemplateService;
+import com.sclera.applicationplane.procedure.tenancy.TenantContext;
+import com.sclera.applicationplane.procedure.tenancy.TenantRegistryService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -16,19 +18,26 @@ import java.util.UUID;
  *
  * orgId travels in the path, not as a query parameter: Dapr (1.15+) rejects '?' in
  * the invocation method name, and DaprInvocationHelper has no query-param overload.
+ *
+ * Schema-per-tenant: no JWT means no OrgContext, so the tenant schema is pinned
+ * explicitly with TenantContext.runAs for the duration of the lookup.
  */
 @RestController
 @RequestMapping("/internal/api/v1/question-templates")
 public class InternalQuestionTemplateController {
 
     private final QuestionTemplateService service;
+    private final TenantRegistryService tenantRegistry;
 
-    public InternalQuestionTemplateController(QuestionTemplateService service) {
+    public InternalQuestionTemplateController(QuestionTemplateService service,
+                                              TenantRegistryService tenantRegistry) {
         this.service = service;
+        this.tenantRegistry = tenantRegistry;
     }
 
     @GetMapping("/{id}/orgs/{orgId}")
     public QuestionTemplateResponse getSnapshot(@PathVariable UUID id, @PathVariable UUID orgId) {
-        return service.getForOrg(id, orgId);
+        tenantRegistry.ensureTenant(orgId);
+        return TenantContext.runAs(orgId, () -> service.getForOrg(id, orgId));
     }
 }

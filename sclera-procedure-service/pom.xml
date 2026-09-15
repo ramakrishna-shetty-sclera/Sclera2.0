@@ -67,6 +67,12 @@
             <artifactId>dapr-sdk</artifactId>
         </dependency>
 
+        <!-- OpenFGA: fine-grained authorization (relationship tuples + checks) -->
+        <dependency>
+            <groupId>dev.openfga</groupId>
+            <artifactId>openfga-sdk</artifactId>
+        </dependency>
+
         <!-- Database -->
         <dependency>
             <groupId>org.flywaydb</groupId>

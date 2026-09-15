@@ -1,5 +1,6 @@
 package com.sclera.applicationplane.inspection.dto;
 
+import com.sclera.applicationplane.inspection.domain.ChecklistSource;
 import com.sclera.applicationplane.inspection.domain.ChecklistStatus;
 import com.sclera.applicationplane.inspection.domain.TargetType;
 import jakarta.validation.Valid;
@@ -76,6 +77,7 @@ public final class ChecklistDtos {
             String targetName,
             String assigneeEmail,
             ChecklistStatus status,
+            ChecklistSource source,
             OffsetDateTime dueDate,
             boolean checkInRequired,
             OffsetDateTime checkInAt,

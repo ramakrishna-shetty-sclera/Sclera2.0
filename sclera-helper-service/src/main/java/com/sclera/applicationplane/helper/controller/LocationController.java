@@ -6,6 +6,7 @@ import com.sclera.applicationplane.helper.dto.LocationResponse;
 import com.sclera.applicationplane.helper.service.LocationService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -36,28 +37,33 @@ public class LocationController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("@fga.checkOrg('can_manage_assets')")
     public LocationResponse create(@Valid @RequestBody LocationRequest request) {
         return service.create(request);
     }
 
     @GetMapping
+    @PreAuthorize("@fga.checkOrg('can_view')")
     public List<LocationResponse> list(@RequestParam(required = false) LocationType type,
                                        @RequestParam(required = false) UUID parentId) {
         return service.list(type, parentId);
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("@fga.checkOrg('can_view')")
     public LocationResponse get(@PathVariable UUID id) {
         return service.get(id);
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("@fga.checkOrg('can_manage_assets')")
     public LocationResponse update(@PathVariable UUID id, @Valid @RequestBody LocationRequest request) {
         return service.update(id, request);
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("@fga.checkOrg('can_manage_assets')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }

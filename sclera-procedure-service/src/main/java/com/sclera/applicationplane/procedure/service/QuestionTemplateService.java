@@ -1,5 +1,6 @@
 package com.sclera.applicationplane.procedure.service;
 
+import com.sclera.applicationplane.procedure.authz.FgaAuthorizationService;
 import com.sclera.applicationplane.procedure.domain.QuestionTemplate;
 import com.sclera.applicationplane.procedure.domain.TemplateStatus;
 import com.sclera.applicationplane.procedure.dto.QuestionTemplateRequest;
@@ -26,13 +27,16 @@ public class QuestionTemplateService {
     private final QuestionTemplateRepository repository;
     private final QuestionTemplateMapper mapper;
     private final TemplateEventPublisher eventPublisher;
+    private final FgaAuthorizationService fga;
 
     public QuestionTemplateService(QuestionTemplateRepository repository,
                                    QuestionTemplateMapper mapper,
-                                   TemplateEventPublisher eventPublisher) {
+                                   TemplateEventPublisher eventPublisher,
+                                   FgaAuthorizationService fga) {
         this.repository = repository;
         this.mapper = mapper;
         this.eventPublisher = eventPublisher;
+        this.fga = fga;
     }
 
     public QuestionTemplateResponse create(QuestionTemplateRequest request) {
@@ -44,7 +48,12 @@ public class QuestionTemplateService {
         template.setOrgId(orgId);
         template.setCreatedBy(OrgContext.getUserId());
         mapper.applyRequest(template, request);
-        return mapper.toResponse(repository.save(template));
+        QuestionTemplate saved = repository.save(template);
+
+        // FGA tuples (org link + creator, one round trip). A failed write throws,
+        // rolling back the insert so no template exists that nobody can access.
+        fga.grantCreated("question_template", saved.getId(), saved.getCreatedBy(), null);
+        return mapper.toResponse(saved);
     }
 
     public QuestionTemplateResponse update(UUID id, QuestionTemplateRequest request) {

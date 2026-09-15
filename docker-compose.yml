@@ -54,6 +54,47 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
 
+  # ------------------------------------------------------------------
+  # OpenFGA: fine-grained / relationship-based authorization (RBAC + ReBAC).
+  # HTTP API on host port 8085 (container 8080 clashes with the gateway).
+  # Bootstrap the store/model/tuples with .\setup-openfga.ps1 after `up`.
+  # NOTE: the postgres-init script only runs on a FRESH postgres volume; on an
+  # existing volume setup-openfga.ps1 creates the sclera_openfga DB itself.
+  # ------------------------------------------------------------------
+  openfga-migrate:
+    image: openfga/openfga:v1.8.4
+    container_name: sclera-openfga-migrate
+    # the migrate subcommand needs explicit flags (it ignores OPENFGA_* env vars)
+    command:
+      [
+        "migrate",
+        "--datastore-engine", "postgres",
+        "--datastore-uri", "postgres://sclera:sclera@postgres:5432/sclera_openfga?sslmode=disable",
+      ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  openfga:
+    image: openfga/openfga:v1.8.4
+    container_name: sclera-openfga
+    command: ["run"]
+    environment:
+      OPENFGA_DATASTORE_ENGINE: postgres
+      OPENFGA_DATASTORE_URI: postgres://sclera:sclera@postgres:5432/sclera_openfga?sslmode=disable
+    ports:
+      - "8085:8080"   # HTTP API
+      - "8086:8081"   # gRPC
+    depends_on:
+      openfga-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=localhost:8081"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   keycloak:
     image: quay.io/keycloak/keycloak:25.0
     container_name: sclera-keycloak
@@ -86,6 +127,7 @@ services:
       SCLERA_KAFKA_BOOTSTRAP_SERVERS: kafka:19092
       KEYCLOAK_URL: http://keycloak:8180
       SCLERA_DAPR_HEALTH_ENABLED: "true"
+      SCLERA_FGA_API_URL: http://openfga:8080
     ports:
       - "8095:8095"
     depends_on:
@@ -135,6 +177,7 @@ services:
       SCLERA_KAFKA_BOOTSTRAP_SERVERS: kafka:19092
       KEYCLOAK_URL: http://keycloak:8180
       SCLERA_DAPR_HEALTH_ENABLED: "true"
+      SCLERA_FGA_API_URL: http://openfga:8080
     ports:
       - "8096:8096"
     depends_on:

@@ -1,0 +1,327 @@
+{
+  "schema_version": "1.1",
+  "type_definitions": [
+    {
+      "type": "user"
+    },
+    {
+      "type": "organization",
+      "relations": {
+        "admin": { "this": {} },
+        "inspector": { "this": {} },
+        "template_author": { "this": {} },
+        "asset_manager": { "this": {} },
+        "viewer": { "this": {} },
+        "member": {
+          "union": {
+            "child": [
+              { "computedUserset": { "object": "", "relation": "viewer" } },
+              { "computedUserset": { "object": "", "relation": "admin" } },
+              { "computedUserset": { "object": "", "relation": "inspector" } },
+              { "computedUserset": { "object": "", "relation": "template_author" } },
+              { "computedUserset": { "object": "", "relation": "asset_manager" } }
+            ]
+          }
+        },
+        "can_view": { "computedUserset": { "object": "", "relation": "member" } },
+        "can_manage_inspections": {
+          "union": {
+            "child": [
+              { "computedUserset": { "object": "", "relation": "admin" } },
+              { "computedUserset": { "object": "", "relation": "inspector" } }
+            ]
+          }
+        },
+        "can_manage_templates": {
+          "union": {
+            "child": [
+              { "computedUserset": { "object": "", "relation": "admin" } },
+              { "computedUserset": { "object": "", "relation": "template_author" } }
+            ]
+          }
+        },
+        "can_manage_assets": {
+          "union": {
+            "child": [
+              { "computedUserset": { "object": "", "relation": "admin" } },
+              { "computedUserset": { "object": "", "relation": "asset_manager" } }
+            ]
+          }
+        },
+        "can_administer": { "computedUserset": { "object": "", "relation": "admin" } }
+      },
+      "metadata": {
+        "relations": {
+          "admin": { "directly_related_user_types": [{ "type": "user" }] },
+          "inspector": { "directly_related_user_types": [{ "type": "user" }] },
+          "template_author": { "directly_related_user_types": [{ "type": "user" }] },
+          "asset_manager": { "directly_related_user_types": [{ "type": "user" }] },
+          "viewer": { "directly_related_user_types": [{ "type": "user" }] },
+          "member": { "directly_related_user_types": [] },
+          "can_view": { "directly_related_user_types": [] },
+          "can_manage_inspections": { "directly_related_user_types": [] },
+          "can_manage_templates": { "directly_related_user_types": [] },
+          "can_manage_assets": { "directly_related_user_types": [] },
+          "can_administer": { "directly_related_user_types": [] }
+        }
+      }
+    },
+    {
+      "type": "inspection",
+      "relations": {
+        "org": { "this": {} },
+        "creator": { "this": {} },
+        "assignee": { "this": {} },
+        "can_view": {
+          "union": {
+            "child": [
+              { "computedUserset": { "object": "", "relation": "creator" } },
+              { "computedUserset": { "object": "", "relation": "assignee" } },
+              {
+                "tupleToUserset": {
+                  "tupleset": { "object": "", "relation": "org" },
+                  "computedUserset": { "object": "", "relation": "can_view" }
+                }
+              }
+            ]
+          }
+        },
+        "can_edit": {
+          "union": {
+            "child": [
+              { "computedUserset": { "object": "", "relation": "creator" } },
+              { "computedUserset": { "object": "", "relation": "assignee" } },
+              {
+                "tupleToUserset": {
+                  "tupleset": { "object": "", "relation": "org" },
+                  "computedUserset": { "object": "", "relation": "can_manage_inspections" }
+                }
+              }
+            ]
+          }
+        },
+        "can_delete": {
+          "tupleToUserset": {
+            "tupleset": { "object": "", "relation": "org" },
+            "computedUserset": { "object": "", "relation": "can_manage_inspections" }
+          }
+        }
+      },
+      "metadata": {
+        "relations": {
+          "org": { "directly_related_user_types": [{ "type": "organization" }] },
+          "creator": { "directly_related_user_types": [{ "type": "user" }] },
+          "assignee": { "directly_related_user_types": [{ "type": "user" }] },
+          "can_view": { "directly_related_user_types": [] },
+          "can_edit": { "directly_related_user_types": [] },
+          "can_delete": { "directly_related_user_types": [] }
+        }
+      }
+    },
+    {
+      "type": "question_template",
+      "relations": {
+        "org": { "this": {} },
+        "creator": { "this": {} },
+        "can_view": {
+          "tupleToUserset": {
+            "tupleset": { "object": "", "relation": "org" },
+            "computedUserset": { "object": "", "relation": "can_view" }
+          }
+        },
+        "can_edit": {
+          "union": {
+            "child": [
+              { "computedUserset": { "object": "", "relation": "creator" } },
+              {
+                "tupleToUserset": {
+                  "tupleset": { "object": "", "relation": "org" },
+                  "computedUserset": { "object": "", "relation": "can_manage_templates" }
+                }
+              }
+            ]
+          }
+        },
+        "can_publish": {
+          "tupleToUserset": {
+            "tupleset": { "object": "", "relation": "org" },
+            "computedUserset": { "object": "", "relation": "can_manage_templates" }
+          }
+        },
+        "can_delete": {
+          "tupleToUserset": {
+            "tupleset": { "object": "", "relation": "org" },
+            "computedUserset": { "object": "", "relation": "can_manage_templates" }
+          }
+        }
+      },
+      "metadata": {
+        "relations": {
+          "org": { "directly_related_user_types": [{ "type": "organization" }] },
+          "creator": { "directly_related_user_types": [{ "type": "user" }] },
+          "can_view": { "directly_related_user_types": [] },
+          "can_edit": { "directly_related_user_types": [] },
+          "can_publish": { "directly_related_user_types": [] },
+          "can_delete": { "directly_related_user_types": [] }
+        }
+      }
+    },
+    {
+      "type": "inspection_config",
+      "relations": {
+        "org": { "this": {} },
+        "creator": { "this": {} },
+        "can_view": {
+          "tupleToUserset": {
+            "tupleset": { "object": "", "relation": "org" },
+            "computedUserset": { "object": "", "relation": "can_view" }
+          }
+        },
+        "can_edit": {
+          "union": {
+            "child": [
+              { "computedUserset": { "object": "", "relation": "creator" } },
+              {
+                "tupleToUserset": {
+                  "tupleset": { "object": "", "relation": "org" },
+                  "computedUserset": { "object": "", "relation": "can_manage_inspections" }
+                }
+              }
+            ]
+          }
+        },
+        "can_delete": {
+          "tupleToUserset": {
+            "tupleset": { "object": "", "relation": "org" },
+            "computedUserset": { "object": "", "relation": "can_manage_inspections" }
+          }
+        }
+      },
+      "metadata": {
+        "relations": {
+          "org": { "directly_related_user_types": [{ "type": "organization" }] },
+          "creator": { "directly_related_user_types": [{ "type": "user" }] },
+          "can_view": { "directly_related_user_types": [] },
+          "can_edit": { "directly_related_user_types": [] },
+          "can_delete": { "directly_related_user_types": [] }
+        }
+      }
+    },
+    {
+      "type": "checklist",
+      "relations": {
+        "org": { "this": {} },
+        "creator": { "this": {} },
+        "assignee": { "this": {} },
+        "can_view": {
+          "union": {
+            "child": [
+              { "computedUserset": { "object": "", "relation": "creator" } },
+              { "computedUserset": { "object": "", "relation": "assignee" } },
+              {
+                "tupleToUserset": {
+                  "tupleset": { "object": "", "relation": "org" },
+                  "computedUserset": { "object": "", "relation": "can_view" }
+                }
+              }
+            ]
+          }
+        },
+        "can_edit": {
+          "union": {
+            "child": [
+              { "computedUserset": { "object": "", "relation": "creator" } },
+              { "computedUserset": { "object": "", "relation": "assignee" } },
+              {
+                "tupleToUserset": {
+                  "tupleset": { "object": "", "relation": "org" },
+                  "computedUserset": { "object": "", "relation": "can_manage_inspections" }
+                }
+              }
+            ]
+          }
+        },
+        "can_delete": {
+          "tupleToUserset": {
+            "tupleset": { "object": "", "relation": "org" },
+            "computedUserset": { "object": "", "relation": "can_manage_inspections" }
+          }
+        }
+      },
+      "metadata": {
+        "relations": {
+          "org": { "directly_related_user_types": [{ "type": "organization" }] },
+          "creator": { "directly_related_user_types": [{ "type": "user" }] },
+          "assignee": { "directly_related_user_types": [{ "type": "user" }] },
+          "can_view": { "directly_related_user_types": [] },
+          "can_edit": { "directly_related_user_types": [] },
+          "can_delete": { "directly_related_user_types": [] }
+        }
+      }
+    },
+    {
+      "type": "location",
+      "relations": {
+        "org": { "this": {} },
+        "can_view": {
+          "tupleToUserset": {
+            "tupleset": { "object": "", "relation": "org" },
+            "computedUserset": { "object": "", "relation": "can_view" }
+          }
+        },
+        "can_edit": {
+          "tupleToUserset": {
+            "tupleset": { "object": "", "relation": "org" },
+            "computedUserset": { "object": "", "relation": "can_manage_assets" }
+          }
+        },
+        "can_delete": {
+          "tupleToUserset": {
+            "tupleset": { "object": "", "relation": "org" },
+            "computedUserset": { "object": "", "relation": "can_manage_assets" }
+          }
+        }
+      },
+      "metadata": {
+        "relations": {
+          "org": { "directly_related_user_types": [{ "type": "organization" }] },
+          "can_view": { "directly_related_user_types": [] },
+          "can_edit": { "directly_related_user_types": [] },
+          "can_delete": { "directly_related_user_types": [] }
+        }
+      }
+    },
+    {
+      "type": "asset",
+      "relations": {
+        "org": { "this": {} },
+        "can_view": {
+          "tupleToUserset": {
+            "tupleset": { "object": "", "relation": "org" },
+            "computedUserset": { "object": "", "relation": "can_view" }
+          }
+        },
+        "can_edit": {
+          "tupleToUserset": {
+            "tupleset": { "object": "", "relation": "org" },
+            "computedUserset": { "object": "", "relation": "can_manage_assets" }
+          }
+        },
+        "can_delete": {
+          "tupleToUserset": {
+            "tupleset": { "object": "", "relation": "org" },
+            "computedUserset": { "object": "", "relation": "can_manage_assets" }
+          }
+        }
+      },
+      "metadata": {
+        "relations": {
+          "org": { "directly_related_user_types": [{ "type": "organization" }] },
+          "can_view": { "directly_related_user_types": [] },
+          "can_edit": { "directly_related_user_types": [] },
+          "can_delete": { "directly_related_user_types": [] }
+        }
+      }
+    }
+  ]
+}

@@ -1,44 +1,72 @@
-# Sclera Application Plane — Inspection & Procedure Services
+# Sclera Application Plane — VDMS Inspection Module
 
-Two Spring Boot microservices built on the shared `sclera-common` library
-(see `sclera-common-guide.html` for the library's full documentation):
+Spring Boot microservices built on the shared `sclera-common` library
+(see `sclera-common-guide.html`), implementing the VDMS Inspection Module:
+locations & assets, procedures, inspection configuration + tagging, the
+checklist lifecycle (To-Do → Complete / Failed / Exception / Incomplete),
+Task Dashboard, Task Map, Reactive Service (QR) and Tagged Procedures.
 
 | Service | Port | Dapr app-id | Database | Purpose |
 |---|---|---|---|---|
 | `sclera-procedure-service` | 8095 | `sclera-procedure-service` | `sclera_procedure` | Author question templates (procedures): draft → publish → archive |
-| `sclera-inspection-service` | 8096 | `sclera-inspection-service` | `sclera_inspection` | Execute inspections against **published** templates |
+| `sclera-inspection-service` | 8096 | `sclera-inspection-service` | `sclera_inspection` | Inspection configs, tagging, checklist lifecycle, reactive services (QR), tagged procedures — plus the original template-run flow |
+| `sclera-helper-service` | 8097 | — (no sidecar) | `sclera_helper` | Locations (building → floor → location) and assets (IP / non-IP) |
+| `sclera2.0v-api-gateway` | 8080 | — (no sidecar locally) | — (Redis sessions) | Single entry point: BFF login (session cookie + CSRF), JWT relay, routing |
 
 ## Architecture
 
 ```
-                 Keycloak JWT (user traffic)
-                        │
-        ┌───────────────┴────────────────┐
-        ▼                                ▼
-  procedure-service (8095)        inspection-service (8096)
-  templates: CRUD/publish         inspections: create/answer/complete
-        │                                │  ▲
-        │ Kafka                          │  │ Dapr invocation (HMAC-signed)
-        │ sclera.procedure.              │  │ GET /internal/api/v1/
-        │   template-events.v1  ─────────┘  │   question-templates/{id}/orgs/{orgId}
-        │                                   │
-        └── PostgreSQL (sclera_procedure)   └── PostgreSQL (sclera_inspection)
+  React SPA (frontend/, :5173)
+        │  BFF session cookie + X-CSRF-Token (no tokens in the browser)
+        ▼
+  api-gateway (:8080) ── Keycloak (:8180, realm sclera; sclera-bff code+PKCE,
+        │                 sclera-app password grant for the dev login)
+        │  relays Authorization: Bearer <user JWT> downstream
+        │  routes: /question-templates → 8095 · /inspections|/inspection-configs
+        │          /checklists|/reactive-services|/tagged-procedures → 8096
+        │          /helper/** → 8097
+        ▼
+  procedure-service (8095)   inspection-service (8096)   helper-service (8097)
+  templates CRUD/publish     configs·tagging·checklists  locations & assets
+        │                        │  ▲                        │
+        │ Kafka                  │  │ Dapr invocation        │
+        │ template-events.v1 ────┘  │ (HMAC): template       │
+        │                           │ snapshot by org        │
+        ▼                           ▼                        ▼
+  PostgreSQL sclera_procedure   sclera_inspection        sclera_helper
+        └────────────── schema-per-tenant in every DB ──────────────┘
+                (public.tenant_registry → t_<org-uuid> schemas)
 
-  inspection-service also publishes sclera.inspection.events.v1 on completion.
+  Cross-cutting: OpenFGA (:8085) fine-grained authz (@PreAuthorize "@fga…"),
+  inspection-service publishes sclera.inspection.events.v1 on completion.
 ```
 
 Design decisions baked in:
 
+- **Schema-per-tenant** — each org gets its own Postgres schema per service
+  database, resolved from the JWT at connection time (`SET search_path`,
+  reset on pool release). Tenants are auto-provisioned on first request:
+  registry row → `CREATE SCHEMA` → per-schema Flyway (`db/tenant`, own
+  history). `org_id` columns/filters remain as defense-in-depth only.
+  Design + legacy migration plan: `docs/inspection-schema-migration.md`.
+- **Gateway as the only door** — the SPA never calls services directly and
+  never holds tokens; the gateway's BFF session (HttpOnly cookie + CSRF
+  double-submit) is exchanged for the user's Keycloak JWT on every
+  downstream call, so `ScleraJwtConverter`/`OrgContext` work unchanged.
 - **Template snapshotting** — when an inspection is created, the full template
   (fetched from procedure-service over Dapr) is copied into the inspection row
   as JSONB. Later template edits never corrupt in-flight or historical inspections.
-- **Tenant isolation** — every query filters by `OrgContext.getOrgId()` (filled
-  from the JWT by `ScleraJwtConverter`). Internal Dapr calls carry the org id
-  explicitly since they have no user token; HMAC + `InternalEndpointFilter`
-  guard the transport.
+- **Checklists are the common currency** — inspections, reactive-service
+  requests and tagged procedures all produce `checklist` rows distinguished
+  by `source`, so the Task Dashboard, Task Map and lifecycle actions work
+  for every origin with no special cases.
+- **OpenFGA for fine-grained authz** — controllers guard with
+  `@PreAuthorize("@fga.checkOrg(...)")`; per-object tuples are written on
+  create (see `docs/openfga.md`, `setup-openfga.ps1`).
 - **Kafka for facts, Dapr for questions** — lifecycle facts (template published,
   inspection completed) stream through Kafka; synchronous lookups (fetch template
-  by id) go over Dapr service invocation via `DaprInvocationHelper`.
+  by id) go over Dapr service invocation via `DaprInvocationHelper`; internal
+  endpoints are HMAC-signed and carry the org id explicitly (no user token).
 
 ## Prerequisites
 
@@ -95,9 +123,19 @@ docker compose up -d
 #    re-create the realm + test user (idempotent, takes a few seconds)
 .\setup-keycloak.ps1
 
-# 3. Start each service with its Dapr sidecar — one terminal each
-.\run-procedure-service.ps1     # procedure-service  on :8095
-.\run-inspection-service.ps1    # inspection-service on :8096
+# 2b. Bootstrap OpenFGA (authorization store + model + testuser org-admin grant).
+#     Idempotent; needed on first run and after the openfga store is wiped.
+#     See docs/openfga.md for the model and how roles are granted.
+.\setup-openfga.ps1
+
+# 3. Start the services — one terminal each
+.\run-procedure-service.ps1     # procedure-service  on :8095 (Dapr sidecar)
+.\run-inspection-service.ps1    # inspection-service on :8096 (Dapr sidecar)
+.\run-helper-service.ps1        # helper-service     on :8097 (plain jar)
+.\run-api-gateway.ps1           # api-gateway        on :8080 (plain jar)
+
+# 4. Frontend
+cd frontend; npm run dev        # http://localhost:5173 → testuser / testuser
 ```
 
 Wait until both readiness probes report `UP` (first start takes ~1 min):

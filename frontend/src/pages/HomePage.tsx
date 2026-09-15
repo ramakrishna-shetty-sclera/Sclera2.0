@@ -39,11 +39,18 @@ const CARDS: DashboardCard[] = [
     ready: true,
   },
   {
+    to: '/reactive-services',
+    title: 'Reactive Service',
+    icon: '📱',
+    blurb: 'On-demand requests: checklist + location + QR code. Scan to raise.',
+    ready: true,
+  },
+  {
     to: '/tasks',
     title: 'Task Dashboard',
     icon: '✅',
-    blurb: 'Track work across locations, assets and inspections in one place.',
-    ready: false,
+    blurb: 'All checklists in one view — filter, search, and fill them inline.',
+    ready: true,
   },
 ]
 

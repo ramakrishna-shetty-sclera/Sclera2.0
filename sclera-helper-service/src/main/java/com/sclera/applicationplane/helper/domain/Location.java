@@ -1,18 +1,47 @@
 package com.sclera.applicationplane.helper.domain;
 
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-/** In-memory Location node in the building → floor → location tree. */
+/**
+ * Location node in the building → floor → location tree. Persisted in the
+ * tenant's schema (schema-per-tenant); org_id is a defense-in-depth
+ * cross-check only.
+ */
+@Entity
+@Table(name = "location")
 public class Location {
 
+    @Id
     private UUID id;
+
+    @Column(name = "org_id", nullable = false)
     private UUID orgId;
+
+    @Column(nullable = false, length = 200)
     private String name;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
     private LocationType type;
+
+    @Column(name = "parent_id")
     private UUID parentId;
+
+    @Column(name = "created_by")
     private UUID createdBy;
+
+    @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
+
+    @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
     public UUID getId() { return id; }

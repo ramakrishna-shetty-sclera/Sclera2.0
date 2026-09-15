@@ -11,6 +11,7 @@ import com.sclera.applicationplane.inspection.dto.TaggingDtos.TargetUpdateReques
 import com.sclera.applicationplane.inspection.service.InspectionTaggingService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,9 +28,13 @@ import java.util.UUID;
  * Tagging sub-resource of an inspection configuration: procedures tagged to the
  * inspection, their asset/location targets (each with condition + assignee), and
  * inspection-wide outer conditions.
+ *
+ * Authorization: mutations require the org-level can_manage_inspections
+ * permission (OpenFGA); reads require can_view.
  */
 @RestController
 @RequestMapping("/api/v1/inspection-configs/{configId}")
+@PreAuthorize("@fga.checkOrg('can_manage_inspections')")
 public class InspectionTaggingController {
 
     private final InspectionTaggingService service;
@@ -39,6 +44,7 @@ public class InspectionTaggingController {
     }
 
     @GetMapping("/tagging")
+    @PreAuthorize("@fga.checkOrg('can_view')")   // read-only: overrides the class-level rule
     public TaggingResponse get(@PathVariable UUID configId) {
         return service.get(configId);
     }

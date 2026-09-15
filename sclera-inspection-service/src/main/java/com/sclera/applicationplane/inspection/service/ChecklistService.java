@@ -2,6 +2,7 @@ package com.sclera.applicationplane.inspection.service;
 
 import com.sclera.applicationplane.inspection.domain.Checklist;
 import com.sclera.applicationplane.inspection.domain.Checklist.Answer;
+import com.sclera.applicationplane.inspection.domain.ChecklistSource;
 import com.sclera.applicationplane.inspection.domain.ChecklistStatus;
 import com.sclera.applicationplane.inspection.domain.InspectionConfig;
 import com.sclera.applicationplane.inspection.domain.InspectionTagging;
@@ -20,6 +21,7 @@ import com.sclera.controlplane.common.exception.BusinessRuleException;
 import com.sclera.controlplane.common.exception.ResourceNotFoundException;
 import com.sclera.controlplane.common.security.OrgContext;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -27,6 +29,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Service
+@Transactional
 public class ChecklistService {
 
     private final ChecklistRepository repository;
@@ -93,8 +96,8 @@ public class ChecklistService {
         return c;
     }
 
-    public List<ChecklistResponse> list(UUID configId, ChecklistStatus status) {
-        return repository.findAllByOrgId(OrgContext.getOrgId(), configId, status).stream()
+    public List<ChecklistResponse> list(UUID configId, ChecklistStatus status, ChecklistSource source) {
+        return repository.findAllByOrgId(OrgContext.getOrgId(), configId, status, source).stream()
                 .map(this::toResponse).toList();
     }
 
@@ -257,7 +260,7 @@ public class ChecklistService {
                 c.getId(), c.getOrgId(), c.getConfigId(), c.getConfigName(),
                 c.getTaggedProcedureId(), c.getProcedureId(), c.getProcedureName(),
                 c.getTargetType(), c.getTargetId(), c.getTargetName(),
-                c.getAssigneeEmail(), c.getStatus(), c.getDueDate(),
+                c.getAssigneeEmail(), c.getStatus(), c.getSource(), c.getDueDate(),
                 c.isCheckInRequired(), c.getCheckInAt(), c.getCheckOutAt(), c.getExceptionReason(),
                 c.getAnswers().stream().map(a ->
                         new AnswerResponse(a.getQuestionId(), a.getValue(), a.isFailed(), a.getComment())).toList(),

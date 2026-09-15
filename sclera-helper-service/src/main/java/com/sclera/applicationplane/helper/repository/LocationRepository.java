@@ -1,42 +1,21 @@
 package com.sclera.applicationplane.helper.repository;
 
 import com.sclera.applicationplane.helper.domain.Location;
-import org.springframework.stereotype.Repository;
+import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
-/** Dummy in-memory store. Data is per-process and lost on restart. */
-@Repository
-public class LocationRepository {
+/**
+ * Locations in the tenant's schema (search_path routing). The org_id
+ * predicates are the defense-in-depth cross-check on top of schema isolation.
+ */
+public interface LocationRepository extends JpaRepository<Location, UUID> {
 
-    private final Map<UUID, Location> store = new ConcurrentHashMap<>();
+    Optional<Location> findByIdAndOrgId(UUID id, UUID orgId);
 
-    public Location save(Location location) {
-        store.put(location.getId(), location);
-        return location;
-    }
+    List<Location> findAllByOrgId(UUID orgId);
 
-    public Optional<Location> findByIdAndOrgId(UUID id, UUID orgId) {
-        Location l = store.get(id);
-        return (l != null && l.getOrgId().equals(orgId)) ? Optional.of(l) : Optional.empty();
-    }
-
-    public List<Location> findAllByOrgId(UUID orgId) {
-        return store.values().stream()
-                .filter(l -> l.getOrgId().equals(orgId))
-                .toList();
-    }
-
-    public boolean existsByParentIdAndOrgId(UUID parentId, UUID orgId) {
-        return store.values().stream()
-                .anyMatch(l -> l.getOrgId().equals(orgId) && parentId.equals(l.getParentId()));
-    }
-
-    public void delete(Location location) {
-        store.remove(location.getId());
-    }
+    boolean existsByParentIdAndOrgId(UUID parentId, UUID orgId);
 }

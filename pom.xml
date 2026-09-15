@@ -34,6 +34,7 @@
         <java.version>21</java.version>
         <sclera-common.version>0.1.0-SNAPSHOT</sclera-common.version>
         <dapr-sdk.version>1.13.1</dapr-sdk.version>
+        <openfga-sdk.version>0.8.1</openfga-sdk.version>
         <springdoc.version>2.6.0</springdoc.version>
         <logstash-logback.version>7.4</logstash-logback.version>
     </properties>
@@ -49,6 +50,11 @@
                 <groupId>io.dapr</groupId>
                 <artifactId>dapr-sdk</artifactId>
                 <version>${dapr-sdk.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>dev.openfga</groupId>
+                <artifactId>openfga-sdk</artifactId>
+                <version>${openfga-sdk.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.springdoc</groupId>

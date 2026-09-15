@@ -9,6 +9,7 @@ import {
 } from '../api/assets'
 import { listLocations, type Location } from '../api/locations'
 import { Modal } from '../components/Modal'
+import { TaggedProceduresModal } from '../components/TaggedProceduresModal'
 
 export function AssetsPage() {
   const [assets, setAssets] = useState<Asset[]>([])
@@ -17,6 +18,7 @@ export function AssetsPage() {
   const [error, setError] = useState<string | null>(null)
   const [typeFilter, setTypeFilter] = useState<AssetType | ''>('')
   const [editor, setEditor] = useState<{ existing?: Asset } | null>(null)
+  const [proceduresFor, setProceduresFor] = useState<Asset | null>(null)
 
   function reload() {
     setLoading(true)
@@ -130,6 +132,9 @@ export function AssetsPage() {
                   )}
                 </td>
                 <td className="row-actions">
+                  <button className="icon-btn" title="Procedures" onClick={() => setProceduresFor(a)}>
+                    📋
+                  </button>
                   <button className="icon-btn" title="Edit" onClick={() => setEditor({ existing: a })}>
                     ✎
                   </button>
@@ -152,6 +157,15 @@ export function AssetsPage() {
             setEditor(null)
             reload()
           }}
+        />
+      )}
+
+      {proceduresFor && (
+        <TaggedProceduresModal
+          targetType="ASSET"
+          targetId={proceduresFor.id}
+          targetName={proceduresFor.name}
+          onClose={() => setProceduresFor(null)}
         />
       )}
     </div>

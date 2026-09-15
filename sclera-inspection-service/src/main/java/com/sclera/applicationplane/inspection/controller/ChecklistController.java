@@ -1,5 +1,6 @@
 package com.sclera.applicationplane.inspection.controller;
 
+import com.sclera.applicationplane.inspection.domain.ChecklistSource;
 import com.sclera.applicationplane.inspection.domain.ChecklistStatus;
 import com.sclera.applicationplane.inspection.dto.ChecklistDtos.AssigneeRequest;
 import com.sclera.applicationplane.inspection.dto.ChecklistDtos.ChecklistResponse;
@@ -10,6 +11,7 @@ import com.sclera.applicationplane.inspection.dto.ChecklistDtos.WorkOrderRequest
 import com.sclera.applicationplane.inspection.service.ChecklistService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -41,55 +43,66 @@ public class ChecklistController {
 
     @PostMapping("/generate")
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("@fga.checkOrg('can_manage_inspections')")
     public List<ChecklistResponse> generate(@Valid @RequestBody GenerateRequest request) {
         return service.generate(request);
     }
 
     @GetMapping
+    @PreAuthorize("@fga.checkOrg('can_view')")
     public List<ChecklistResponse> list(@RequestParam(required = false) UUID configId,
-                                        @RequestParam(required = false) ChecklistStatus status) {
-        return service.list(configId, status);
+                                        @RequestParam(required = false) ChecklistStatus status,
+                                        @RequestParam(required = false) ChecklistSource source) {
+        return service.list(configId, status, source);
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("@fga.checkOrg('can_view')")
     public ChecklistResponse get(@PathVariable UUID id) {
         return service.get(id);
     }
 
     @PostMapping("/{id}/check-in")
+    @PreAuthorize("@fga.checkOrg('can_manage_inspections')")
     public ChecklistResponse checkIn(@PathVariable UUID id) {
         return service.checkIn(id);
     }
 
     @PutMapping("/{id}/answers")
+    @PreAuthorize("@fga.checkOrg('can_manage_inspections')")
     public ChecklistResponse saveAnswers(@PathVariable UUID id,
                                          @Valid @RequestBody SaveAnswersRequest request) {
         return service.saveAnswers(id, request);
     }
 
     @PostMapping("/{id}/submit")
+    @PreAuthorize("@fga.checkOrg('can_manage_inspections')")
     public ChecklistResponse submit(@PathVariable UUID id,
                                     @Valid @RequestBody(required = false) SaveAnswersRequest request) {
         return service.submit(id, request);
     }
 
     @PostMapping("/{id}/exception")
+    @PreAuthorize("@fga.checkOrg('can_manage_inspections')")
     public ChecklistResponse addException(@PathVariable UUID id,
                                           @Valid @RequestBody ExceptionRequest request) {
         return service.addException(id, request.reason());
     }
 
     @PostMapping("/{id}/reopen")
+    @PreAuthorize("@fga.checkOrg('can_manage_inspections')")
     public ChecklistResponse reopen(@PathVariable UUID id) {
         return service.reopen(id);
     }
 
     @PostMapping("/{id}/mark-incomplete")
+    @PreAuthorize("@fga.checkOrg('can_manage_inspections')")
     public ChecklistResponse markIncomplete(@PathVariable UUID id) {
         return service.markIncomplete(id);
     }
 
     @PutMapping("/{id}/assignee")
+    @PreAuthorize("@fga.checkOrg('can_manage_inspections')")
     public ChecklistResponse updateAssignee(@PathVariable UUID id,
                                             @Valid @RequestBody AssigneeRequest request) {
         return service.updateAssignee(id, request.assigneeEmail());
@@ -97,6 +110,7 @@ public class ChecklistController {
 
     @PostMapping("/{id}/work-order")
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("@fga.checkOrg('can_manage_inspections')")
     public ChecklistResponse createWorkOrder(@PathVariable UUID id,
                                              @RequestBody(required = false) WorkOrderRequest request) {
         return service.createWorkOrder(id, request != null ? request.note() : null);
@@ -104,6 +118,7 @@ public class ChecklistController {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("@fga.checkOrg('can_manage_inspections')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }

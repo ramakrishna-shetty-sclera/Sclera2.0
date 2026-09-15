@@ -2,6 +2,7 @@ import { apiFetch } from './client'
 import type { TargetType } from './inspectionTagging'
 
 export type ChecklistStatus = 'TODO' | 'COMPLETE' | 'FAILED' | 'EXCEPTION' | 'INCOMPLETE'
+export type ChecklistSource = 'INSPECTION' | 'REACTIVE_SERVICE' | 'TAGGED_PROCEDURE' | 'SCHEDULED_SERVICE'
 
 export interface ChecklistAnswer {
   questionId: string
@@ -29,6 +30,7 @@ export interface Checklist {
   targetName: string | null
   assigneeEmail: string
   status: ChecklistStatus
+  source: ChecklistSource
   dueDate: string | null
   checkInRequired: boolean
   checkInAt: string | null
@@ -58,7 +60,7 @@ export function generateChecklists(configId: string, dueDate?: string): Promise<
 }
 
 export function listChecklists(
-  params: { configId?: string; status?: ChecklistStatus } = {},
+  params: { configId?: string; status?: ChecklistStatus; source?: ChecklistSource } = {},
 ): Promise<Checklist[]> {
   return apiFetch<Checklist[]>(BASE, { query: params }).then((r) => r.data)
 }
@@ -128,4 +130,24 @@ export const CHECKLIST_STATUS_CLASS: Record<ChecklistStatus, string> = {
 
 export function checklistStatusLabel(s: ChecklistStatus): string {
   return s === 'TODO' ? 'To-Do' : s.charAt(0) + s.slice(1).toLowerCase()
+}
+
+export const CHECKLIST_SOURCES: ChecklistSource[] = [
+  'INSPECTION',
+  'REACTIVE_SERVICE',
+  'TAGGED_PROCEDURE',
+  'SCHEDULED_SERVICE',
+]
+
+export function checklistSourceLabel(s: ChecklistSource): string {
+  switch (s) {
+    case 'INSPECTION':
+      return 'Inspection'
+    case 'REACTIVE_SERVICE':
+      return 'Reactive service'
+    case 'TAGGED_PROCEDURE':
+      return 'Tagged procedure'
+    case 'SCHEDULED_SERVICE':
+      return 'Scheduled service'
+  }
 }
