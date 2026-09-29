@@ -18,6 +18,4 @@ public interface ResultTypeRepository extends JpaRepository<ResultType, UUID> {
     List<ResultType> findAllByOrgIdAndActiveOrderBySeverityOrderAsc(UUID orgId, boolean active);
 
     boolean existsByOrgIdAndKeyIgnoreCase(UUID orgId, String key);
-
-    long countByOrgId(UUID orgId);
 }
