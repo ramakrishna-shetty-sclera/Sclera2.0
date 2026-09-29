@@ -15,8 +15,12 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Owns {@code public.tenant_registry} and tenant provisioning: registry row →
  * CREATE SCHEMA → per-schema Flyway ({@code classpath:db/tenant}, each schema
- * has its own flyway history) → one-time copy of this org's legacy rows from
- * the shared public schema.
+ * has its own flyway history).
+ *
+ * There is no longer a copy of legacy rows out of the public schema: the
+ * tables it copied (question_template, template_section, question) were
+ * dropped with the move to versioned procedure templates. The registry's
+ * copied_public_data column is left in place, unused.
  *
  * Provisioning is idempotent and cached; safe to call per request.
  */
@@ -51,7 +55,7 @@ public class TenantRegistryService {
                 "SELECT schema_name FROM public.tenant_registry WHERE status = 'ACTIVE'", String.class);
     }
 
-    /** Ensure the org's schema exists, is migrated, and has its legacy public rows. */
+    /** Ensure the org's schema exists and is migrated. */
     public String ensureTenant(UUID orgId) {
         String schema = TenantSchemas.schemaFor(orgId);
         if (provisioned.contains(schema)) {
@@ -66,7 +70,6 @@ public class TenantRegistryService {
                     VALUES (?, ?) ON CONFLICT (org_id) DO NOTHING""", orgId, schema);
             jdbc.execute("CREATE SCHEMA IF NOT EXISTS \"" + TenantSchemas.requireValid(schema) + "\"");
             migrateSchema(schema);
-            copyPublicDataOnce(orgId, schema);
             provisioned.add(schema);
             log.info("Tenant provisioned: org={} schema={}", orgId, schema);
         }
@@ -85,33 +88,4 @@ public class TenantRegistryService {
                 .migrate();
     }
 
-    /**
-     * One-time lift of this org's rows out of the legacy shared public schema
-     * into its own schema (identical DDL ⇒ INSERT…SELECT *). Guarded by the
-     * registry's copied_public_data flag.
-     */
-    private void copyPublicDataOnce(UUID orgId, String schema) {
-        Boolean copied = jdbc.queryForObject(
-                "SELECT copied_public_data FROM public.tenant_registry WHERE org_id = ?",
-                Boolean.class, orgId);
-        if (Boolean.TRUE.equals(copied)) {
-            return;
-        }
-        String s = "\"" + schema + "\"";
-        int templates = jdbc.update(
-                "INSERT INTO " + s + ".question_template SELECT * FROM public.question_template " +
-                "WHERE org_id = ? ON CONFLICT (id) DO NOTHING", orgId);
-        int sections = jdbc.update(
-                "INSERT INTO " + s + ".template_section SELECT sec.* FROM public.template_section sec " +
-                "JOIN public.question_template t ON sec.template_id = t.id " +
-                "WHERE t.org_id = ? ON CONFLICT (id) DO NOTHING", orgId);
-        int questions = jdbc.update(
-                "INSERT INTO " + s + ".question SELECT q.* FROM public.question q " +
-                "JOIN public.template_section sec ON q.section_id = sec.id " +
-                "JOIN public.question_template t ON sec.template_id = t.id " +
-                "WHERE t.org_id = ? ON CONFLICT (id) DO NOTHING", orgId);
-        jdbc.update("UPDATE public.tenant_registry SET copied_public_data = TRUE WHERE org_id = ?", orgId);
-        log.info("Copied legacy public rows into {}: templates={} sections={} questions={}",
-                schema, templates, sections, questions);
-    }
 }

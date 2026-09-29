@@ -119,7 +119,7 @@
       }
     },
     {
-      "type": "question_template",
+      "type": "procedure_template",
       "relations": {
         "org": { "this": {} },
         "creator": { "this": {} },
