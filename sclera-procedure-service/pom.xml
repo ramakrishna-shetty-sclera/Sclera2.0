@@ -126,6 +126,26 @@
             <artifactId>spring-kafka-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- Integration tests run against a real Postgres. H2 cannot do CREATE
+             SCHEMA + search_path switching + JSONB, which is the whole
+             schema-per-tenant mechanism, so it would test nothing that matters.
+             Versions come from the Spring Boot parent. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -133,6 +153,36 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+            <!-- Integration tests are named *IT and need Docker, so they run in
+                 the integration-test phase rather than with `mvn test`. Surefire
+                 only matches *Test/*Tests, so without this they are silently
+                 skipped and the build reports "Tests run: 0" while passing. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <!-- docker-java defaults to Docker API 1.32, which Docker
+                             Engine 29+ rejects outright (its floor is 1.40): the
+                             probe gets a 400 and Testcontainers reports "Could not
+                             find a valid Docker environment" even though the CLI
+                             works. 1.40 is the one value that suits both ends — the
+                             ceiling of Docker 19.03 and the floor of 29.x.
+                             Note this is docker-java's `api.version` system
+                             property; the DOCKER_API_VERSION env var is NOT read. -->
+                        <api.version>1.40</api.version>
+                    </systemPropertyVariables>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

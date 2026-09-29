@@ -1,0 +1,31 @@
+# Test profile. Deliberately does NOT set spring.data.redis.host: sclera-common's
+# RedisCacheConfig is @ConditionalOnProperty on it, and that config fails the
+# context start when Redis is unreachable. Leaving it unset skips the bean
+# entirely, so tests need no Redis container.
+#
+# The datasource is supplied by Testcontainers through @DynamicPropertySource in
+# AbstractIntegrationTest — see that class.
+
+spring:
+  jpa:
+    hibernate:
+      # Same as production: Flyway owns the schema, Hibernate only checks that
+      # the entities match it. A mapping mistake fails the test context, which
+      # is exactly where we want to hear about it.
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+sclera:
+  fga:
+    # FgaAuthorizationService short-circuits to allow when disabled, so tests
+    # exercise service rules rather than OpenFGA tuples. Endpoint authorization
+    # is a separate concern, covered when the authorization model is extended.
+    enabled: false
+
+logging:
+  level:
+    com.sclera: INFO
+    org.testcontainers: WARN
+    com.github.dockerjava: WARN
