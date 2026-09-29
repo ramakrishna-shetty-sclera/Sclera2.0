@@ -323,7 +323,7 @@ publicly.
 |---|---|
 | Templates | create, list, get, duplicate, archive; list versions |
 | Versions | get, save draft, publish, new draft from version, diff two versions |
-| Result types | create, list, update, reorder, deactivate, delete (conditional) |
+| Result types | create, list, get, update, reorder, activate, deactivate, delete (conditional) |
 | Evaluation | evaluate answers against a version |
 | Discovery | published procedures by consumer and target type |
 | Documents | attach to a version or question, list, remove |
@@ -343,6 +343,33 @@ the shared exception types so they map onto the common error codes.
 Internal endpoints are invoked over Dapr (app-id `sclera-procedure-service`), HMAC-signed with the
 shared `sclera.event-listener.signing-secret`, and guarded by `InternalEndpointFilter`. Dapr rejects
 `?` in an invocation method name, so internal endpoints take every parameter in the path.
+
+### Gateway routing
+
+**Every top-level path this service exposes must also be added to the gateway**, or requests are
+refused with a 404 before they ever reach us. The paths live in the `procedure-service` route's
+`Path=` predicate:
+
+```yaml
+- id: procedure-service
+  uri: ${PROCEDURE_SERVICE_URL:http://localhost:8095}
+  predicates:
+    - Path=/api/v1/question-templates/**,/api/v1/result-types/**
+```
+
+The gateway is a **separate repository** — `ScleraHoldingsLLC/sclera2.0v-api-gateway` — and the copy
+in this working tree is gitignored, so a route change cannot be committed alongside the service that
+needs it. Adding an endpoint therefore has two halves: the service change here, and a matching commit
+there. They are easy to separate and easy to forget, and the symptom of forgetting is a 404 that
+looks like a missing controller.
+
+Two things that follow from the gateway being a separate build:
+
+- Editing the local copy's `application.yml` fixes local runs, but the change only reaches a
+  deployment after `mvn clean package -Dmaven.test.skip=true` in that directory. A stale jar serves
+  the old routes while the source on disk shows the new ones.
+- `/internal/**` is deliberately **not** routed. Those endpoints are reached over Dapr and are not
+  meant to be publicly addressable.
 
 ---
 
