@@ -126,6 +126,21 @@
             <artifactId>spring-kafka-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!--
+            Integration tests run against a real, throwaway Postgres container:
+            H2 cannot do CREATE SCHEMA + search_path, so the schema-per-tenant
+            layer needs the real database. Versions come from the Spring Boot BOM.
+        -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -133,6 +148,30 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <!-- *IT classes run on `mvn verify` (need Docker); `mvn test` stays unit-only. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <!--
+                            Testcontainers' docker-java defaults to Docker API 1.32; Docker
+                            Engine 29+ rejects anything below 1.40 with a 400, which surfaces
+                            as "Could not find a valid Docker environment". docker-java reads
+                            the api.version system property (not DOCKER_API_VERSION).
+                        -->
+                        <api.version>1.40</api.version>
+                    </systemPropertyVariables>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
