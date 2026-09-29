@@ -38,10 +38,10 @@ foreign key across services.**
 | **Category** | A grouping of questions inside a version, carrying an optional scoring weight. |
 | **Question / sub-question** | A single item to answer. Questions nest to any depth; a sub-question appears when its display condition matches the parent's answer. |
 | **Option** | One possible answer to a choice question, carrying a stable key, a score and the result it produces. |
-| **Result type** | An outcome an answer, question, category or whole inspection can produce. Defined per organization, with a colour and a severity order. |
+| **Result type** | An outcome an answer, question, category or whole inspection can produce. Defined per organization, with a colour and a severity rank where **1 is most severe**. |
 | **Consumer** | Who the template is for: inspection, case, ERP, task procedure. A configurable value. |
 | **Target type** | What the template applies to — a hierarchy level, location type, asset class or tag. |
-| **Global copy** | The platform-level master of a template. Organizations import it; updates flow down to copies that have not detached. |
+| **Global copy** | The platform-level master of a template. Organizations import it and are notified when it changes; each decides when to apply the update. |
 
 ---
 
@@ -95,7 +95,7 @@ that exists, options present on choice types, and a `result_type_key` that exist
 
 ## Data model
 
-Nine tables, all inside the per-tenant schema.
+Ten tables, all inside the per-tenant schema except the global library.
 
 ### `procedure_template` — identity
 
@@ -106,7 +106,7 @@ Nine tables, all inside the per-tenant schema.
 | `status` | `ACTIVE`, `ARCHIVED`. Draft and published belong to the *version*, not here. |
 | `current_published_version_id` | the moving pointer |
 | `key_seq` | per-template counter for minting question keys. Lives here, not on the version, because a key must never be reused across **any** version. |
-| `global_template_id`, `global_version_no`, `detached` | link to the global copy; `detached` once the organization edits locally |
+| `global_template_id` | an immutable breadcrumb to the global copy. The **link state is not here** — it lives once, on `global_template_org_copy`, because the global side has to find who is linked without scanning every tenant schema. |
 | `legacy_id` | provenance from 1.0. `UNIQUE(org_id, legacy_id)` |
 | `created_by`, `created_at`, `updated_at` | |
 
@@ -129,14 +129,29 @@ Nine tables, all inside the per-tenant schema.
 · `UNIQUE(org_id, key)`
 
 Pass and Fail are seeded in the tenant migration, so a newly provisioned organization has them
-without an extra step. **Deactivate only** — once a result type is referenced by any published
-version it can never be hard-deleted, which keeps historical results readable and keeps the rule
-enforceable here without asking any other service.
+without an extra step. `severity_order` ranks results with **1 as most severe**, which is what makes
+rollup possible: the result of a category, a checklist or a whole record is the most severe of its
+parts.
+
+**Deletion is conditional**, decided by one query against `version_result_type_ref`:
+
+| Situation | Behaviour |
+|---|---|
+| `is_system` — Pass and Fail | neither deleted nor deactivated |
+| Never referenced by a published version | hard delete allowed, with confirmation |
+| Referenced by any published version | delete refused; deactivate instead |
+
+**Name and colour are resolved live, never copied.** Renaming or recolouring a result type changes it
+everywhere, including completed inspections and historical reports — that consistency is the point.
+What never changes is the **meaning**, which is `result_type_key`, and that is immutable on every
+record that stores one. The single exception is the inspection service's
+`checklist_signature.result_type_name_at_signing`, kept to answer "what did the signer see" and
+never used for display.
 
 ### `version_result_type_ref` and `version_target_type` — derived indexes
 
-`version_result_type_ref(version_id, result_type_key)` answers *"can this result type be
-deactivated?"*.
+`version_result_type_ref(version_id, result_type_key)` answers *"is this result type still in use?"*
+— the query that decides whether a delete is allowed or must become a deactivate.
 
 `version_target_type(version_id, kind, key)` answers *"which published procedures apply to target
 type Y?"*, with `kind ∈ HIERARCHY_LEVEL, LOCATION_TYPE, ASSET_CLASS, ASSET_TAG`. Keys are validated
@@ -155,19 +170,31 @@ A null `question_key` means the document is attached to the template rather than
 The definition document references documents by id and name only, never by content, so re-uploading
 the same file cannot change the hash.
 
-### `procedure_consumer` and `procedure_usage`
+### `procedure_consumer`, `procedure_usage` and `procedure_favourite`
 
 `procedure_consumer(key, name, active)` — the configurable consumer list.
 
 `procedure_usage(id, template_id, version_id, consumer_key, consumer_ref_id, target_type_key,
 recorded_at)` — what consumers report back about which template version they use, so an author can
 see the impact before publishing. `UNIQUE(consumer_key, consumer_ref_id, template_id)` makes
-re-reporting idempotent.
+re-reporting idempotent. Note it deliberately records the version a consumer is *on*, not the current
+one — that is what makes "before you publish v4, here are the 12 configurations still on v3" possible.
+
+`procedure_favourite(user_id, template_id, created_at)` — the library's star. A join table, nothing more.
 
 ### Global library
 
-Held outside any single tenant: `global_procedure_template`, `global_procedure_template_version`,
-`global_template_org_copy`, `global_publish_job`, `global_publish_job_item`.
+Held outside any single tenant:
+
+| Table | Key columns |
+|---|---|
+| `global_procedure_template` | `id, name, description, consumer_key, current_published_version_id, status, created_by, created_at, updated_at` |
+| `global_procedure_template_version` | `id, global_template_id, version_no, state, definition_json, definition_hash, change_note, published_by, published_at` |
+| `global_template_org_copy` | `global_template_id, org_id, template_id, applied_version_no, link_state, deferred_version_no, deferred_at, linked_at` |
+
+`link_state ∈ LINKED, DEFERRED, STANDALONE`. **"Update available" is derived**, by comparing
+`applied_version_no` against the global template's current version — never stored, so it cannot go
+stale.
 
 ---
 
@@ -192,16 +219,20 @@ Shown pretty-printed; the stored bytes are one line.
             "required": true,
             "displayCondition": { "question": "q1", "op": "IN", "options": ["o2"] } },
           { "key": "q3", "text": "Attach a photo", "type": "FILE",
-            "required": true,
+            "required": true, "evidenceRequired": true,
             "displayCondition": { "question": "q1", "op": "IN", "options": ["o2"] } }
         ] },
 
       { "key": "q4", "text": "Extinguisher inspection date", "type": "DATE",
-        "required": true, "naAllowed": true,
+        "required": true,
         "rules": [
           { "op": "WITHIN_MONTHS",  "max": 12,            "result": "PASS",     "score": 10 },
           { "op": "BETWEEN_MONTHS", "min": 12, "max": 15, "result": "AMBER",    "score": 5  },
           { "op": "OVER_MONTHS",    "min": 15,            "result": "REQUIRED", "score": 0  }
+        ],
+        "options": [
+          { "key": "o9", "label": "Not applicable", "result": "NOT_APPLICABLE",
+            "excludeFromScoring": true }
         ] }
     ] }
   ],
@@ -210,9 +241,13 @@ Shown pretty-printed; the stored bytes are one line.
     { "scope": "VERSION", "min": 70, "max": 90, "result": "AMBER" },
     { "scope": "VERSION",            "max": 70, "result": "FAIL"  }
   ],
-  "targetTypes":           [ { "kind": "ASSET_CLASS", "key": "EXTINGUISHER" } ],
-  "signatureRequirements": [ { "role": "INSPECTOR" }, { "role": "SUPERVISOR" } ],
-  "documents":             [ { "id": "d1", "name": "BS 5306 extract.pdf" } ]
+  "targetTypes":   [ { "kind": "ASSET_CLASS", "key": "EXTINGUISHER" } ],
+  "signatureMode": "SEQUENTIAL",
+  "signatureRequirements": [
+    { "role": "INSPECTOR",  "required": true,  "format": "DRAWN" },
+    { "role": "SUPERVISOR", "required": false, "format": "TYPED" }
+  ],
+  "documents":     [ { "id": "d1", "name": "BS 5306 extract.pdf" } ]
 }
 ```
 
@@ -234,8 +269,22 @@ siblings to claim the same position.
 rating or scale is a single choice with ordered options. Per-question `config` and `validation` hold
 type-specific settings, so adding a type does not change the schema.
 
+**`evidenceRequired` is per question, not a question type.** A `YES_NO` question can demand a photo
+without becoming a `FILE` question; submission is blocked until something is attached. Requiring
+evidence and asking for a file are different things, and conflating them is how the old model lost
+the distinction.
+
+**Not applicable is an option, not a flag.** An option carrying `excludeFromScoring` produces the
+`NOT_APPLICABLE` result and is left out of the score. This records that the inspector *chose* N/A,
+which a per-question boolean could not — it would leave "not applicable" indistinguishable from
+"nobody answered" — and the evaluator needs no special case for it.
+
 **`thresholds[].scope`** lets a threshold attach to the whole version or, later, to a category —
 without a schema change.
+
+**Signatures** carry `required` (an optional signature is collected if available), a `format` of
+drawn, typed or photo, and a version-level `signatureMode` of sequential or parallel. Roles are open:
+inspector, supervisor, manager, witness or anything an organization defines.
 
 ---
 
@@ -272,14 +321,20 @@ publicly.
 
 | Area | Endpoints |
 |---|---|
-| Templates | create, list, get, archive; list versions |
+| Templates | create, list, get, duplicate, archive; list versions |
 | Versions | get, save draft, publish, new draft from version, diff two versions |
-| Result types | CRUD, reorder, deactivate |
+| Result types | create, list, update, reorder, deactivate, delete (conditional) |
 | Evaluation | evaluate answers against a version |
 | Discovery | published procedures by consumer and target type |
 | Documents | attach to a version or question, list, remove |
-| Library | browse global templates, import, export, fork status |
+| Library | browse, search and filter global templates; favourite; import; export; link, unlink |
+| Updates | check availability, view diff, apply, defer |
 | Usage | record and query which consumers use which version |
+
+**Publish does not return a boolean.** It returns the list of reasons a version cannot be published —
+answer options not yet mapped to a result type, thresholds unset while scoring is configured, a
+document pointing at a question key that no longer exists. An author needs to see everything blocking
+them at once, not discover the problems one refused publish at a time.
 
 Responses are wrapped by sclera-common's envelope — `{success, data, pagination, error, meta}` —
 applied automatically. Controllers return the bare DTO or `Page<DTO>`, never the envelope. Errors use
@@ -302,7 +357,9 @@ a provisional result, so an inspector can see a running score while filling a ch
 How a result is reached:
 
 1. **Per question** — a choice answer takes the `result` on the option that was picked; a numeric,
-   date or text answer is matched against the question's `rules` in order.
+   date or text answer is matched against the question's `rules` in order. An option marked
+   `excludeFromScoring` produces its result but contributes nothing to the score, and its weight is
+   removed from the denominator so a not-applicable question cannot drag a percentage down.
 2. **Sub-questions** contribute to their parent according to `subquestionRollup`.
 3. **Per category** — question scores are weighted by the question's `weight`, then the category's own
    `weight` applies when it rolls up.
@@ -310,6 +367,9 @@ How a result is reached:
    result types, so an inspection can end as Pass, Amber, Fail or anything else defined.
 5. **Critical questions** short-circuit all of it: one failure fails the whole result regardless of
    score.
+
+Where several results have to become one — a category from its questions, a record from its
+checklists — the **most severe wins**, which is `MIN(severity_order)` since 1 ranks most severe.
 
 Evaluation is a pure function over an immutable version, so a parsed version is cached indefinitely
 and the endpoint is trivially testable.
@@ -325,6 +385,15 @@ closed** — if OpenFGA is unreachable, access is denied. Platform admins bypass
 Keycloak defines no realm roles; all authorization is OpenFGA tuples. "Role-based" means an
 organization-level relation.
 
+Four roles, in what each may do:
+
+| Role | Author | Import / export | Configure scoring | Run checklists |
+|---|---|---|---|---|
+| Sclera admin | yes, including global | yes | yes, including global | yes |
+| Organization admin | yes, own org | yes | yes, own org | yes |
+| Manager / supervisor | no | no | no | yes, and review |
+| Inspector | no | no | no | yes |
+
 ```
 type organization
   relations
@@ -332,10 +401,12 @@ type organization
     define template_publisher:   [user]
     define template_importer:    [user]
     define result_type_manager:  [user]
+    define supervisor:           [user]
     define can_manage_templates:     admin or template_author
     define can_publish_templates:    admin or template_publisher
     define can_import_templates:     admin or template_importer
     define can_manage_result_types:  admin or result_type_manager
+    define can_review:               admin or supervisor
 
 type procedure_template
   relations
@@ -362,7 +433,8 @@ Kafka carries facts; Dapr carries questions.
 
 Topic **`sclera.procedure.template-events.v1`**, keyed by template id so every event for one template
 stays ordered within a partition. Events are emitted when a version is published, when a template is
-archived, and once per organization copy when a global publish propagates.
+archived, and when a global version is published — the last one carrying the linked organizations to
+notify, since applying it is their decision rather than something this service does to them.
 
 Consumers read the JSON shape rather than a shared Java class, so adding a field is safe.
 
@@ -370,17 +442,27 @@ Consumers read the JSON shape rather than a shared Java class, so adding a field
 
 ## Sharing across organizations
 
-Every template has one **global copy**. Importing it creates an **organization copy** that records
-`global_template_id` and the global version it tracks.
+Every template has one **global copy**. Importing it creates an **organization copy** linked back to
+it, and the link records which global version that copy has applied.
 
-- **Fork on edit.** When an organization edits its copy, the copy is marked `detached` and stops
-  receiving updates. It keeps the global template id so it can be relinked later.
-- **Global publish** updates every non-detached organization copy through an asynchronous job,
-  batched per organization, and emits a version-published event per copy.
-- **Export** carries the current version, its documents, and the global template id and version. Full
-  history stays with the global copy.
-- **Import** maps result type keys the target organization does not have onto its local types, or
-  creates them.
+**Updates are offered, never imposed.** Publishing a global version does not reach into any
+organization's data. It notifies the linked organizations; each sees an "update available" badge —
+derived by comparing the version it has applied against the global current — and then chooses:
+
+- **Apply** — the global version is copied into the organization copy as a new published version.
+- **Defer** — recorded on the link, so the badge can distinguish "not seen" from "seen and declined".
+- **View diff** — the same document diff the authoring screen uses, computed on stable question keys.
+
+Updating affects records generated from then on. A checklist already in progress is pinned to the
+version it started with and is untouched.
+
+Two ways a copy stops tracking the global one: **explicit unlink**, and **fork on edit** — editing a
+linked copy sets it standalone, because a local change and an incoming global change cannot both be
+true of the same version. The global template id survives either way, so relinking stays possible.
+
+**Export** takes a version selection, defaulting to the current published one, with a toggle for
+whether documents travel with it. **Import** either creates a new template or updates an existing one,
+and maps result type keys the target organization lacks onto its own or creates them.
 
 The **Sclera organization** is the reference library: generic templates and generic question sets per
 category that any organization can browse, copy whole, or pull individual questions from.
