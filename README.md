@@ -227,17 +227,31 @@ $tok = (Invoke-RestMethod -Method Post `
 ## API gateway integration (`sclera2.0v-api-gateway/`)
 
 The control-plane Spring Cloud Gateway is the single entry point for the SPA.
-Two routes were added to `sclera2.0v-api-gateway/src/main/resources/application.yml`
+Routes were added to `sclera2.0v-api-gateway/src/main/resources/application.yml`
 for the application-plane services:
 
 | Route id | Path predicate | Downstream (env var) |
 |---|---|---|
-| `procedure-service` | `/api/v1/question-templates/**` | `PROCEDURE_SERVICE_URL` (`:8095`) |
+| `procedure-service` | `/api/v1/question-templates/**,/api/v1/result-types/**` | `PROCEDURE_SERVICE_URL` (`:8095`) |
 | `inspection-service` | `/api/v1/inspections/**` | `INSPECTION_SERVICE_URL` (`:8096`) |
 
 The gateway validates the BFF session, relays the user's Keycloak access token
 to the service as `Authorization: Bearer` (so `ScleraJwtConverter` still reads
 `org_id` from the JWT), and enforces CSRF on mutating requests.
+
+**`sclera2.0v-api-gateway/` is a clone of a separate repository**
+(`ScleraHoldingsLLC/sclera2.0v-api-gateway`) and is gitignored here, so a route
+change cannot be committed alongside the service that needs it. Two things
+follow, and forgetting either produces a 404 that looks exactly like a missing
+controller:
+
+- **The table above is the source of truth, and each predicate is the complete
+  current value — not a list of additions.** Adding an endpoint means rewriting
+  the line to the new full value. After pulling a branch, compare the line with
+  your own `application.yml` and paste it over if it differs.
+- **Rebuild the gateway after editing**, or the packaged config keeps serving
+  the old routes while your source shows the new ones:
+  `mvn -f sclera2.0v-api-gateway/pom.xml clean package "-Dmaven.test.skip=true"`.
 
 ### Building the gateway locally
 
