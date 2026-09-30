@@ -344,6 +344,53 @@ Internal endpoints are invoked over Dapr (app-id `sclera-procedure-service`), HM
 shared `sclera.event-listener.signing-secret`, and guarded by `InternalEndpointFilter`. Dapr rejects
 `?` in an invocation method name, so internal endpoints take every parameter in the path.
 
+### A template's life, end to end
+
+```
+# 1. Create a template. This also opens draft v1 — a template without a draft
+#    is not a thing you can have. Category and question keys are minted here
+#    and kept across every later edit.
+POST /api/v1/procedure-templates
+{
+  "name": "Fire safety walk",
+  "description": "Daily walk-through",
+  "definition": {
+    "categories": [
+      { "name": "Fire exits", "questions": [
+          { "text": "Is the fire exit clear?", "type": "BOOLEAN", "required": true },
+          { "text": "Describe any obstruction", "type": "TEXT" }
+      ] }
+    ]
+  }
+}
+
+# 2. Edit the draft. rowVersion is an optimistic lock; a stale one is a 409
+#    rather than a silent overwrite of whatever the other author just saved.
+PUT  /api/v1/procedure-templates/{id}/draft   { "definition": {…}, "rowVersion": 0 }
+
+# 3. Publish. Freezes the draft as an immutable version, writes its hash and
+#    repoints current_published_version_id. Publishing a draft whose hash
+#    already exists returns that version instead of minting a duplicate.
+POST /api/v1/procedure-templates/{id}/publish
+
+# 4. Editing after publishing means opening a new draft from a published
+#    version. A published version is never edited in place.
+POST /api/v1/procedure-templates/{id}/draft   { "fromVersionNo": 1 }
+
+# 5. History and diff, both computed on stable keys.
+GET  /api/v1/procedure-templates/{id}/versions
+GET  /api/v1/procedure-templates/{id}/diff?from=1&to=2
+```
+
+`http/procedure-templates.http` runs all of this against a live gateway, including the calls that are
+meant to fail — a stale `rowVersion`, and a republished unchanged draft. It exercises an endpoint in
+isolation rather than through five layers of screen, which is why it stays useful alongside a UI
+rather than being replaced by one.
+
+**There is no compatibility facade.** The `/api/v1/question-templates` API was deleted along with the
+two-level `question_template → template_section → question` model it served, rather than kept alive
+or projected into the old shape.
+
 ### Gateway routing
 
 **Every top-level path this service exposes must also be added to the gateway**, or requests are
@@ -354,7 +401,7 @@ refused with a 404 before they ever reach us. The paths live in the `procedure-s
 - id: procedure-service
   uri: ${PROCEDURE_SERVICE_URL:http://localhost:8095}
   predicates:
-    - Path=/api/v1/question-templates/**,/api/v1/result-types/**
+    - Path=/api/v1/procedure-templates/**,/api/v1/result-types/**
 ```
 
 The gateway is a **separate repository** — `ScleraHoldingsLLC/sclera2.0v-api-gateway` — and the copy
@@ -370,6 +417,11 @@ Two things that follow from the gateway being a separate build:
   the old routes while the source on disk shows the new ones.
 - `/internal/**` is deliberately **not** routed. Those endpoints are reached over Dapr and are not
   meant to be publicly addressable.
+
+That rebuild needs two stub artifacts installed first — the gateway's Maven parent and an empty
+`sclera-common-test`, neither published in this workspace. Without them it fails on an unresolvable
+parent POM, and then, less obviously, on a missing test jar. The root README's *Building the gateway
+locally* section has both commands.
 
 ---
 

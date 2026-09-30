@@ -8,7 +8,7 @@ Task Dashboard, Task Map, Reactive Service (QR) and Tagged Procedures.
 
 | Service | Port | Dapr app-id | Database | Purpose |
 |---|---|---|---|---|
-| `sclera-procedure-service` | 8095 | `sclera-procedure-service` | `sclera_procedure` | Author question templates (procedures): draft → publish → archive |
+| `sclera-procedure-service` | 8095 | `sclera-procedure-service` | `sclera_procedure` | Author procedure templates: draft → publish → new draft, with immutable published versions |
 | `sclera-inspection-service` | 8096 | `sclera-inspection-service` | `sclera_inspection` | Inspection configs, tagging, checklist lifecycle, reactive services (QR), tagged procedures — plus the original template-run flow |
 | `sclera-helper-service` | 8097 | — (no sidecar) | `sclera_helper` | Locations (building → floor → location) and assets (IP / non-IP) |
 | `sclera2.0v-api-gateway` | 8080 | — (no sidecar locally) | — (Redis sessions) | Single entry point: BFF login (session cookie + CSRF), JWT relay, routing |
@@ -22,7 +22,7 @@ Task Dashboard, Task Map, Reactive Service (QR) and Tagged Procedures.
   api-gateway (:8080) ── Keycloak (:8180, realm sclera; sclera-bff code+PKCE,
         │                 sclera-app password grant for the dev login)
         │  relays Authorization: Bearer <user JWT> downstream
-        │  routes: /question-templates → 8095 · /inspections|/inspection-configs
+        │  routes: /procedure-templates → 8095 · /inspections|/inspection-configs
         │          /checklists|/reactive-services|/tagged-procedures → 8096
         │          /helper/** → 8097
         ▼
@@ -53,9 +53,12 @@ Design decisions baked in:
   never holds tokens; the gateway's BFF session (HttpOnly cookie + CSRF
   double-submit) is exchanged for the user's Keycloak JWT on every
   downstream call, so `ScleraJwtConverter`/`OrgContext` work unchanged.
-- **Template snapshotting** — when an inspection is created, the full template
-  (fetched from procedure-service over Dapr) is copied into the inspection row
-  as JSONB. Later template edits never corrupt in-flight or historical inspections.
+- **Immutable versions instead of snapshots** — publishing freezes a procedure
+  version and content-addresses it by its hash, so a run pins the version id it
+  was created from rather than copying the form into its own row. Later edits
+  produce a new version and cannot reach work already under way. The inspection
+  service still snapshots the old way; it moves onto pinning in the integration
+  branch, which is also when its Dapr fetch is restored.
 - **Checklists are the common currency** — inspections, reactive-service
   requests and tagged procedures all produce `checklist` rows distinguished
   by `source`, so the Task Dashboard, Task Map and lifecycle actions work
@@ -232,8 +235,8 @@ for the application-plane services:
 
 | Route id | Path predicate | Downstream (env var) |
 |---|---|---|
-| `procedure-service` | `/api/v1/question-templates/**,/api/v1/result-types/**` | `PROCEDURE_SERVICE_URL` (`:8095`) |
-| `inspection-service` | `/api/v1/inspections/**` | `INSPECTION_SERVICE_URL` (`:8096`) |
+| `procedure-service` | `/api/v1/procedure-templates/**,/api/v1/result-types/**` | `PROCEDURE_SERVICE_URL` (`:8095`) |
+| `inspection-service` | `/api/v1/inspections/**,/api/v1/inspection-configs/**,/api/v1/checklists/**` | `INSPECTION_SERVICE_URL` (`:8096`) |
 
 The gateway validates the BFF session, relays the user's Keycloak access token
 to the service as `Authorization: Bearer` (so `ScleraJwtConverter` still reads
@@ -268,6 +271,15 @@ need ArchUnit/Spring-Cloud-Contract not on the local classpath):
 mvn install:install-file "-Dfile=jars/sclera-control-plane-parent.pom" `
   "-DgroupId=com.sclera" "-DartifactId=sclera-control-plane" `
   "-Dversion=0.1.0-SNAPSHOT" "-Dpackaging=pom"
+
+# The test stub only has to satisfy dependency resolution; tests are skipped,
+# so an empty jar is enough and nothing ever opens it.
+New-Item -ItemType Directory -Force "$env:TEMP\stub" | Out-Null
+jar cf "$env:TEMP\sclera-common-test.jar" -C "$env:TEMP\stub" .
+mvn install:install-file "-Dfile=$env:TEMP\sclera-common-test.jar" `
+  "-DgroupId=com.sclera" "-DartifactId=sclera-common-test" `
+  "-Dversion=0.1.0-SNAPSHOT" "-Dpackaging=jar"
+
 mvn -f sclera2.0v-api-gateway/pom.xml clean package "-Dmaven.test.skip=true"
 ```
 
@@ -292,40 +304,46 @@ Full local stack order: `docker compose up -d` → `.\setup-keycloak.ps1` →
 ## Typical flow
 
 ```
-# 1. Author a template (procedure-service)
-POST /api/v1/question-templates
-{
-  "name": "Forklift Daily Check",
-  "category": "safety",
-  "sections": [{
-    "title": "Pre-operation",
-    "displayOrder": 1,
-    "questions": [
-      { "text": "Tires in good condition?", "type": "SINGLE_CHOICE",
-        "required": true, "displayOrder": 1, "options": ["Pass", "Fail", "N/A"] },
-      { "text": "Fork damage notes", "type": "TEXT", "required": false, "displayOrder": 2 }
-    ]
-  }]
-}
+# 1. Author a procedure (procedure-service). Creating a template also opens
+#    draft v1; question keys are minted server-side and survive every edit.
+POST /api/v1/procedure-templates
+{ "name": "Fire safety walk", "definition": { "categories": [ … ] } }
 
-# 2. Publish it (bumps version, emits Kafka event)
-POST /api/v1/question-templates/{id}/publish
+# 2. Edit the draft. rowVersion is an optimistic lock — a stale one is a 409.
+PUT  /api/v1/procedure-templates/{id}/draft   { "definition": {…}, "rowVersion": 0 }
 
-# 3. Create an inspection from it (inspection-service — snapshots the template via Dapr)
+# 3. Publish. Freezes the draft as an immutable, content-addressed version and
+#    emits the Kafka event. Republishing an unchanged draft is a no-op.
+POST /api/v1/procedure-templates/{id}/publish
+
+# 4. Edit after publishing by opening a new draft from a published version.
+POST /api/v1/procedure-templates/{id}/draft   { "fromVersionNo": 1 }
+
+# 5. Create an inspection from it (inspection-service)
 POST /api/v1/inspections            { "templateId": "..." }
 
-# 4. Execute
+# 6. Execute
 POST /api/v1/inspections/{id}/start
 PUT  /api/v1/inspections/{id}/answers
      { "answers": [ { "questionId": "...", "value": "Pass" } ] }
 POST /api/v1/inspections/{id}/complete    # validates required questions, emits Kafka event
 ```
 
+**Steps 5 and 6 are broken on `develop` right now.** Inspection creation fetches
+the template through an internal endpoint that went away with the old model, and
+it is restored in the integration branch, where the inspection service moves onto
+version pinning. Nothing deploys from this repository yet, so this is expected
+rather than a regression to file.
+
+`sclera-procedure-service/README.md` walks through steps 1–4 in full, and
+`sclera-procedure-service/http/procedure-templates.http` runs them against a live
+gateway — including the calls that are meant to fail.
+
 ## Kafka topics
 
 | Topic | Producer | Consumers | Payload |
 |---|---|---|---|
-| `sclera.procedure.template-events.v1` | procedure-service | inspection-service (`TemplateEventListener`) | `QuestionTemplateEvent` (PUBLISHED / UPDATED / ARCHIVED) |
+| `sclera.procedure.template-events.v1` | procedure-service | inspection-service (`TemplateEventListener`) | `ProcedureTemplateEvent` (PUBLISHED / ARCHIVED) |
 | `sclera.inspection.events.v1` | inspection-service | (future: metrics, notification) | `InspectionCompletedEvent` |
 
 ## Key environment variables

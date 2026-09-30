@@ -99,7 +99,7 @@ Coverage:
 | Service | Enforcement |
 |---|---|
 | inspection-service | per-object on `/inspections/{id}` (creator/assignee/org role); org-level on create/list, inspection-configs, checklists, tagging |
-| procedure-service | per-object on `/question-templates/{id}` (edit/publish/delete); org-level on create/list |
+| procedure-service | per-object on `/procedure-templates/{id}` (edit/publish/delete); org-level on create/list |
 | helper-service | org-level on locations & assets (`can_manage_assets` / `can_view`) — in-memory resources, no per-object tuples |
 
 `/internal/**` (Dapr + HMAC service-to-service) and actuator/swagger endpoints
