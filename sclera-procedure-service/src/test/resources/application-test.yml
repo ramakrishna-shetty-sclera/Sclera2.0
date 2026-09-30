@@ -1,10 +1,10 @@
-# Test profile. Deliberately does NOT set spring.data.redis.host: sclera-common's
-# RedisCacheConfig is @ConditionalOnProperty on it, and that config fails the
-# context start when Redis is unreachable. Leaving it unset skips the bean
-# entirely, so tests need no Redis container.
-#
-# The datasource is supplied by Testcontainers through @DynamicPropertySource in
-# AbstractIntegrationTest — see that class.
+# Test profile. Its real job is to exist: application.yml sets
+# `spring.profiles.default: dev`, so without an explicit `test` profile the
+# tests would load application-dev.yml and with it spring.data.redis.host.
+# sclera-common's RedisCacheConfig is @ConditionalOnProperty on that host and
+# fails the context start when Redis is unreachable, so tests would need a Redis
+# container for a bean they never touch. PostgresIntegrationTest activates this
+# profile; the datasource comes from Testcontainers via @DynamicPropertySource.
 
 spring:
   jpa:

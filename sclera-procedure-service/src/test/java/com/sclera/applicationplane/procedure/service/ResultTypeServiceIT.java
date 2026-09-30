@@ -1,9 +1,9 @@
 package com.sclera.applicationplane.procedure.service;
 
-import com.sclera.applicationplane.procedure.AbstractIntegrationTest;
 import com.sclera.applicationplane.procedure.dto.ResultTypeRequest;
 import com.sclera.applicationplane.procedure.dto.ResultTypeResponse;
 import com.sclera.applicationplane.procedure.dto.ResultTypeUpdateRequest;
+import com.sclera.applicationplane.procedure.support.PostgresIntegrationTest;
 import com.sclera.controlplane.common.exception.BusinessRuleException;
 import com.sclera.controlplane.common.exception.ConflictException;
 import com.sclera.controlplane.common.exception.ResourceNotFoundException;
@@ -16,7 +16,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class ResultTypeServiceIT extends AbstractIntegrationTest {
+class ResultTypeServiceIT extends PostgresIntegrationTest {
 
     @Autowired
     private ResultTypeService service;
