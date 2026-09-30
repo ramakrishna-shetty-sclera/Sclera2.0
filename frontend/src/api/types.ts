@@ -114,3 +114,47 @@ export interface Pagination {
   hasNext: boolean
   hasPrevious: boolean
 }
+
+// ── Result types (procedure-service /api/v1/result-types) ────────────────────
+// An organization's outcome vocabulary: Pass, Fail, Amber, … Lists come back
+// ordered by severityOrder, where 1 is MOST severe. Pass and Fail are `system`
+// types: they can be renamed and recoloured, never deleted or deactivated.
+
+export interface ResultType {
+  id: string
+  /** Upper-case identifier that records and procedures store; never changes after create. */
+  key: string
+  name: string
+  /** Six-digit hex, e.g. '#2ecc71'. */
+  color: string
+  /** Omitted by the server when empty. */
+  description?: string | null
+  /** 1 = most severe; ranks are contiguous 1..n. */
+  severityOrder: number
+  system: boolean
+  active: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ResultTypeCreateRequest {
+  /** ^[A-Z][A-Z0-9_]{0,49}$ */
+  key: string
+  name: string
+  color: string
+  description?: string
+  /** 1..n+1; omit to append as least severe. */
+  severityOrder?: number
+}
+
+/** Key is deliberately absent: it cannot be changed. */
+export interface ResultTypeUpdateRequest {
+  name: string
+  color: string
+  description?: string
+}
+
+/** Every result type id in the organization, most severe first — a partial list is rejected. */
+export interface ResultTypeReorderRequest {
+  orderedIds: string[]
+}
