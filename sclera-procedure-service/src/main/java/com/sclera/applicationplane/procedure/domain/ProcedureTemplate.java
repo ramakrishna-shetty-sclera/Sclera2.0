@@ -1,30 +1,26 @@
 package com.sclera.applicationplane.procedure.domain;
 
-import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
 
 /**
- * Aggregate root: a versioned, tenant-scoped question template ("procedure").
- * Inspections are always executed against a PUBLISHED version.
+ * Identity of a procedure: name, consumer and status. Holds no content — the
+ * form lives in {@link ProcedureTemplateVersion}. One row per template, however
+ * many times it is edited.
  */
 @Entity
-@Table(name = "question_template")
-public class QuestionTemplate {
+@Table(name = "procedure_template")
+public class ProcedureTemplate {
 
     @Id
     @GeneratedValue
@@ -39,22 +35,29 @@ public class QuestionTemplate {
     @Column(length = 2000)
     private String description;
 
-    @Column(length = 100)
-    private String category;
+    @Column(name = "consumer_key", nullable = false, length = 50)
+    private String consumerKey = "INSPECTION";
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private TemplateStatus status = TemplateStatus.DRAFT;
+    private TemplateStatus status = TemplateStatus.ACTIVE;
 
-    @Column(nullable = false)
-    private int version = 0;
+    /** The moving pointer: always the form in force now. Null until first publish. */
+    @Column(name = "current_published_version_id")
+    private UUID currentPublishedVersionId;
+
+    /** Counter behind every category and question key; never decremented. */
+    @Column(name = "key_seq", nullable = false)
+    private int keySeq;
+
+    @Column(name = "global_template_id")
+    private UUID globalTemplateId;
+
+    @Column(name = "legacy_id", length = 100)
+    private String legacyId;
 
     @Column(name = "created_by")
     private UUID createdBy;
-
-    @OneToMany(mappedBy = "template", cascade = CascadeType.ALL, orphanRemoval = true)
-    @OrderBy("displayOrder ASC")
-    private List<TemplateSection> sections = new ArrayList<>();
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -64,30 +67,43 @@ public class QuestionTemplate {
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
-    public void replaceSections(List<TemplateSection> newSections) {
-        sections.clear();
-        newSections.forEach(s -> {
-            s.setTemplate(this);
-            sections.add(s);
-        });
+    /** Returns the next unused key number. Callers must hold a lock on this row. */
+    public int nextKeyNumber() {
+        return ++keySeq;
     }
 
     public UUID getId() { return id; }
+
     public UUID getOrgId() { return orgId; }
     public void setOrgId(UUID orgId) { this.orgId = orgId; }
+
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
+
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
-    public String getCategory() { return category; }
-    public void setCategory(String category) { this.category = category; }
+
+    public String getConsumerKey() { return consumerKey; }
+    public void setConsumerKey(String consumerKey) { this.consumerKey = consumerKey; }
+
     public TemplateStatus getStatus() { return status; }
     public void setStatus(TemplateStatus status) { this.status = status; }
-    public int getVersion() { return version; }
-    public void setVersion(int version) { this.version = version; }
+
+    public UUID getCurrentPublishedVersionId() { return currentPublishedVersionId; }
+    public void setCurrentPublishedVersionId(UUID id) { this.currentPublishedVersionId = id; }
+
+    public int getKeySeq() { return keySeq; }
+    public void setKeySeq(int keySeq) { this.keySeq = keySeq; }
+
+    public UUID getGlobalTemplateId() { return globalTemplateId; }
+    public void setGlobalTemplateId(UUID globalTemplateId) { this.globalTemplateId = globalTemplateId; }
+
+    public String getLegacyId() { return legacyId; }
+    public void setLegacyId(String legacyId) { this.legacyId = legacyId; }
+
     public UUID getCreatedBy() { return createdBy; }
     public void setCreatedBy(UUID createdBy) { this.createdBy = createdBy; }
-    public List<TemplateSection> getSections() { return sections; }
+
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
 }

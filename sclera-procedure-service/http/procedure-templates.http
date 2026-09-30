@@ -1,0 +1,178 @@
+### Procedure templates — smoke test for immutable versions and stable keys.
+#
+# Run top to bottom in the IntelliJ HTTP client (or VS Code REST Client with
+# the same syntax). Each request stores what the next one needs.
+#
+# Prerequisites: docker compose up -d, .\setup-keycloak.ps1, .\setup-openfga.ps1,
+# and the procedure service running on :8095.
+#
+# @host targets the service directly. Through the gateway use
+# http://localhost:8080 once its procedure-service route includes
+# /api/v1/procedure-templates/** (a bearer token needs no session or CSRF).
+
+@host = http://localhost:8095
+@keycloak = http://localhost:8180
+
+### Token for testuser (org 1111…1111, OpenFGA admin)
+POST {{keycloak}}/realms/sclera/protocol/openid-connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=password&client_id=sclera-app&username=testuser&password=testuser
+
+> {% client.global.set("token", response.body.access_token); %}
+
+### 1. Create a template — also creates draft v1. Keys are minted: c1, q2, q3
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Fire safety walk {{$random.integer(1000, 9999)}}",
+  "description": "Daily walk-through",
+  "definition": {
+    "categories": [
+      { "name": "Fire exits", "questions": [
+          { "text": "Is the fire exit clear?", "type": "BOOLEAN", "required": true },
+          { "text": "Describe any obstruction", "type": "TEXT" }
+      ] }
+    ]
+  }
+}
+
+> {% client.global.set("id", response.body.data.id); %}
+
+### 2. Read the draft — note the keys and rowVersion
+GET {{host}}/api/v1/procedure-templates/{{id}}/draft
+Authorization: Bearer {{token}}
+
+> {% client.global.set("rowVersion", response.body.data.rowVersion); %}
+
+### 3. Save the draft — send keys back for existing items, omit for new ones (gets q4)
+PUT {{host}}/api/v1/procedure-templates/{{id}}/draft
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "rowVersion": {{rowVersion}},
+  "changeNote": "Reworded q2, added a photo",
+  "definition": {
+    "categories": [
+      { "key": "c1", "name": "Fire exits", "questions": [
+          { "key": "q2", "text": "Is every fire exit clear?", "type": "BOOLEAN", "required": true },
+          { "key": "q3", "text": "Describe any obstruction", "type": "TEXT" },
+          { "text": "Photo of the exit", "type": "PHOTO" }
+      ] }
+    ]
+  }
+}
+
+> {% client.global.set("rowVersion", response.body.data.rowVersion); %}
+
+### 4. Save with a stale rowVersion — expect 409
+PUT {{host}}/api/v1/procedure-templates/{{id}}/draft
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "rowVersion": 0, "definition": { "categories": [] } }
+
+### 5. Publish — creates v1 (PUBLISHED, frozen)
+POST {{host}}/api/v1/procedure-templates/{{id}}/publish
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "rowVersion": {{rowVersion}} }
+
+### 6. Start a new draft from v1 — this is how you edit after publishing (v2)
+POST {{host}}/api/v1/procedure-templates/{{id}}/draft
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "fromVersionNo": 1 }
+
+### 7. Publish it unchanged — expect newVersion=false, returns v1, draft discarded
+POST {{host}}/api/v1/procedure-templates/{{id}}/publish
+Authorization: Bearer {{token}}
+
+### 8. Draft again, then move q4 into a new category (gets c5)
+POST {{host}}/api/v1/procedure-templates/{{id}}/draft
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "fromVersionNo": 1 }
+
+> {% client.global.set("rowVersion", response.body.data.rowVersion); %}
+
+###
+PUT {{host}}/api/v1/procedure-templates/{{id}}/draft
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "rowVersion": {{rowVersion}},
+  "changeNote": "Split out extinguishers",
+  "definition": {
+    "categories": [
+      { "key": "c1", "name": "Fire exits", "questions": [
+          { "key": "q2", "text": "Is every fire exit clear?", "type": "BOOLEAN", "required": true },
+          { "key": "q3", "text": "Describe any obstruction", "type": "TEXT" }
+      ] },
+      { "name": "Extinguishers", "questions": [
+          { "key": "q4", "text": "Photo of the exit", "type": "PHOTO" }
+      ] }
+    ]
+  }
+}
+
+### 9. Publish — creates v2
+POST {{host}}/api/v1/procedure-templates/{{id}}/publish
+Authorization: Bearer {{token}}
+
+### 10. Version history — v2, v1
+GET {{host}}/api/v1/procedure-templates/{{id}}/versions
+Authorization: Bearer {{token}}
+
+### 11. One version with its full document
+GET {{host}}/api/v1/procedure-templates/{{id}}/versions/1
+Authorization: Bearer {{token}}
+
+### 12. Diff v1 → v2 — c5 added, q4 moved to c5
+GET {{host}}/api/v1/procedure-templates/{{id}}/diff?from=1&to=2
+Authorization: Bearer {{token}}
+
+### 13. Template summary — currentPublishedVersionNo and draftVersionNo
+GET {{host}}/api/v1/procedure-templates/{{id}}
+Authorization: Bearer {{token}}
+
+### 14. List
+GET {{host}}/api/v1/procedure-templates?status=ACTIVE&page=0&size=20
+Authorization: Bearer {{token}}
+
+### 15. Rename (identity only — not versioned)
+PUT {{host}}/api/v1/procedure-templates/{{id}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Fire safety walk (renamed) {{$random.integer(1000, 9999)}}", "description": "Weekly walk-through" }
+
+### 16. Clone v2 into a new template (draft v1, same keys)
+POST {{host}}/api/v1/procedure-templates/{{id}}/clone
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Fire safety walk copy {{$random.integer(1000, 9999)}}", "fromVersionNo": 2 }
+
+### 17. Archive — versions stay readable, no more drafts
+POST {{host}}/api/v1/procedure-templates/{{id}}/archive
+Authorization: Bearer {{token}}
+
+### 18. Tenant isolation — as testuser2 (org 2222…2222) the template is not visible
+POST {{keycloak}}/realms/sclera/protocol/openid-connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=password&client_id=sclera-app&username=testuser2&password=testuser2
+
+> {% client.global.set("token2", response.body.access_token); %}
+
+### expect 403 — testuser2 has no relation to this template in OpenFGA
+GET {{host}}/api/v1/procedure-templates/{{id}}
+Authorization: Bearer {{token2}}

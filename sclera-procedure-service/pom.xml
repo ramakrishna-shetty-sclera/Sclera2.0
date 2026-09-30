@@ -127,15 +127,10 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- Integration tests run against a real Postgres. H2 cannot do CREATE
-             SCHEMA + search_path switching + JSONB, which is the whole
-             schema-per-tenant mechanism, so it would test nothing that matters.
-             Versions come from the Spring Boot parent. -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-testcontainers</artifactId>
-            <scope>test</scope>
-        </dependency>
+        <!-- Integration tests run against a real, throwaway Postgres container.
+             H2 cannot do CREATE SCHEMA + search_path switching + JSONB, which is
+             the whole schema-per-tenant mechanism, so it would test nothing that
+             matters. Versions come from the Spring Boot parent. -->
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>postgresql</artifactId>
@@ -155,23 +150,23 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
 
-            <!-- Integration tests are named *IT and need Docker, so they run in
-                 the integration-test phase rather than with `mvn test`. Surefire
-                 only matches *Test/*Tests, so without this they are silently
-                 skipped and the build reports "Tests run: 0" while passing. -->
+            <!-- *IT classes run on `mvn verify` (they need Docker); `mvn test`
+                 stays unit-only. Without this plugin Surefire matches only
+                 *Test/*Tests, so *IT classes are silently never discovered and
+                 the build reports "Tests run: 0" while passing. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
                 <configuration>
                     <systemPropertyVariables>
-                        <!-- docker-java defaults to Docker API 1.32, which Docker
-                             Engine 29+ rejects outright (its floor is 1.40): the
-                             probe gets a 400 and Testcontainers reports "Could not
-                             find a valid Docker environment" even though the CLI
-                             works. 1.40 is the one value that suits both ends — the
-                             ceiling of Docker 19.03 and the floor of 29.x.
-                             Note this is docker-java's `api.version` system
-                             property; the DOCKER_API_VERSION env var is NOT read. -->
+                        <!-- Testcontainers' docker-java defaults to Docker API
+                             1.32; Docker Engine 29+ rejects anything below 1.40
+                             with a 400, which surfaces as "Could not find a valid
+                             Docker environment" even though the CLI works. 1.40 is
+                             the one value that suits both ends — the ceiling of
+                             Docker 19.03 and the floor of 29.x. Note docker-java
+                             reads the api.version system property; the
+                             DOCKER_API_VERSION env var is NOT read. -->
                         <api.version>1.40</api.version>
                     </systemPropertyVariables>
                 </configuration>

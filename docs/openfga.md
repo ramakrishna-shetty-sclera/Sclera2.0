@@ -30,7 +30,7 @@ Identity mapping (from `ScleraJwtConverter` / `OrgContext`):
 |---|---|
 | `user:<uuid>` | JWT `sub` (Keycloak user id) |
 | `organization:<uuid>` | `org_id` claim (the tenant) |
-| `inspection:<uuid>`, `question_template:<uuid>`, … | domain object ids |
+| `inspection:<uuid>`, `procedure_template:<uuid>`, … | domain object ids |
 
 Org-level roles (assigned as tuples on `organization`): `admin`, `inspector`,
 `template_author`, `asset_manager`, `viewer`. They derive the permissions the
@@ -140,7 +140,7 @@ foreach ($row in $rows) {
 }
 ```
 
-Same shape for `question_template` against `sclera_procedure`.
+Same shape for `procedure_template` against `sclera_procedure`.
 
 ## Extending
 
