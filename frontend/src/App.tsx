@@ -17,6 +17,7 @@ import { ScanPage } from './pages/ScanPage'
 import { TemplatesPage } from './pages/TemplatesPage'
 import { TemplateDetailPage } from './pages/TemplateDetailPage'
 import { TemplateEditorPage } from './pages/TemplateEditorPage'
+import { ResultTypesPage } from './pages/ResultTypesPage'
 
 function Layout() {
   const { user, initializing, logout } = useAuth()
@@ -37,6 +38,7 @@ function Layout() {
           <NavLink to="/locations">Locations</NavLink>
           <NavLink to="/assets">Assets</NavLink>
           <NavLink to="/templates">Procedures</NavLink>
+          <NavLink to="/settings/result-types">Result types</NavLink>
           <NavLink to="/inspection-configs">Inspections</NavLink>
           <NavLink to="/reactive-services">Reactive</NavLink>
           <NavLink to="/tasks">Tasks</NavLink>
@@ -84,6 +86,7 @@ export function App() {
         <Route path="/templates/new" element={<TemplateEditorPage />} />
         <Route path="/templates/:id" element={<TemplateDetailPage />} />
         <Route path="/templates/:id/edit" element={<TemplateEditorPage />} />
+        <Route path="/settings/result-types" element={<ResultTypesPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

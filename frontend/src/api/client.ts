@@ -10,14 +10,22 @@ const DEV_CLIENT_ID = 'sclera-app'
 // Prod HTTPS uses the __Host- prefixed name; local HTTP uses the plain one.
 const CSRF_COOKIE_NAMES = ['__Host-sclera-csrf', 'sclera-csrf']
 
+/** One rejected field from a 400 VALIDATION_FAILED, e.g. { field: 'color', message: 'must be a six-digit hex colour…' }. */
+export interface FieldError {
+  field: string
+  message: string
+}
+
 export class ApiError extends Error {
   code: string
   status: number
+  fieldErrors: FieldError[]
 
-  constructor(code: string, message: string, status: number) {
+  constructor(code: string, message: string, status: number, fieldErrors: FieldError[] = []) {
     super(message)
     this.code = code
     this.status = status
+    this.fieldErrors = fieldErrors
   }
 }
 
@@ -25,7 +33,7 @@ interface Envelope<T> {
   success: boolean
   data: T
   pagination: Pagination | null
-  error: { code: string; message: string } | null
+  error: { code: string; message: string; fieldErrors?: FieldError[] } | null
 }
 
 export interface ApiResult<T> {
@@ -70,6 +78,10 @@ function sessionExpired(): never {
 }
 
 async function parseEnvelope<T>(res: Response): Promise<ApiResult<T>> {
+  // 204 No Content (e.g. DELETE) is a success with no body to unwrap.
+  if (res.status === 204) {
+    return { data: undefined as T, pagination: null }
+  }
   const envelope = (await res.json().catch(() => null)) as Envelope<T> | null
   if (!envelope) {
     throw new ApiError('UNEXPECTED_RESPONSE', `Request failed with status ${res.status}`, res.status)
@@ -79,6 +91,7 @@ async function parseEnvelope<T>(res: Response): Promise<ApiResult<T>> {
       envelope.error?.code ?? 'REQUEST_FAILED',
       envelope.error?.message ?? `Request failed with status ${res.status}`,
       res.status,
+      envelope.error?.fieldErrors ?? [],
     )
   }
   // Gateway BFF endpoints and downstream services both use the sclera
