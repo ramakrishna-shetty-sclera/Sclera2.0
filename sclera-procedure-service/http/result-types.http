@@ -1,0 +1,150 @@
+### Result types — manual smoke test
+#
+# Runnable from IntelliJ (built in) or VS Code (REST Client extension).
+# Run the token request first; the rest reuse the captured token.
+#
+# Prerequisites:
+#   docker compose up -d          postgres, redis, kafka, keycloak, openfga
+#   .\setup-keycloak.ps1          realm + testuser
+#   .\setup-openfga.ps1           store + tuples for testuser
+#   .\run-procedure-service.ps1   service on 8095
+#
+# @host points at the service directly, which is what these requests were
+# verified against. Switch it to the gateway once the gateway has
+# /api/v1/result-types/** in its Path= predicate — see the Gateway routing
+# section of the service README.
+
+@host = http://localhost:8095
+# @host = http://localhost:8080
+@keycloak = http://localhost:8180
+
+### Get a token (run this first)
+# @name token
+POST {{keycloak}}/realms/sclera/protocol/openid-connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=password&client_id=sclera-app&username=testuser&password=testuser
+
+> {% client.global.set("access_token", response.body.access_token); %}
+
+### List — a freshly provisioned org has Fail (1) and Pass (2), both system types
+GET {{host}}/api/v1/result-types
+Authorization: Bearer {{access_token}}
+
+### List only the active ones
+GET {{host}}/api/v1/result-types?active=true
+Authorization: Bearer {{access_token}}
+
+### Create at an explicit rank — Amber slots in at 2 and pushes Pass to 3
+# @name amber
+POST {{host}}/api/v1/result-types
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "key": "AMBER",
+  "name": "Amber",
+  "color": "#f39c12",
+  "description": "Attention needed",
+  "severityOrder": 2
+}
+
+> {% client.global.set("amber_id", response.body.data.id); %}
+
+### Create without a rank — appends as least severe
+POST {{host}}/api/v1/result-types
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "key": "NOT_APPLICABLE",
+  "name": "Not applicable",
+  "color": "#95a5a6",
+  "description": "Question does not apply to this target"
+}
+
+### Rename and recolour — allowed, and reaches history: nothing snapshots these
+PUT {{host}}/api/v1/result-types/{{amber_id}}
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "name": "Warning",
+  "color": "#e67e22",
+  "description": "Attention needed before the next inspection"
+}
+
+### Reorder — send every id in the org, most severe first
+# Take the ids from the list response above.
+POST {{host}}/api/v1/result-types/reorder
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "orderedIds": [
+    "REPLACE_WITH_FAIL_ID",
+    "REPLACE_WITH_AMBER_ID",
+    "REPLACE_WITH_PASS_ID",
+    "REPLACE_WITH_NOT_APPLICABLE_ID"
+  ]
+}
+
+### Deactivate — hidden from list?active=true, still present unfiltered
+POST {{host}}/api/v1/result-types/{{amber_id}}/deactivate
+Authorization: Bearer {{access_token}}
+
+### Activate again
+POST {{host}}/api/v1/result-types/{{amber_id}}/activate
+Authorization: Bearer {{access_token}}
+
+### Delete a custom type — 204, and the remaining ranks close the gap
+DELETE {{host}}/api/v1/result-types/{{amber_id}}
+Authorization: Bearer {{access_token}}
+
+
+### ── Expected failures ────────────────────────────────────────────────
+### Each of these should be refused. If one succeeds, something has regressed.
+
+### Duplicate key → 409 CONFLICT
+POST {{host}}/api/v1/result-types
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{ "key": "PASS", "name": "Duplicate", "color": "#123456" }
+
+### Colour that is not six hex digits → 400 VALIDATION_FAILED
+POST {{host}}/api/v1/result-types
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{ "key": "BAD_COLOUR", "name": "Bad", "color": "red" }
+
+### Lower-case key → 400 VALIDATION_FAILED
+POST {{host}}/api/v1/result-types
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{ "key": "lower", "name": "Lower", "color": "#123456" }
+
+### Rank past the end of the list → 400, "must be between 1 and N"
+POST {{host}}/api/v1/result-types
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{ "key": "TOO_FAR", "name": "Too far", "color": "#123456", "severityOrder": 99 }
+
+### Delete a system type → 400, "Pass and Fail cannot be deleted"
+# Substitute the id of PASS from the list response.
+DELETE {{host}}/api/v1/result-types/REPLACE_WITH_PASS_ID
+Authorization: Bearer {{access_token}}
+
+### Deactivate a system type → 400, "Pass and Fail cannot be deactivated"
+POST {{host}}/api/v1/result-types/REPLACE_WITH_FAIL_ID/deactivate
+Authorization: Bearer {{access_token}}
+
+### Partial reorder list → 400, "must contain every result type"
+POST {{host}}/api/v1/result-types/reorder
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{ "orderedIds": ["REPLACE_WITH_FAIL_ID"] }
