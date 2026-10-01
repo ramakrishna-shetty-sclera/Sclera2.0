@@ -1,40 +1,120 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { archiveTemplate, getTemplate, publishTemplate } from '../api/templates'
+import {
+  archiveProcedure,
+  cloneProcedure,
+  createDraft,
+  discardDraft,
+  getDraft,
+  getProcedure,
+  getVersion,
+  publishProcedure,
+} from '../api/templates'
 import { createInspection } from '../api/inspections'
-import type { QuestionTemplate } from '../api/types'
+import { ApiError } from '../api/client'
+import type { ProcedureTemplate, TemplateVersion } from '../api/types'
 import { StatusBadge } from '../components/StatusBadge'
+import { DefinitionView } from '../components/DefinitionView'
 
+/**
+ * One procedure: what it is, what it can do next, and the content of whichever
+ * version you are looking at.
+ *
+ * The actions follow from the model rather than from a status field. A draft is
+ * the only thing that can be edited, there is at most one, and publishing
+ * freezes it — so "Edit" and "Publish" appear exactly when a draft exists, and
+ * "Start a draft" appears when one does not.
+ */
 export function TemplateDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const [template, setTemplate] = useState<QuestionTemplate | null>(null)
+  const [procedure, setProcedure] = useState<ProcedureTemplate | null>(null)
+  const [version, setVersion] = useState<TemplateVersion | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [blockers, setBlockers] = useState<string[]>([])
+  const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => {
+  /**
+   * Loads the procedure and the version worth showing: the draft when one is
+   * open, since that is what the author is working on, otherwise the published
+   * version. A procedure with neither has no content to show at all.
+   */
+  const reload = useCallback(async () => {
     if (!id) return
-    getTemplate(id).then(setTemplate).catch((e) => setError(e.message))
+    const p = await getProcedure(id)
+    setProcedure(p)
+    if (p.draftVersionNo !== null) {
+      setVersion(await getDraft(id))
+    } else if (p.currentPublishedVersionNo !== null) {
+      setVersion(await getVersion(id, p.currentPublishedVersionNo))
+    } else {
+      setVersion(null)
+    }
   }, [id])
 
-  async function run(action: () => Promise<QuestionTemplate>) {
+  useEffect(() => {
+    reload().catch((e) => setError(e instanceof Error ? e.message : 'Could not load this procedure'))
+  }, [reload])
+
+  /**
+   * Runs an action, then reloads so the screen matches the server rather than
+   * what we guessed it would become. Publish can fail with a list of reasons
+   * rather than one message, so those are kept separate and shown together.
+   */
+  async function run(action: () => Promise<unknown>) {
     setBusy(true)
     setError(null)
+    setBlockers([])
+    setNotice(null)
     try {
-      setTemplate(await action())
+      await action()
+      await reload()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Action failed')
+      if (e instanceof ApiError && e.fieldErrors.length > 0) {
+        setBlockers(e.fieldErrors.map((f) => (f.field ? `${f.field}: ${f.message}` : f.message)))
+        setError(e.message)
+      } else {
+        setError(e instanceof Error ? e.message : 'Action failed')
+      }
     } finally {
       setBusy(false)
     }
   }
 
-  async function startInspection() {
-    if (!template) return
+  async function onPublish() {
+    if (!procedure || !version) return
+    await run(async () => {
+      const result = await publishProcedure(procedure.id, version.rowVersion)
+      setNotice(
+        result.newVersion
+          ? `Published v${result.version.versionNo}.`
+          : `No change: the draft matched v${result.version.versionNo}, which is already published. The draft was discarded.`,
+      )
+    })
+  }
+
+  async function onClone() {
+    if (!procedure) return
+    const name = prompt('Name for the copy', `${procedure.name} (copy)`)
+    if (!name) return
     setBusy(true)
     setError(null)
     try {
-      const inspection = await createInspection({ templateId: template.id })
+      const copy = await cloneProcedure(procedure.id, { name })
+      navigate(`/templates/${copy.id}`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not duplicate')
+      setBusy(false)
+    }
+  }
+
+  async function startInspection() {
+    if (!procedure) return
+    setBusy(true)
+    setError(null)
+    try {
+      const inspection = await createInspection({ templateId: procedure.id })
       navigate(`/inspections/${inspection.id}`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not create inspection')
@@ -42,49 +122,76 @@ export function TemplateDetailPage() {
     }
   }
 
-  if (!template) {
+  if (!procedure) {
     return error ? <div className="alert alert-error">{error}</div> : <p className="muted">Loading…</p>
   }
 
-  const sections = [...template.sections].sort((a, b) => a.displayOrder - b.displayOrder)
+  const hasDraft = procedure.draftVersionNo !== null
+  const published = procedure.currentPublishedVersionNo
+  const archived = procedure.status === 'ARCHIVED'
 
   return (
     <div>
       <div className="page-head">
         <div>
-          <h1>{template.name}</h1>
+          <h1>{procedure.name}</h1>
           <p className="muted">
-            <StatusBadge status={template.status} /> · v{template.version}
-            {template.category ? ` · ${template.category}` : ''}
+            <StatusBadge status={procedure.status} />
+            {published === null ? ' · never published' : ` · published v${published}`}
+            {hasDraft && (
+              <>
+                {' · '}
+                <span className="badge badge-amber">draft v{procedure.draftVersionNo}</span>
+              </>
+            )}
           </p>
         </div>
         <div className="page-actions">
-          {template.status === 'DRAFT' && (
+          {!archived && hasDraft && (
             <>
-              <Link className="btn" to={`/templates/${template.id}/edit`}>
-                Edit
+              <Link className="btn" to={`/templates/${procedure.id}/edit`}>
+                Edit draft
               </Link>
-              <button
-                className="btn btn-primary"
-                disabled={busy}
-                onClick={() => run(() => publishTemplate(template.id))}
-              >
+              <button className="btn btn-primary" disabled={busy} onClick={onPublish}>
                 Publish
+              </button>
+              <button
+                className="btn"
+                disabled={busy}
+                onClick={() => {
+                  if (confirm(`Discard draft v${procedure.draftVersionNo}? Its edits are lost.`)) {
+                    run(() => discardDraft(procedure.id))
+                  }
+                }}
+              >
+                Discard draft
               </button>
             </>
           )}
-          {template.status === 'PUBLISHED' && (
-            <button className="btn btn-primary" disabled={busy} onClick={startInspection}>
-              New inspection from this template
+          {!archived && !hasDraft && published !== null && (
+            <button
+              className="btn btn-primary"
+              disabled={busy}
+              onClick={() => run(() => createDraft(procedure.id, { fromVersionNo: published }))}
+            >
+              Start a draft from v{published}
             </button>
           )}
-          {template.status !== 'ARCHIVED' && (
+          {published !== null && (
+            <button className="btn" disabled={busy} onClick={startInspection}>
+              New inspection
+            </button>
+          )}
+          <button className="btn" disabled={busy} onClick={onClone}>
+            Duplicate
+          </button>
+          {!archived && (
             <button
               className="btn btn-danger"
               disabled={busy}
               onClick={() => {
-                if (confirm('Archive this template? It can no longer be used for new inspections.')) {
-                  run(() => archiveTemplate(template.id))
+                if (confirm('Archive this procedure? It can no longer be used for new work.')) {
+                  run(() => archiveProcedure(procedure.id))
                 }
               }}
             >
@@ -94,31 +201,34 @@ export function TemplateDetailPage() {
         </div>
       </div>
 
+      {notice && <div className="alert alert-ok">{notice}</div>}
       {error && <div className="alert alert-error">{error}</div>}
-      {template.description && <p>{template.description}</p>}
-
-      {sections.map((section) => (
-        <div className="card" key={section.id}>
-          <h2>{section.title}</h2>
-          <ol className="question-list">
-            {[...section.questions]
-              .sort((a, b) => a.displayOrder - b.displayOrder)
-              .map((q) => (
-                <li key={q.id}>
-                  <div className="q-text">
-                    {q.text} {q.required && <span className="req">*</span>}
-                  </div>
-                  <div className="muted small">
-                    {q.type}
-                    {q.options?.length ? ` · options: ${q.options.join(', ')}` : ''}
-                    {q.scoreWeight != null ? ` · weight ${q.scoreWeight}` : ''}
-                  </div>
-                  {q.helpText && <div className="muted small">{q.helpText}</div>}
-                </li>
-              ))}
-          </ol>
+      {blockers.length > 0 && (
+        <div className="alert alert-error">
+          <strong>This cannot be published yet:</strong>
+          <ul>
+            {blockers.map((b) => (
+              <li key={b}>{b}</li>
+            ))}
+          </ul>
         </div>
-      ))}
+      )}
+
+      {procedure.description && <p>{procedure.description}</p>}
+
+      {version === null ? (
+        <p className="muted">
+          Nothing authored yet. <Link to={`/templates/${procedure.id}/edit`}>Start the draft</Link>.
+        </p>
+      ) : (
+        <>
+          <h2>
+            {version.state === 'DRAFT' ? `Draft v${version.versionNo}` : `v${version.versionNo}`}
+            {version.changeNote && <span className="muted small"> — {version.changeNote}</span>}
+          </h2>
+          <DefinitionView definition={version.definition} />
+        </>
+      )}
     </div>
   )
 }

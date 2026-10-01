@@ -1,4 +1,5 @@
 const COLORS: Record<string, string> = {
+  ACTIVE: 'badge-green',
   DRAFT: 'badge-gray',
   IN_PROGRESS: 'badge-blue',
   COMPLETED: 'badge-green',
