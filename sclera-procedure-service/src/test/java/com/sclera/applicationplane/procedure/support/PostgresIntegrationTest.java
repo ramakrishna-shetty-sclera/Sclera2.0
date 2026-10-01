@@ -13,6 +13,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 
+import java.util.List;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -117,6 +118,32 @@ public abstract class PostgresIntegrationTest {
 
     protected void asOrg(UUID orgId, Runnable work) {
         asOrg(orgId, () -> {
+            work.run();
+            return null;
+        });
+    }
+
+    /**
+     * Runs {@code work} as the given organization with one property selected —
+     * what PropertyScopeFilter does when a request carries X-Sclera-Property.
+     *
+     * The grant check is the filter's job and is skipped here; these tests are
+     * about what the database allows once a scope is set, which is the layer
+     * that has to hold even when the one above it is wrong.
+     */
+    protected <T> T asProperty(UUID orgId, UUID propertyId, Supplier<T> work) {
+        actAs(orgId, UUID.randomUUID());
+        PropertyContext.set(List.of(propertyId));
+        try {
+            return work.get();
+        } finally {
+            OrgContext.clear();
+            PropertyContext.clear();
+        }
+    }
+
+    protected void asProperty(UUID orgId, UUID propertyId, Runnable work) {
+        asProperty(orgId, propertyId, () -> {
             work.run();
             return null;
         });
