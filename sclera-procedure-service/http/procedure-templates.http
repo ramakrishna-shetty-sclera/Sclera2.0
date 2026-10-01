@@ -4,7 +4,8 @@
 # the same syntax). Each request stores what the next one needs.
 #
 # Prerequisites: docker compose up -d, .\setup-keycloak.ps1, .\setup-openfga.ps1,
-# and the procedure service running on :8095.
+# .\setup-demo-users.ps1 (seeds the properties used at the end), and the
+# procedure service running on :8095.
 #
 # @host targets the service directly. Through the gateway use
 # http://localhost:8080 once its procedure-service route includes
@@ -176,3 +177,88 @@ grant_type=password&client_id=sclera-app&username=testuser2&password=testuser2
 ### expect 403 — testuser2 has no relation to this template in OpenFGA
 GET {{host}}/api/v1/procedure-templates/{{id}}
 Authorization: Bearer {{token2}}
+
+###############################################################################
+# Property isolation (VDMS)
+#
+# X-Sclera-Property says which property you are looking at. Omit it and you are
+# at organization level, seeing only procedures shared across the organization;
+# send it and you see that property's plus the shared ones. Another property's
+# are not filtered out of the answer — they never enter it.
+#
+# Run .\setup-demo-users.ps1 first; it seeds these two and prints them.
+###############################################################################
+
+@vdms001 = aaaaaaaa-0000-0000-0000-000000000001
+@vdms002 = aaaaaaaa-0000-0000-0000-000000000002
+
+### demo-admin — reaches every property in the org, without a per-property grant
+POST {{keycloak}}/realms/sclera/protocol/openid-connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=password&client_id=sclera-app&username=demo-admin&password=demo-admin
+
+> {% client.global.set("adminToken", response.body.access_token); %}
+
+### demo-inspector — granted VDMS001 only
+POST {{keycloak}}/realms/sclera/protocol/openid-connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=password&client_id=sclera-app&username=demo-inspector&password=demo-inspector
+
+> {% client.global.set("inspectorToken", response.body.access_token); %}
+
+### P1. Author a procedure inside VDMS001 — it belongs to VDMS001
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{adminToken}}
+X-Sclera-Property: {{vdms001}}
+Content-Type: application/json
+
+{ "name": "Extinguisher check — VDMS001", "definition": { "categories": [
+  { "name": "Monthly", "questions": [ { "text": "Is it in place?", "type": "BOOLEAN", "required": true } ] } ] } }
+
+### P2. Author one inside VDMS002
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{adminToken}}
+X-Sclera-Property: {{vdms002}}
+Content-Type: application/json
+
+{ "name": "Boiler check — VDMS002", "definition": { "categories": [
+  { "name": "Monthly", "questions": [ { "text": "Pressure in range?", "type": "BOOLEAN" } ] } ] } }
+
+### P3. Author one at organization level — no header, so shared by every property
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{ "name": "Site induction — shared", "definition": { "categories": [
+  { "name": "Induction", "questions": [ { "text": "Briefing given?", "type": "BOOLEAN" } ] } ] } }
+
+### P4. Inside VDMS001 — expect the VDMS001 one and the shared one, not VDMS002's
+GET {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{adminToken}}
+X-Sclera-Property: {{vdms001}}
+
+### P5. Inside VDMS002 — expect the VDMS002 one and the shared one, not VDMS001's
+GET {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{adminToken}}
+X-Sclera-Property: {{vdms002}}
+
+### P6. Organization level — expect only the shared one
+GET {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{adminToken}}
+
+### P7. demo-inspector inside VDMS001 — allowed, same view as the admin has here
+GET {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{inspectorToken}}
+X-Sclera-Property: {{vdms001}}
+
+### P8. demo-inspector asking for VDMS002 — expect 403, refused before the database
+GET {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{inspectorToken}}
+X-Sclera-Property: {{vdms002}}
+
+### P9. A malformed property — expect 400
+GET {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{adminToken}}
+X-Sclera-Property: not-a-uuid
