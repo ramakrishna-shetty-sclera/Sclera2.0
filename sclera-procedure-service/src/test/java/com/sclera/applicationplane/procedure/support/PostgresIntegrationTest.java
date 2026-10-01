@@ -1,6 +1,7 @@
 package com.sclera.applicationplane.procedure.support;
 
 import com.sclera.applicationplane.procedure.event.TemplateEventPublisher;
+import com.sclera.applicationplane.procedure.tenancy.PropertyContext;
 import com.sclera.applicationplane.procedure.tenancy.TenantRegistryService;
 import com.sclera.controlplane.common.security.OrgContext;
 import org.junit.jupiter.api.AfterEach;
@@ -85,9 +86,15 @@ public abstract class PostgresIntegrationTest {
         return orgId;
     }
 
-    /** Acts as the given user in the given organization, provisioning its schema. */
+    /**
+     * Acts as the given user in the given organization, provisioning its schema.
+     *
+     * Starts at organization level: no property selected, so only org-wide rows
+     * are visible. {@code asProperty} narrows it.
+     */
     protected void actAs(UUID orgId, UUID userId) {
         OrgContext.clear();
+        PropertyContext.clear();
         OrgContext.setOrgId(orgId);
         OrgContext.setUserId(userId);
         tenantRegistry.ensureTenant(orgId);
@@ -104,6 +111,7 @@ public abstract class PostgresIntegrationTest {
             return work.get();
         } finally {
             OrgContext.clear();
+            PropertyContext.clear();
         }
     }
 
@@ -115,7 +123,8 @@ public abstract class PostgresIntegrationTest {
     }
 
     @AfterEach
-    void clearOrgContext() {
+    void clearRequestContext() {
         OrgContext.clear();
+        PropertyContext.clear();
     }
 }
