@@ -51,8 +51,20 @@ public abstract class PostgresIntegrationTest {
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        // Tests run as the same non-owner role production uses, created by
+        // V5__app_role.sql. Running them as the container's superuser instead
+        // would be the easy thing and would quietly defeat the point: Postgres
+        // ignores row-level security for owners and superusers, so every
+        // isolation test would pass without any isolation existing.
+        registry.add("spring.datasource.username", () -> "sclera_app");
+        registry.add("spring.datasource.password", () -> "sclera_app");
+        // Migrations and tenant provisioning need privileges the request role
+        // deliberately lacks.
+        registry.add("spring.flyway.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.flyway.user", POSTGRES::getUsername);
+        registry.add("spring.flyway.password", POSTGRES::getPassword);
+        registry.add("sclera.datasource.owner.username", POSTGRES::getUsername);
+        registry.add("sclera.datasource.owner.password", POSTGRES::getPassword);
         registry.add("sclera.fga.enabled", () -> "false");
         // No broker needed: nothing is sent, and topic creation is skipped.
         registry.add("spring.kafka.admin.auto-create", () -> "false");

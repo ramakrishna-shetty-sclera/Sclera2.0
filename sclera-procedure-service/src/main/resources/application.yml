@@ -34,6 +34,17 @@ spring:
     baseline-on-migrate: true
     validate-on-migrate: true
     locations: classpath:db/migration
+    # Migrations run as the owner, not as the request role. The request role
+    # owns nothing on purpose — that is what makes row-level security apply to
+    # it — so it cannot create or alter tables.
+    #
+    # The url has to be repeated here, not just the credentials: giving Flyway a
+    # user makes Spring Boot build it a separate DataSource, and that one is
+    # assembled from spring.flyway.* alone. Credentials without a url produce
+    # "Driver has not been set" at startup.
+    url: ${spring.datasource.url}
+    user: ${SCLERA_DB_OWNER_USER:sclera}
+    password: ${SCLERA_DB_OWNER_PASSWORD:sclera}
 
   jackson:
     serialization:
@@ -105,6 +116,17 @@ sclera:
     store-name: ${SCLERA_FGA_STORE:sclera}
     store-id: ${SCLERA_FGA_STORE_ID:}
     authorization-model-id: ${SCLERA_FGA_MODEL_ID:}
+  # Two roles against one database. Requests arrive on spring.datasource's role,
+  # which owns nothing and is not a superuser, so Postgres applies row-level
+  # security to it. Schema creation, migrations and the tenant registry need
+  # privileges that role deliberately lacks, and use the owner below.
+  datasource:
+    owner:
+      username: ${SCLERA_DB_OWNER_USER:sclera}
+      password: ${SCLERA_DB_OWNER_PASSWORD:sclera}
+    # Granted USAGE and DML on every tenant schema as it is provisioned.
+    app-role: ${SCLERA_DB_APP_ROLE:sclera_app}
+
   # Shared with every service that calls (or is called on) /internal/** — HMAC signing
   event-listener:
     signing-secret: ${SCLERA_INTERNAL_SIGNING_SECRET:dev-internal-signing-secret}
