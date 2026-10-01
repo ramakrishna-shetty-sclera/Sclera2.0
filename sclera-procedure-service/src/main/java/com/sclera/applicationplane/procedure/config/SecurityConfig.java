@@ -1,5 +1,7 @@
 package com.sclera.applicationplane.procedure.config;
 
+import com.sclera.applicationplane.procedure.authz.FgaAuthorizationService;
+import com.sclera.applicationplane.procedure.tenancy.PropertyScopeFilter;
 import com.sclera.applicationplane.procedure.tenancy.TenantProvisioningFilter;
 import com.sclera.applicationplane.procedure.tenancy.TenantRegistryService;
 import com.sclera.controlplane.common.filter.MdcFilter;
@@ -22,7 +24,8 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
-                                                   TenantRegistryService tenantRegistry) throws Exception {
+                                                   TenantRegistryService tenantRegistry,
+                                                   FgaAuthorizationService fga) throws Exception {
         return http.csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
@@ -37,6 +40,10 @@ public class SecurityConfig {
                 // schema before any repository call. Plain instance (not a bean) so
                 // Boot doesn't also mount it outside the security chain.
                 .addFilterAfter(new TenantProvisioningFilter(tenantRegistry), AuthorizationFilter.class)
+                // Then the property within it, from X-Sclera-Property. After
+                // provisioning because the grant check needs OrgContext, and
+                // before controllers because repository calls read the scope.
+                .addFilterAfter(new PropertyScopeFilter(fga), TenantProvisioningFilter.class)
                 .build();
     }
 

@@ -1,6 +1,7 @@
 package com.sclera.applicationplane.procedure.support;
 
 import com.sclera.applicationplane.procedure.event.TemplateEventPublisher;
+import com.sclera.applicationplane.procedure.tenancy.PropertyContext;
 import com.sclera.applicationplane.procedure.tenancy.TenantRegistryService;
 import com.sclera.controlplane.common.security.OrgContext;
 import org.junit.jupiter.api.AfterEach;
@@ -12,6 +13,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 
+import java.util.List;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -51,8 +53,20 @@ public abstract class PostgresIntegrationTest {
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        // Tests run as the same non-owner role production uses, created by
+        // V5__app_role.sql. Running them as the container's superuser instead
+        // would be the easy thing and would quietly defeat the point: Postgres
+        // ignores row-level security for owners and superusers, so every
+        // isolation test would pass without any isolation existing.
+        registry.add("spring.datasource.username", () -> "sclera_app");
+        registry.add("spring.datasource.password", () -> "sclera_app");
+        // Migrations and tenant provisioning need privileges the request role
+        // deliberately lacks.
+        registry.add("spring.flyway.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.flyway.user", POSTGRES::getUsername);
+        registry.add("spring.flyway.password", POSTGRES::getPassword);
+        registry.add("sclera.datasource.owner.username", POSTGRES::getUsername);
+        registry.add("sclera.datasource.owner.password", POSTGRES::getPassword);
         registry.add("sclera.fga.enabled", () -> "false");
         // No broker needed: nothing is sent, and topic creation is skipped.
         registry.add("spring.kafka.admin.auto-create", () -> "false");
@@ -73,9 +87,15 @@ public abstract class PostgresIntegrationTest {
         return orgId;
     }
 
-    /** Acts as the given user in the given organization, provisioning its schema. */
+    /**
+     * Acts as the given user in the given organization, provisioning its schema.
+     *
+     * Starts at organization level: no property selected, so only org-wide rows
+     * are visible. {@code asProperty} narrows it.
+     */
     protected void actAs(UUID orgId, UUID userId) {
         OrgContext.clear();
+        PropertyContext.clear();
         OrgContext.setOrgId(orgId);
         OrgContext.setUserId(userId);
         tenantRegistry.ensureTenant(orgId);
@@ -92,6 +112,7 @@ public abstract class PostgresIntegrationTest {
             return work.get();
         } finally {
             OrgContext.clear();
+            PropertyContext.clear();
         }
     }
 
@@ -102,8 +123,35 @@ public abstract class PostgresIntegrationTest {
         });
     }
 
+    /**
+     * Runs {@code work} as the given organization with one property selected —
+     * what PropertyScopeFilter does when a request carries X-Sclera-Property.
+     *
+     * The grant check is the filter's job and is skipped here; these tests are
+     * about what the database allows once a scope is set, which is the layer
+     * that has to hold even when the one above it is wrong.
+     */
+    protected <T> T asProperty(UUID orgId, UUID propertyId, Supplier<T> work) {
+        actAs(orgId, UUID.randomUUID());
+        PropertyContext.set(List.of(propertyId));
+        try {
+            return work.get();
+        } finally {
+            OrgContext.clear();
+            PropertyContext.clear();
+        }
+    }
+
+    protected void asProperty(UUID orgId, UUID propertyId, Runnable work) {
+        asProperty(orgId, propertyId, () -> {
+            work.run();
+            return null;
+        });
+    }
+
     @AfterEach
-    void clearOrgContext() {
+    void clearRequestContext() {
         OrgContext.clear();
+        PropertyContext.clear();
     }
 }

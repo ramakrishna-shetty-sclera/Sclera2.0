@@ -44,6 +44,19 @@ type inspection
     define can_edit: creator or assignee or can_manage_inspections from org
     define can_delete: can_manage_inspections from org
 
+# A property (VDMS) within an organization. Granting a user `viewer` here is
+# what lets them send X-Sclera-Property for it; the row-level security policies
+# then limit what they see to that property plus the organization's shared rows.
+#
+# An org administrator reaches every property without a per-property tuple,
+# which is what makes the "list the properties, then open one" flow work without
+# granting them twelve times over.
+type property
+  relations
+    define org: [organization]
+    define viewer: [user]
+    define can_view: viewer or can_administer from org
+
 type procedure_template
   relations
     define org: [organization]

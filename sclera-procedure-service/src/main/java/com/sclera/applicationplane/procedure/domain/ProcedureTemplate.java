@@ -29,6 +29,17 @@ public class ProcedureTemplate {
     @Column(name = "org_id", nullable = false, updatable = false)
     private UUID orgId;
 
+    /**
+     * Owning property (VDMS), or null for a procedure the whole organization
+     * shares. Not a foreign key: properties belong to another service, so this
+     * holds the id and nothing joins on it.
+     *
+     * Reading it back is rarely necessary — row-level security already filters
+     * on it, so a query cannot return a property this caller may not see.
+     */
+    @Column(name = "property_id", updatable = false)
+    private UUID propertyId;
+
     @Column(nullable = false, length = 200)
     private String name;
 
@@ -76,6 +87,9 @@ public class ProcedureTemplate {
 
     public UUID getOrgId() { return orgId; }
     public void setOrgId(UUID orgId) { this.orgId = orgId; }
+
+    public UUID getPropertyId() { return propertyId; }
+    public void setPropertyId(UUID propertyId) { this.propertyId = propertyId; }
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }

@@ -2,8 +2,10 @@
 spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/${SCLERA_DB_NAME:sclera_procedure}
-    username: ${SCLERA_DB_USER:sclera}
-    password: ${SCLERA_DB_PASSWORD:sclera}
+    # The request role, created by V5__app_role.sql. Not the owner and not a
+    # superuser, which is the only reason row-level security does anything.
+    username: ${SCLERA_DB_USER:sclera_app}
+    password: ${SCLERA_DB_PASSWORD:sclera_app}
     hikari:
       minimum-idle: 2
       maximum-pool-size: 10

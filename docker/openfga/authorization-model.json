@@ -119,6 +119,33 @@
       }
     },
     {
+      "type": "property",
+      "relations": {
+        "org": { "this": {} },
+        "viewer": { "this": {} },
+        "can_view": {
+          "union": {
+            "child": [
+              { "computedUserset": { "object": "", "relation": "viewer" } },
+              {
+                "tupleToUserset": {
+                  "tupleset": { "object": "", "relation": "org" },
+                  "computedUserset": { "object": "", "relation": "can_administer" }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "metadata": {
+        "relations": {
+          "org": { "directly_related_user_types": [{ "type": "organization" }] },
+          "viewer": { "directly_related_user_types": [{ "type": "user" }] },
+          "can_view": { "directly_related_user_types": [] }
+        }
+      }
+    },
+    {
       "type": "procedure_template",
       "relations": {
         "org": { "this": {} },

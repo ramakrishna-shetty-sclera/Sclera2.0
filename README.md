@@ -238,6 +238,14 @@ for the application-plane services:
 | `procedure-service` | `/api/v1/procedure-templates/**,/api/v1/result-types/**` | `PROCEDURE_SERVICE_URL` (`:8095`) |
 | `inspection-service` | `/api/v1/inspections/**,/api/v1/inspection-configs/**,/api/v1/checklists/**` | `INSPECTION_SERVICE_URL` (`:8096`) |
 
+**CORS allowed headers must also include `X-Sclera-Property`** — the header that
+says which property (VDMS) a request is scoped to. Both `allowed-headers` lists
+in that file need it. Routes forward it already, since nothing strips headers,
+but a browser never gets that far: a custom header makes the request preflighted
+and the SPA is blocked without it. The symptom is a CORS error on every call
+from the browser while the same request works fine from an HTTP client, which is
+a confusing afternoon if the cause is not written down.
+
 The gateway validates the BFF session, relays the user's Keycloak access token
 to the service as `Authorization: Bearer` (so `ScleraJwtConverter` still reads
 `org_id` from the JWT), and enforces CSRF on mutating requests.

@@ -26,6 +26,7 @@ import com.sclera.applicationplane.procedure.event.TemplateEventPublisher;
 import com.sclera.applicationplane.procedure.mapper.ProcedureTemplateMapper;
 import com.sclera.applicationplane.procedure.repository.ProcedureTemplateRepository;
 import com.sclera.applicationplane.procedure.repository.ProcedureTemplateVersionRepository;
+import com.sclera.applicationplane.procedure.tenancy.PropertyContext;
 import com.sclera.controlplane.common.exception.BusinessRuleException;
 import com.sclera.controlplane.common.exception.ConflictException;
 import com.sclera.controlplane.common.exception.ResourceNotFoundException;
@@ -93,6 +94,16 @@ public class ProcedureTemplateService {
 
         ProcedureTemplate template = new ProcedureTemplate();
         template.setOrgId(orgId);
+        // Authored inside a property, it belongs to that property; authored at
+        // organization level, it belongs to the whole organization. Which one
+        // the author meant is already answered by where they were standing, so
+        // there is no flag to set and no way to get it wrong.
+        //
+        // Exactly one property is in scope when a request carries the header,
+        // so a list of more than one means organization level and shared is the
+        // right answer.
+        List<UUID> scope = PropertyContext.current();
+        template.setPropertyId(scope.size() == 1 ? scope.get(0) : null);
         template.setName(name);
         template.setDescription(blankToNull(request.description()));
         if (!isBlank(request.consumerKey())) {

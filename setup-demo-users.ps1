@@ -1,10 +1,16 @@
-# Creates three demo accounts in Keycloak (realm sclera) and grants their
+# Creates four demo accounts in Keycloak (realm sclera) and grants their
 # OpenFGA roles, to exercise every authorization tier. Idempotent - safe to
 # re-run after docker compose down (Keycloak wipe) or an OpenFGA store wipe.
 #
 #   demo-user        / demo-user        FGA 'viewer' on the dev org  -> read-only
 #   demo-admin       / demo-admin       FGA 'admin'  on the dev org  -> full org control
 #   demo-superadmin  / demo-superadmin  is_platform_admin=true claim -> bypasses FGA entirely
+#   demo-inspector   / demo-inspector   FGA 'inspector' on the dev org, and
+#                                       'viewer' on VDMS001 only -> cannot reach VDMS002
+#
+# Also seeds two properties (VDMS001, VDMS002) so property isolation has
+# something to isolate. The new tuples need the 'property' type in the
+# authorization model, so re-run setup-openfga.ps1 first if this errors.
 #
 # All three belong to org 11111111-1111-1111-1111-111111111111 (org_type CLIENT).
 # Also adds the boolean 'is_platform_admin' claim mapper to the sclera-app and
@@ -82,6 +88,7 @@ function New-DemoUser($username, $extraAttrs) {
 $userUuid = New-DemoUser 'demo-user' $null
 $adminUuid = New-DemoUser 'demo-admin' $null
 $superUuid = New-DemoUser 'demo-superadmin' @{ is_platform_admin = @('true') }
+$inspectorUuid = New-DemoUser 'demo-inspector' $null
 "passwords set (same as each username)"
 
 # --- FGA role tuples ---------------------------------------------------------
@@ -105,11 +112,34 @@ function Write-FgaTuple($user, $relation, $object) {
 
 Write-FgaTuple "user:$userUuid" 'viewer' "organization:$orgId"
 Write-FgaTuple "user:$adminUuid" 'admin' "organization:$orgId"
+Write-FgaTuple "user:$inspectorUuid" 'inspector' "organization:$orgId"
 # demo-superadmin gets NO tuple on purpose: platform admins bypass FGA checks.
 
+# --- properties (VDMS) -------------------------------------------------------
+# Two properties in the dev org, so property isolation has something to isolate.
+# Codes run per organization - VDMS001, VDMS002 - so another org's VDMS001 is a
+# different property. Ids are fixed rather than random: they go in the
+# X-Sclera-Property header by hand, and re-running this should not invalidate
+# whatever is already pasted into a request collection.
+$vdms001 = 'aaaaaaaa-0000-0000-0000-000000000001'
+$vdms002 = 'aaaaaaaa-0000-0000-0000-000000000002'
+
+# Which org each property belongs to. can_view derives from this for an org
+# admin, so demo-admin reaches both without a tuple of their own.
+Write-FgaTuple "organization:$orgId" 'org' "property:$vdms001"
+Write-FgaTuple "organization:$orgId" 'org' "property:$vdms002"
+
+# demo-inspector is granted ONE of them. Asking for the other is the case worth
+# seeing: refused at the filter, and invisible at the database behind it.
+Write-FgaTuple "user:$inspectorUuid" 'viewer' "property:$vdms001"
 ""
 "Done."
 "  demo-user       (viewer)          $userUuid"
 "  demo-admin      (org admin)       $adminUuid"
 "  demo-superadmin (platform admin)  $superUuid"
+"  demo-inspector  (VDMS001 only)    $inspectorUuid"
+""
+"Properties - send one as the X-Sclera-Property header; omit it for org level:"
+"  VDMS001  $vdms001   demo-inspector and demo-admin"
+"  VDMS002  $vdms002   demo-admin only"
 "Note: services cache check decisions for up to 30s (sclera.fga.check-cache-ttl-seconds)."
