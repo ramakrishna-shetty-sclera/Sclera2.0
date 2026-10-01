@@ -1,5 +1,4 @@
 import { apiFetch, type ApiResult } from './client'
-import type { QuestionTemplate, TemplateRequest, TemplateStatus } from './types'
 import type {
   CloneProcedureRequest,
   CreateProcedureRequest,
@@ -14,40 +13,7 @@ import type {
   UpdateProcedureRequest,
 } from './types'
 
-const BASE = '/api/v1/question-templates'
-
-export function listTemplates(params: {
-  status?: TemplateStatus
-  page?: number
-  size?: number
-}): Promise<ApiResult<QuestionTemplate[]>> {
-  return apiFetch<QuestionTemplate[]>(BASE, { query: params })
-}
-
-export function getTemplate(id: string): Promise<QuestionTemplate> {
-  return apiFetch<QuestionTemplate>(`${BASE}/${id}`).then((r) => r.data)
-}
-
-export function createTemplate(body: TemplateRequest): Promise<QuestionTemplate> {
-  return apiFetch<QuestionTemplate>(BASE, { method: 'POST', body }).then((r) => r.data)
-}
-
-export function updateTemplate(id: string, body: TemplateRequest): Promise<QuestionTemplate> {
-  return apiFetch<QuestionTemplate>(`${BASE}/${id}`, { method: 'PUT', body }).then((r) => r.data)
-}
-
-export function publishTemplate(id: string): Promise<QuestionTemplate> {
-  return apiFetch<QuestionTemplate>(`${BASE}/${id}/publish`, { method: 'POST' }).then((r) => r.data)
-}
-
-export function archiveTemplate(id: string): Promise<QuestionTemplate> {
-  return apiFetch<QuestionTemplate>(`${BASE}/${id}`, { method: 'DELETE' }).then((r) => r.data)
-}
-
-// ── Procedures: the versioned model ──────────────────────────────────────────
-// Everything above this line talks to /api/v1/question-templates, which no
-// longer exists. It is kept only until its last caller has moved, then deleted.
-//
+// ── Procedures ───────────────────────────────────────────────────────────────
 // The gateway must route /api/v1/procedure-templates/** to the procedure
 // service (see the route table in the root README), or these 404 before
 // reaching it.

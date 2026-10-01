@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   checkInChecklist,
   checklistSourceLabel,
@@ -16,9 +16,6 @@ import {
   type AnswerInput,
   type Checklist,
 } from '../api/checklists'
-import { getTemplate } from '../api/templates'
-import type { Question, QuestionTemplate } from '../api/types'
-import { QuestionInput } from './QuestionInput'
 
 interface Draft {
   value: unknown
@@ -53,7 +50,6 @@ export function ChecklistFillPanel({
   onChanged?: () => void
 }) {
   const [checklist, setChecklist] = useState<Checklist | null>(null)
-  const [template, setTemplate] = useState<QuestionTemplate | null>(null)
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -70,23 +66,10 @@ export function ChecklistFillPanel({
 
   useEffect(() => {
     getChecklist(checklistId)
-      .then((c) => {
-        hydrate(c)
-        return getTemplate(c.procedureId)
-      })
-      .then(setTemplate)
+      .then(hydrate)
       .catch((e) => setError(e.message))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checklistId])
-
-  const sections = useMemo(() => {
-    if (!template?.sections) return []
-    return [...template.sections]
-      .sort((a, b) => a.displayOrder - b.displayOrder)
-      .map((s) => ({ ...s, questions: [...s.questions].sort((a, b) => a.displayOrder - b.displayOrder) }))
-  }, [template])
-
-  const allQuestions: Question[] = useMemo(() => sections.flatMap((s) => s.questions), [sections])
 
   if (!checklist) {
     return error ? <div className="alert alert-error">{error}</div> : <p className="muted">Loading…</p>
@@ -96,18 +79,20 @@ export function ChecklistFillPanel({
   const editable = cl.status === 'TODO' && (!cl.checkInRequired || cl.checkInAt != null)
   const needsCheckIn = cl.status === 'TODO' && cl.checkInRequired && !cl.checkInAt
 
+  /**
+   * Returns the answers exactly as they were loaded.
+   *
+   * There is no form to collect from while the questions cannot be resolved,
+   * and returning an empty list would make Save and Submit wipe whatever is
+   * already stored. Not rendering the questions must not destroy the answers.
+   */
   function collect(): AnswerInput[] {
-    return allQuestions
-      .filter((q) => drafts[q.id] !== undefined)
-      .map((q) => {
-        const d = drafts[q.id]
-        return {
-          questionId: q.id,
-          value: JSON.stringify(d.value ?? null),
-          failed: d.failed,
-          comment: d.comment.trim() || undefined,
-        }
-      })
+    return Object.entries(drafts).map(([questionId, d]) => ({
+      questionId,
+      value: JSON.stringify(d.value ?? null),
+      failed: d.failed,
+      comment: d.comment.trim() || undefined,
+    }))
   }
 
   async function act(fn: () => Promise<Checklist>, msg?: string) {
@@ -123,18 +108,6 @@ export function ChecklistFillPanel({
     } finally {
       setBusy(false)
     }
-  }
-
-  function patch(qid: string, p: Partial<Draft>) {
-    setDrafts((prev) => ({
-      ...prev,
-      [qid]: {
-        value: prev[qid]?.value ?? null,
-        failed: prev[qid]?.failed ?? false,
-        comment: prev[qid]?.comment ?? '',
-        ...p,
-      },
-    }))
   }
 
   return (
@@ -237,46 +210,32 @@ export function ChecklistFillPanel({
 
       {needsCheckIn && <p className="muted">Check in to start filling this checklist.</p>}
 
-      {sections.map((section) => (
-        <div className="card" key={section.id}>
-          <h2>{section.title}</h2>
-          {section.questions.map((q) => (
-            <div className={`question-block ${drafts[q.id]?.failed ? 'q-failed' : ''}`} key={q.id}>
-              <div className="q-text">
-                {q.text} {q.required && <span className="req">*</span>}
-              </div>
-              {q.helpText && <div className="muted small">{q.helpText}</div>}
-              <QuestionInput
-                question={q}
-                value={drafts[q.id]?.value ?? null}
-                disabled={!editable}
-                onChange={(value) => patch(q.id, { value })}
-              />
-              <div className="q-extra">
-                <label className="checkbox fail-toggle">
-                  <input
-                    type="checkbox"
-                    checked={drafts[q.id]?.failed ?? false}
-                    disabled={!editable}
-                    onChange={(e) => patch(q.id, { failed: e.target.checked })}
-                  />
-                  Mark failed
-                </label>
-                {(editable || drafts[q.id]?.comment) && (
-                  <input
-                    className="comment-input"
-                    placeholder="Comment (optional)"
-                    value={drafts[q.id]?.comment ?? ''}
-                    disabled={!editable}
-                    maxLength={2000}
-                    onChange={(e) => patch(q.id, { comment: e.target.value })}
-                  />
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      ))}
+      {/*
+        The questions cannot be shown yet, and this says so rather than
+        rendering the wrong ones.
+
+        A checklist records which procedure it came from but not which VERSION,
+        and a published version is immutable precisely so that a checklist keeps
+        rendering the form it was actually filled against. Resolving the form
+        through the procedure instead would show today's questions over
+        yesterday's answers — the bug the versioned model exists to prevent.
+
+        The pin (checklist.procedureVersionId) arrives with the inspection
+        service's move to version pinning, and this block becomes the real
+        question list then.
+      */}
+      <div className="card">
+        <h2>Questions</h2>
+        <p className="muted">
+          This checklist does not yet record which version of{' '}
+          <strong>{cl.procedureName}</strong> it was created from, so its questions cannot be
+          shown without risking the wrong ones.
+        </p>
+        <p className="muted small">
+          Answers already saved against it are kept untouched — saving and submitting from here do
+          not change them. Authoring and version history are available on the Procedures screens.
+        </p>
+      </div>
 
       <div className="card">
         <h2>History</h2>

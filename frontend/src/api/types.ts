@@ -42,29 +42,6 @@ export interface QuestionTemplate {
   sections: Section[]
 }
 
-export interface QuestionRequest {
-  text: string
-  helpText?: string
-  type: QuestionType
-  required: boolean
-  displayOrder: number
-  options?: string[]
-  scoreWeight?: number
-}
-
-export interface SectionRequest {
-  title: string
-  displayOrder: number
-  questions: QuestionRequest[]
-}
-
-export interface TemplateRequest {
-  name: string
-  description?: string
-  category?: string
-  sections: SectionRequest[]
-}
-
 export interface Answer {
   id: string
   questionId: string
