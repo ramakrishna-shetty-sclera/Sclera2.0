@@ -8,8 +8,8 @@ import {
   type TaggedProcedureLink,
 } from '../api/taggedProcedures'
 import { listChecklists, type Checklist } from '../api/checklists'
-import { listTemplates } from '../api/templates'
-import type { QuestionTemplate } from '../api/types'
+import { listPublishedProcedures } from '../api/templates'
+import type { ProcedureTemplate } from '../api/types'
 import type { TargetType } from '../api/inspectionTagging'
 import { ChecklistFillPanel } from './ChecklistFillPanel'
 import { Modal } from './Modal'
@@ -35,7 +35,7 @@ export function TaggedProceduresModal({
 }) {
   const [links, setLinks] = useState<TaggedProcedureLink[]>([])
   const [checklists, setChecklists] = useState<Checklist[]>([])
-  const [procedures, setProcedures] = useState<QuestionTemplate[]>([])
+  const [procedures, setProcedures] = useState<ProcedureTemplate[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [fillId, setFillId] = useState<string | null>(null)
@@ -52,7 +52,7 @@ export function TaggedProceduresModal({
 
   useEffect(() => {
     reload()
-    listTemplates({ status: 'PUBLISHED', size: 100 }).then((r) => setProcedures(r.data)).catch(() => {})
+    listPublishedProcedures().then(setProcedures).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetId])
 
@@ -115,7 +115,7 @@ export function TaggedProceduresModal({
               <option value="">Select…</option>
               {procedures.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name} (v{p.version})
+                  {p.name} (v{p.currentPublishedVersionNo})
                 </option>
               ))}
             </select>

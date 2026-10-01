@@ -130,3 +130,18 @@ export function getVersion(id: string, versionNo: number): Promise<TemplateVersi
 export function diffVersions(id: string, from: number, to: number): Promise<ProcedureDiff> {
   return apiFetch<ProcedureDiff>(`${PROCEDURES}/${id}/diff`, { query: { from, to } }).then((r) => r.data)
 }
+
+/**
+ * The procedures something can actually be attached to: active, and with a
+ * published version to pin.
+ *
+ * Worth having in one place. "Published" used to be a status on the procedure
+ * itself, so pickers filtered `status === 'PUBLISHED'`. It is now a property of
+ * having a current published version, and every picker needs the same rule —
+ * four hand-written copies of it would drift.
+ */
+export function listPublishedProcedures(): Promise<ProcedureTemplate[]> {
+  return listProcedures({ status: 'ACTIVE', size: 100 }).then((r) =>
+    r.data.filter((p) => p.currentPublishedVersionNo !== null),
+  )
+}

@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { createInspection, listInspections } from '../api/inspections'
-import { listTemplates } from '../api/templates'
-import type { Inspection, InspectionStatus, Pagination, QuestionTemplate } from '../api/types'
+import { listPublishedProcedures } from '../api/templates'
+import type { Inspection, InspectionStatus, Pagination, ProcedureTemplate } from '../api/types'
 import { StatusBadge } from '../components/StatusBadge'
 import { Pager } from '../components/Pager'
 
@@ -16,7 +16,7 @@ export function InspectionsPage() {
   const [loading, setLoading] = useState(true)
 
   const [showCreate, setShowCreate] = useState(false)
-  const [publishedTemplates, setPublishedTemplates] = useState<QuestionTemplate[]>([])
+  const [publishedTemplates, setPublishedTemplates] = useState<ProcedureTemplate[]>([])
   const [templateId, setTemplateId] = useState('')
   const [scheduledFor, setScheduledFor] = useState('')
   const [notes, setNotes] = useState('')
@@ -41,8 +41,8 @@ export function InspectionsPage() {
 
   useEffect(() => {
     if (!showCreate) return
-    listTemplates({ status: 'PUBLISHED', size: 100 })
-      .then((r) => setPublishedTemplates(r.data))
+    listPublishedProcedures()
+      .then(setPublishedTemplates)
       .catch((e) => setError(e.message))
   }, [showCreate])
 
@@ -102,10 +102,10 @@ export function InspectionsPage() {
                 <label className="grow">
                   Template *
                   <select value={templateId} onChange={(e) => setTemplateId(e.target.value)} required>
-                    <option value="">Select a published template…</option>
+                    <option value="">Select a published procedure…</option>
                     {publishedTemplates.map((t) => (
                       <option key={t.id} value={t.id}>
-                        {t.name} (v{t.version})
+                        {t.name} (v{t.currentPublishedVersionNo})
                       </option>
                     ))}
                   </select>
