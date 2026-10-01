@@ -8,13 +8,15 @@ import {
   getDraft,
   getProcedure,
   getVersion,
+  listVersions,
   publishProcedure,
 } from '../api/templates'
 import { createInspection } from '../api/inspections'
 import { ApiError } from '../api/client'
-import type { ProcedureTemplate, TemplateVersion } from '../api/types'
+import type { ProcedureTemplate, TemplateVersion, TemplateVersionSummary } from '../api/types'
 import { StatusBadge } from '../components/StatusBadge'
 import { DefinitionView } from '../components/DefinitionView'
+import { VersionHistory } from '../components/VersionHistory'
 
 /**
  * One procedure: what it is, what it can do next, and the content of whichever
@@ -30,20 +32,26 @@ export function TemplateDetailPage() {
   const navigate = useNavigate()
   const [procedure, setProcedure] = useState<ProcedureTemplate | null>(null)
   const [version, setVersion] = useState<TemplateVersion | null>(null)
+  const [versions, setVersions] = useState<TemplateVersionSummary[]>([])
   const [error, setError] = useState<string | null>(null)
   const [blockers, setBlockers] = useState<string[]>([])
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   /**
-   * Loads the procedure and the version worth showing: the draft when one is
-   * open, since that is what the author is working on, otherwise the published
-   * version. A procedure with neither has no content to show at all.
+   * Loads the procedure, its history, and the version worth showing by default:
+   * the draft when one is open, since that is what the author is working on,
+   * otherwise the published version. A procedure with neither has no content.
+   *
+   * Always returns to that default, including after an action — publishing or
+   * discarding changes which version the default *is*, so holding the previous
+   * selection would leave the screen showing something that no longer applies.
    */
   const reload = useCallback(async () => {
     if (!id) return
     const p = await getProcedure(id)
     setProcedure(p)
+    setVersions(await listVersions(id))
     if (p.draftVersionNo !== null) {
       setVersion(await getDraft(id))
     } else if (p.currentPublishedVersionNo !== null) {
@@ -52,6 +60,21 @@ export function TemplateDetailPage() {
       setVersion(null)
     }
   }, [id])
+
+  /** Shows an older version from the history without changing anything. */
+  async function showVersion(versionNo: number) {
+    if (!id || !procedure) return
+    setError(null)
+    try {
+      setVersion(
+        versionNo === procedure.draftVersionNo
+          ? await getDraft(id)
+          : await getVersion(id, versionNo),
+      )
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load that version')
+    }
+  }
 
   useEffect(() => {
     reload().catch((e) => setError(e instanceof Error ? e.message : 'Could not load this procedure'))
@@ -228,6 +251,15 @@ export function TemplateDetailPage() {
           </h2>
           <DefinitionView definition={version.definition} />
         </>
+      )}
+
+      {versions.length > 0 && (
+        <VersionHistory
+          procedureId={procedure.id}
+          versions={versions}
+          viewingVersionNo={version?.versionNo ?? null}
+          onView={showVersion}
+        />
       )}
     </div>
   )
