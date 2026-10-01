@@ -12,15 +12,15 @@ import {
   type Target,
   type TargetType,
 } from '../api/inspectionTagging'
-import { listTemplates } from '../api/templates'
-import type { QuestionTemplate } from '../api/types'
+import { listPublishedProcedures } from '../api/templates'
+import type { ProcedureTemplate } from '../api/types'
 import { listAssets, type Asset } from '../api/assets'
 import { listLocations, type Location } from '../api/locations'
 import { Modal } from './Modal'
 
 export function TaggingSection({ configId }: { configId: string }) {
   const [tagging, setTagging] = useState<Tagging | null>(null)
-  const [procedures, setProcedures] = useState<QuestionTemplate[]>([])
+  const [procedures, setProcedures] = useState<ProcedureTemplate[]>([])
   const [assets, setAssets] = useState<Asset[]>([])
   const [locations, setLocations] = useState<Location[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -37,7 +37,7 @@ export function TaggingSection({ configId }: { configId: string }) {
 
   useEffect(() => {
     reload()
-    listTemplates({ status: 'PUBLISHED', size: 100 }).then((r) => setProcedures(r.data)).catch(() => {})
+    listPublishedProcedures().then(setProcedures).catch(() => {})
     listAssets().then(setAssets).catch(() => {})
     listLocations().then(setLocations).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -233,10 +233,10 @@ function TagProcedureModal({
   onClose,
   onSave,
 }: {
-  procedures: QuestionTemplate[]
+  procedures: ProcedureTemplate[]
   alreadyTagged: string[]
   onClose: () => void
-  onSave: (proc: QuestionTemplate) => void
+  onSave: (proc: ProcedureTemplate) => void
 }) {
   const available = procedures.filter((p) => !alreadyTagged.includes(p.id))
   const [procedureId, setProcedureId] = useState('')
@@ -261,7 +261,7 @@ function TagProcedureModal({
               <option value="">Select a published procedure…</option>
               {available.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name} (v{p.version})
+                  {p.name} (v{p.currentPublishedVersionNo})
                 </option>
               ))}
             </select>
