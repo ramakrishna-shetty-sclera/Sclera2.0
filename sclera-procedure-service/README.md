@@ -305,6 +305,32 @@ against schema `t_<uuid-without-dashes>`.
 **Every schema change is written twice** — `db/migration/` for the public schema and `db/tenant/` for
 per-tenant schemas — and the two must stay column-for-column identical.
 
+### Properties, inside an organization
+
+An organization contains properties (VDMS sites). A procedure belongs either to one of them or to the
+whole organization — `property_id` set, or null for shared — and the second boundary is enforced by
+**Postgres row-level security**, not by application code.
+
+- `X-Sclera-Property` says which property a request is looking at. `PropertyScopeFilter` checks it
+  against the caller's grants and answers 403 if they have none, then puts it in `PropertyContext`.
+- `SchemaMultiTenantConnectionProvider` writes it to `sclera.property_ids` on checkout beside
+  `search_path`, and clears it on release. The policy on each property-scoped table reads it.
+- No header means organization level: only shared procedures are visible, with no filtering in the
+  application at all.
+- A procedure authored inside a property belongs to it; one authored at organization level is shared.
+  Where the author was standing already answers it, so there is no flag to set.
+
+**This only works because requests arrive on a role that owns nothing.** Postgres ignores row-level
+security for superusers and for a table's owner, so the policies would be inert if the application
+connected as the owner — present, and doing nothing. `spring.datasource` is the non-owner role;
+`sclera.datasource.owner` runs Flyway and tenant provisioning, which need privileges the first
+deliberately lacks. `PropertyIsolationIT` asserts `current_user` for that reason: without it, every
+isolation test would pass with no isolation in place.
+
+**A new property-scoped table needs its own policy.** Row-level security is per table, and one
+without a policy is wide open with no error to notice. It belongs on the same checklist as writing
+the migration twice.
+
 Internal endpoints carry no JWT, so they pin the tenant explicitly:
 
 ```java
