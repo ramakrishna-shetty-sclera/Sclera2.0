@@ -6,7 +6,7 @@ const KIND_BADGE: Record<DiffKind, string> = {
   MODIFIED: 'badge-amber',
 }
 
-/** Turns 'helpText' into 'help text' so the list reads as prose, not as field names. */
+/** 'workOrder' becomes 'work order', 'alertProfile' 'alert profile'. */
 function readable(field: string): string {
   return field.replace(/([A-Z])/g, ' $1').toLowerCase()
 }
@@ -14,10 +14,15 @@ function readable(field: string): string {
 /**
  * What changed between two versions.
  *
- * The server matches on stable question keys, which is why a reworded question
- * comes back as one MODIFIED entry rather than a REMOVED and an ADDED that the
- * reader has to pair up themselves. Keys are shown for the same reason they are
- * shown elsewhere: they are what the change is actually anchored to.
+ * One list, not two: sections and questions live in one list in the document,
+ * so they do here too, and `parentKey` says where each one sits. That is what
+ * makes a move legible — a question dragged into another section comes back as
+ * one MODIFIED entry whose changed field is `parent`.
+ *
+ * The server matches on stable keys, which is why a reworded question is one
+ * MODIFIED entry rather than a REMOVED and an ADDED that the reader has to pair
+ * up. Keys are shown for the same reason they are shown elsewhere: they are
+ * what the change is anchored to.
  */
 export function DiffView({ result }: { result: ProcedureDiff }) {
   const { diff, fromVersionNo, toVersionNo } = result
@@ -36,42 +41,21 @@ export function DiffView({ result }: { result: ProcedureDiff }) {
         What changed from v{fromVersionNo} to v{toVersionNo}.
       </p>
 
-      {diff.categoryOrderChanged && (
-        <div className="alert alert-amber">The categories were reordered.</div>
-      )}
+      {diff.orderChanged && <div className="alert alert-amber">The items were reordered.</div>}
 
-      {diff.categories.length > 0 && (
+      {diff.items.length > 0 && (
         <div className="card">
-          <h2>Categories</h2>
           <ul className="question-list">
-            {diff.categories.map((c) => (
-              <li key={c.key}>
+            {diff.items.map((item) => (
+              <li key={item.key}>
                 <div className="q-text">
-                  <span className={`badge ${KIND_BADGE[c.kind]}`}>{c.kind}</span> {c.name}
-                  <span className="rt-key-inline"> {c.key}</span>
-                </div>
-                {c.changedFields.length > 0 && (
-                  <div className="muted small">changed: {c.changedFields.map(readable).join(', ')}</div>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {diff.questions.length > 0 && (
-        <div className="card">
-          <h2>Questions</h2>
-          <ul className="question-list">
-            {diff.questions.map((q) => (
-              <li key={q.key}>
-                <div className="q-text">
-                  <span className={`badge ${KIND_BADGE[q.kind]}`}>{q.kind}</span> {q.text}
-                  <span className="rt-key-inline"> {q.key}</span>
+                  <span className={`badge ${KIND_BADGE[item.kind]}`}>{item.kind}</span> {item.text}
+                  <span className="rt-key-inline"> {item.key}</span>
                 </div>
                 <div className="muted small">
-                  in {q.categoryKey}
-                  {q.changedFields.length > 0 && ` · changed: ${q.changedFields.map(readable).join(', ')}`}
+                  {item.parentKey ? `under ${item.parentKey}` : 'top level'}
+                  {item.changedFields.length > 0 &&
+                    ` · changed: ${item.changedFields.map(readable).join(', ')}`}
                 </div>
               </li>
             ))}

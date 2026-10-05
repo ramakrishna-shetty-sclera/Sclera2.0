@@ -1363,3 +1363,65 @@ tr[draggable='true'] {
   font-weight: 600;
   font-size: 13px;
 }
+
+/* --- a procedure document, read-only ------------------------------------ */
+
+.doc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.doc-item {
+  padding: 10px 0;
+  border-top: 1px solid #f3f4f6;
+}
+
+.doc-item:first-child {
+  border-top: none;
+}
+
+/* The heading a run of questions sits under. */
+.doc-section {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #374151;
+}
+
+.doc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.doc-options {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  font-size: 13px;
+}
+
+.doc-options li {
+  padding: 2px 0;
+}
+
+.doc-result {
+  margin-left: 6px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+/* Follow-ups are the one thing that indents: the nesting is the meaning. */
+.doc-follow {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0 0 0 16px;
+  border-left: 2px solid #e5e7eb;
+}
+
+.doc-follow .doc-item:first-child {
+  border-top: none;
+  padding-top: 0;
+}

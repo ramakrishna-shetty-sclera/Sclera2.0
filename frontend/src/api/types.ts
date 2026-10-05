@@ -155,32 +155,110 @@ export type VersionState = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
 export type VersionOrigin = 'AUTHORED' | 'MIGRATED' | 'IMPORTED' | 'GLOBAL_PUSH'
 
 /**
- * One question. `key` is minted by the server on first save and never changes
- * after that, which is what lets a diff say "q7 was reworded" instead of
- * "one question vanished and another appeared". Omit it when adding a question;
- * send it back unchanged when editing one.
+ * What an item in a procedure document is.
  *
- * There are no options yet: feature 4 adds them, so a SINGLE_CHOICE question
- * currently has nothing to choose from.
+ * Deliberately not the `QuestionType` at the top of this file. That one belongs
+ * to the generic inspection-run model the SPA still renders, and its values are
+ * different ones — `BOOLEAN`, `SINGLE_CHOICE`, `NUMBER`. Both sets exist until
+ * the integration branch retires the old model.
+ *
+ * `SECTION` sits in the same list as the questions rather than wrapping them: a
+ * section is an item that happens to be a heading, which is what lets a
+ * document be one flat list.
  */
-export interface DefinitionQuestion {
+export type ItemType =
+  // a heading — carries text and nothing else
+  | 'SECTION'
+  // choice: the options carry the result
+  | 'YES_NO'
+  | 'YES_NO_NA'
+  | 'RADIO'
+  | 'CHECKBOX'
+  | 'DROPDOWN'
+  // input
+  | 'TEXT'
+  | 'INTEGER'
+  // media
+  | 'IMAGE'
+  | 'MULTI_IMAGE'
+  | 'AUDIO'
+  | 'VIDEO'
+  | 'DOCUMENT'
+
+/** Where a question came from. Null means MANUAL — the common case costs nothing. */
+export type ItemSource = 'MANUAL' | 'DOCUMENT' | 'TEMPLATE' | 'SUGGESTED'
+
+/**
+ * One answer a choice question offers.
+ *
+ * `result` is a result-type key — `PASS`, `FAIL`, or whatever else the
+ * organization has defined — not a literal, so an organization that adds Amber
+ * needs no migration. Null for an answer that decides nothing, such as "Not
+ * applicable".
+ *
+ * `key` is minted by the server and is what a follow-up's `when` points at, so
+ * an option keeps its meaning when the author rewords it. Omit it when adding
+ * an option; send it back unchanged when editing one.
+ */
+export interface DefinitionOption {
   key?: string
+  label: string
+  result?: string | null
+}
+
+/**
+ * One entry in the document: a section, a question, or a follow-up question.
+ *
+ * `key` is minted by the server on first save and never changes after that,
+ * which is what lets a diff say "q7 was reworded" instead of "one question
+ * vanished and another appeared". Omit it when adding an item; send it back
+ * unchanged when editing one.
+ *
+ * Most fields apply to some types and not others — `options` only to choice
+ * types, `unit`/`min`/`max` only to INTEGER, and a SECTION uses almost none of
+ * them. The shape does not express that; the server's validator enforces it.
+ */
+export interface DefinitionItem {
+  key?: string
+  /** A question, or a section's heading. */
   text: string
-  helpText?: string | null
-  type: QuestionType
+  /** Shown under the question while answering. */
+  help?: string | null
+  type: ItemType
+  /** Submit is blocked until this is answered. Never set on a section. */
   required: boolean
+  /** Choice types only; seeded for YES_NO and YES_NO_NA. */
+  options: DefinitionOption[]
+  /** INTEGER only — shown beside the field, e.g. "psi". */
+  unit?: string | null
+  /** INTEGER only. Inclusive. */
+  min?: number | null
+  max?: number | null
+  /** Raise a work order when this answer fails. */
+  workOrder: boolean
+  /** Which alert profile that work order uses. A reference to a later feature. */
+  alertProfile?: string | null
+  source?: ItemSource | null
+  /** The standard this came from, e.g. "NFPA 10". */
+  standard?: string | null
+  /**
+   * The parent option key that makes this item appear. Set on follow-ups and on
+   * nothing else — a top-level item is always shown.
+   */
+  when?: string | null
+  /** Questions shown only when this one is answered a particular way. Nests to any depth. */
+  follow: DefinitionItem[]
 }
 
-export interface DefinitionCategory {
-  key?: string
-  name: string
-  questions: DefinitionQuestion[]
-}
-
-/** The whole form. Array order is the display order — there is no order field. */
+/**
+ * The whole form, as one flat list.
+ *
+ * Array order is the display order — there is no order field, so two items
+ * cannot claim the same position.
+ */
 export interface DefinitionDocument {
   schema: number
-  categories: DefinitionCategory[]
+  items: DefinitionItem[]
 }
 
 export interface ProcedureTemplate {
@@ -234,34 +312,36 @@ export interface PublishResult {
 
 export type DiffKind = 'ADDED' | 'REMOVED' | 'MODIFIED'
 
-/** changedFields: 'name', 'questionOrder'. */
-export interface CategoryChange {
-  key: string
-  kind: DiffKind
-  name: string
-  changedFields: string[]
-}
-
-/** changedFields: 'text', 'helpText', 'type', 'required', 'category'. */
-export interface QuestionChange {
+/**
+ * One item that changed.
+ *
+ * `parentKey` is the section or question this one hangs under, or null at the
+ * top level — which is what makes "moved" meaningful: a question dragged into a
+ * different section comes back as MODIFIED with `parent` in `changedFields`.
+ *
+ * changedFields: 'text', 'help', 'type', 'required', 'options', 'unit', 'min',
+ * 'max', 'workOrder', 'alertProfile', 'standard', 'when', 'parent'.
+ */
+export interface ItemChange {
   key: string
   kind: DiffKind
   text: string
-  categoryKey: string
+  parentKey: string | null
   changedFields: string[]
 }
 
 /**
  * Matched on stable keys, so a reworded question is a modification rather than
- * a removal plus an addition. `categoryOrderChanged` and `questionOrder` only
- * fire on a genuine reshuffle — inserting at the top does not mark everything
- * below it as moved.
+ * a removal plus an addition. One list, not two: sections and questions live in
+ * one list in the document, so they do here too.
+ *
+ * `orderChanged` only fires on a genuine reshuffle — inserting one at the top
+ * does not mark everything below it as moved.
  */
 export interface DefinitionDiff {
   identical: boolean
-  categoryOrderChanged: boolean
-  categories: CategoryChange[]
-  questions: QuestionChange[]
+  orderChanged: boolean
+  items: ItemChange[]
 }
 
 export interface ProcedureDiff {

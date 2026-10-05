@@ -2,45 +2,43 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { createProcedure, getDraft, getProcedure, saveDraft, updateProcedure } from '../api/templates'
 import { ApiError } from '../api/client'
-import type { DefinitionDocument, QuestionType } from '../api/types'
+import type { DefinitionDocument, ItemType } from '../api/types'
 
-const QUESTION_TYPES: QuestionType[] = [
+const ITEM_TYPES: ItemType[] = [
+  'SECTION',
+  'YES_NO',
+  'YES_NO_NA',
+  'RADIO',
+  'CHECKBOX',
+  'DROPDOWN',
   'TEXT',
-  'NUMBER',
-  'BOOLEAN',
-  'SINGLE_CHOICE',
-  'MULTI_CHOICE',
-  'DATE',
-  'PHOTO',
-  'SIGNATURE',
+  'INTEGER',
+  'IMAGE',
+  'MULTI_IMAGE',
+  'AUDIO',
+  'VIDEO',
+  'DOCUMENT',
 ]
 
 /**
  * Editing state mirrors the document, with one addition: `key`.
  *
  * Keys are minted by the server and are what make a procedure's history
- * meaningful — a stored answer, a rule and a diff all refer to a question by
- * key. So an existing question carries its key through the edit and back,
- * unchanged, and a new one has none until the server assigns it. Dropping a key
- * on the way through would read as "that question was deleted and another one
- * appeared", silently orphaning everything pointing at it.
+ * meaningful — a stored answer, a rule and a diff all refer to an item by key.
+ * So an existing item carries its key through the edit and back, unchanged, and
+ * a new one has none until the server assigns it. Dropping a key on the way
+ * through would read as "that question was deleted and another one appeared",
+ * silently orphaning everything pointing at it.
  */
-interface QuestionDraft {
+interface ItemDraft {
   key?: string
   text: string
-  helpText: string
-  type: QuestionType
+  help: string
+  type: ItemType
   required: boolean
 }
 
-interface CategoryDraft {
-  key?: string
-  name: string
-  questions: QuestionDraft[]
-}
-
-const emptyQuestion = (): QuestionDraft => ({ text: '', helpText: '', type: 'TEXT', required: false })
-const emptyCategory = (): CategoryDraft => ({ name: '', questions: [emptyQuestion()] })
+const emptyItem = (): ItemDraft => ({ text: '', help: '', type: 'TEXT', required: false })
 
 /**
  * Authors the one editable thing a procedure has: its draft.
@@ -49,6 +47,10 @@ const emptyCategory = (): CategoryDraft => ({ name: '', questions: [emptyQuestio
  * Editing loads the open draft and replaces it wholesale, under an optimistic
  * lock — name and description are identity rather than version content, so they
  * go through a separate call and only when they actually changed.
+ *
+ * One flat list, which is what the document is: a section is an item that
+ * happens to be a heading, and the questions after it are its siblings.
+ * Answers and follow-ups are not editable here yet.
  */
 export function TemplateEditorPage() {
   const { id } = useParams<{ id: string }>()
@@ -57,9 +59,9 @@ export function TemplateEditorPage() {
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [categories, setCategories] = useState<CategoryDraft[]>([emptyCategory()])
+  const [items, setItems] = useState<ItemDraft[]>([emptyItem()])
   const [changeNote, setChangeNote] = useState('')
-  const [schema, setSchema] = useState(1)
+  const [schema, setSchema] = useState(2)
   const [rowVersion, setRowVersion] = useState<number | null>(null)
   /** Set separately from `error`: a conflict needs a reload, not a retry. */
   const [conflict, setConflict] = useState(false)
@@ -78,17 +80,13 @@ export function TemplateEditorPage() {
         setOriginal({ name: procedure.name, description: procedure.description ?? '' })
         setSchema(draft.definition.schema)
         setRowVersion(draft.rowVersion)
-        setCategories(
-          draft.definition.categories.map((c) => ({
-            key: c.key,
-            name: c.name,
-            questions: c.questions.map((q) => ({
-              key: q.key,
-              text: q.text,
-              helpText: q.helpText ?? '',
-              type: q.type,
-              required: q.required,
-            })),
+        setItems(
+          draft.definition.items.map((item) => ({
+            key: item.key,
+            text: item.text,
+            help: item.help ?? '',
+            type: item.type,
+            required: item.required,
           })),
         )
         setLoaded(true)
@@ -104,34 +102,24 @@ export function TemplateEditorPage() {
       )
   }, [id])
 
-  function patchCategory(ci: number, patch: Partial<CategoryDraft>) {
-    setCategories((prev) => prev.map((c, i) => (i === ci ? { ...c, ...patch } : c)))
-  }
-
-  function patchQuestion(ci: number, qi: number, patch: Partial<QuestionDraft>) {
-    setCategories((prev) =>
-      prev.map((c, i) =>
-        i === ci
-          ? { ...c, questions: c.questions.map((q, j) => (j === qi ? { ...q, ...patch } : q)) }
-          : c,
-      ),
-    )
+  function patchItem(index: number, patch: Partial<ItemDraft>) {
+    setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)))
   }
 
   /** Keys ride through untouched; a blank one is simply absent, so the server mints it. */
   function toDocument(): DefinitionDocument {
     return {
       schema,
-      categories: categories.map((c) => ({
-        key: c.key,
-        name: c.name.trim(),
-        questions: c.questions.map((q) => ({
-          key: q.key,
-          text: q.text.trim(),
-          helpText: q.helpText.trim() || undefined,
-          type: q.type,
-          required: q.required,
-        })),
+      items: items.map((item) => ({
+        key: item.key,
+        text: item.text.trim(),
+        help: item.help.trim() || undefined,
+        type: item.type,
+        // A section is never answered, so it is never required.
+        required: item.type === 'SECTION' ? false : item.required,
+        options: [],
+        workOrder: false,
+        follow: [],
       })),
     }
   }
@@ -237,112 +225,75 @@ export function TemplateEditorPage() {
         )}
       </div>
 
-      {categories.map((category, ci) => (
-        <div className="card" key={category.key ?? `new-${ci}`}>
-          <div className="section-head">
-            <label className="grow">
-              Category {ci + 1} *
-              <input
-                value={category.name}
-                onChange={(e) => patchCategory(ci, { name: e.target.value })}
-                required
-                maxLength={200}
-              />
-            </label>
-            {category.key && <span className="rt-key-inline">{category.key}</span>}
-            {categories.length > 1 && (
-              <button
-                type="button"
-                className="btn btn-danger"
-                onClick={() => setCategories((prev) => prev.filter((_, i) => i !== ci))}
-              >
-                Remove category
-              </button>
-            )}
-          </div>
-
-          {category.questions.map((q, qi) => (
-            <div className="question-editor" key={q.key ?? `new-${qi}`}>
-              <div className="form-grid">
-                <label className="grow">
-                  Question {qi + 1} *
-                  <input
-                    value={q.text}
-                    onChange={(e) => patchQuestion(ci, qi, { text: e.target.value })}
-                    required
-                    maxLength={1000}
-                  />
-                </label>
-                <label>
-                  Type
-                  <select
-                    value={q.type}
-                    onChange={(e) => patchQuestion(ci, qi, { type: e.target.value as QuestionType })}
-                  >
-                    {QUESTION_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <div className="form-grid">
-                <label className="grow">
-                  Help text
-                  <input
-                    value={q.helpText}
-                    onChange={(e) => patchQuestion(ci, qi, { helpText: e.target.value })}
-                    maxLength={1000}
-                  />
-                </label>
+      <div className="card">
+        {items.map((item, index) => (
+          <div className="question-editor" key={item.key ?? `new-${index}`}>
+            <div className="form-grid">
+              <label className="grow">
+                {item.type === 'SECTION' ? 'Section' : 'Question'} {index + 1} *
+                <input
+                  value={item.text}
+                  onChange={(e) => patchItem(index, { text: e.target.value })}
+                  required
+                  maxLength={1000}
+                />
+              </label>
+              <label>
+                Type
+                <select
+                  value={item.type}
+                  onChange={(e) => patchItem(index, { type: e.target.value as ItemType })}
+                >
+                  {ITEM_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="form-grid">
+              <label className="grow">
+                Help text
+                <input
+                  value={item.help}
+                  onChange={(e) => patchItem(index, { help: e.target.value })}
+                  maxLength={1000}
+                />
+              </label>
+              {item.type !== 'SECTION' && (
                 <label className="checkbox">
                   <input
                     type="checkbox"
-                    checked={q.required}
-                    onChange={(e) => patchQuestion(ci, qi, { required: e.target.checked })}
+                    checked={item.required}
+                    onChange={(e) => patchItem(index, { required: e.target.checked })}
                   />
                   Required
                 </label>
-              </div>
-              <div className="rt-actions">
-                {q.key && <span className="rt-key-inline">{q.key}</span>}
-                {category.questions.length > 1 && (
-                  <button
-                    type="button"
-                    className="btn btn-ghost small"
-                    onClick={() =>
-                      patchCategory(ci, { questions: category.questions.filter((_, j) => j !== qi) })
-                    }
-                  >
-                    Remove question
-                  </button>
-                )}
-              </div>
+              )}
             </div>
-          ))}
+            <div className="rt-actions">
+              {item.key && <span className="rt-key-inline">{item.key}</span>}
+              {items.length > 1 && (
+                <button
+                  type="button"
+                  className="btn btn-ghost small"
+                  onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))}
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
 
-          <button
-            type="button"
-            className="btn"
-            onClick={() => patchCategory(ci, { questions: [...category.questions, emptyQuestion()] })}
-          >
-            + Add question
-          </button>
-        </div>
-      ))}
-
-      <button
-        type="button"
-        className="btn"
-        onClick={() => setCategories((prev) => [...prev, emptyCategory()])}
-      >
-        + Add category
-      </button>
+        <button type="button" className="btn" onClick={() => setItems((prev) => [...prev, emptyItem()])}>
+          + Add item
+        </button>
+      </div>
 
       <p className="muted small">
-        Choice questions have no options yet — those arrive with the answer model, along with
-        sub-questions and scoring.
+        Answers, result mapping and follow-up questions are not editable here yet.
       </p>
     </form>
   )
