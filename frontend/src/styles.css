@@ -1441,3 +1441,30 @@ tr[draggable='true'] {
   border-top: none;
   padding-bottom: 0;
 }
+
+.answers {
+  margin: 10px 0;
+}
+
+.answer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.answer-row input[type='text'],
+.answer-row input:not([type]) {
+  flex: 1;
+  min-width: 0;
+}
+
+.answer-row input[readonly] {
+  background: #f9fafb;
+  color: #6b7280;
+}
+
+/* A mapping the organization no longer has: shown, not cleared. */
+.field-stale {
+  border-color: #d97706;
+}

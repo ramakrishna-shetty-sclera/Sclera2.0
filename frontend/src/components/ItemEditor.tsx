@@ -1,6 +1,6 @@
-import { ITEM_TYPES, isChoice, typeLabel } from '../api/document'
-import type { ItemType } from '../api/types'
-import { triggerOptions, type ItemDraft } from './itemTree'
+import { ITEM_TYPES, hasFixedOptions, isChoice, typeLabel } from '../api/document'
+import type { ItemType, ResultType } from '../api/types'
+import { triggerOptions, type ItemDraft, type OptionDraft } from './itemTree'
 
 export interface ItemEditorProps {
   item: ItemDraft
@@ -8,11 +8,55 @@ export interface ItemEditorProps {
   parent: ItemDraft | null
   index: number
   siblings: number
+  /** The organization's active result types, most severe first. */
+  resultTypes: ResultType[]
   onPatch: (uid: string, patch: Partial<ItemDraft>) => void
   onRetype: (uid: string, type: ItemType) => void
   onRemove: (uid: string) => void
   onMove: (uid: string, delta: number) => void
   onAddFollow: (uid: string) => void
+  onAddOption: (uid: string) => void
+  onPatchOption: (uid: string, option: string, patch: Partial<OptionDraft>) => void
+  onRemoveOption: (uid: string, option: string) => void
+}
+
+/**
+ * What an answer means, picked from the organization's own result types.
+ *
+ * A mapping the organization no longer has is kept and marked rather than
+ * silently dropped: it is a real publish blocker, and clearing it here would
+ * hide the problem instead of showing it.
+ */
+function ResultPicker({
+  option,
+  resultTypes,
+  onChange,
+}: {
+  option: OptionDraft
+  resultTypes: ResultType[]
+  onChange: (result: string) => void
+}) {
+  const stale = option.result !== '' && !resultTypes.some((r) => r.key === option.result)
+  const swatch = resultTypes.find((r) => r.key === option.result)?.color
+
+  return (
+    <>
+      {swatch && <span className="rt-swatch" style={{ background: swatch }} />}
+      <select
+        className={stale ? 'field-stale' : undefined}
+        value={option.result}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">— decides nothing —</option>
+        {resultTypes.map((r) => (
+          <option key={r.id} value={r.key}>
+            {r.name}
+          </option>
+        ))}
+        {stale && <option value={option.result}>{option.result} — not an active result type</option>}
+      </select>
+    </>
+  )
 }
 
 /**
@@ -23,8 +67,25 @@ export interface ItemEditorProps {
  * names the answer that shows it.
  */
 export function ItemEditor(props: ItemEditorProps) {
-  const { item, parent, index, siblings, onPatch, onRetype, onRemove, onMove, onAddFollow } = props
+  const {
+    item,
+    parent,
+    index,
+    siblings,
+    resultTypes,
+    onPatch,
+    onRetype,
+    onRemove,
+    onMove,
+    onAddFollow,
+    onAddOption,
+    onPatchOption,
+    onRemoveOption,
+  } = props
+
   const section = item.type === 'SECTION'
+  const choice = isChoice(item.type)
+  const fixed = hasFixedOptions(item.type)
   const triggers = triggerOptions(item)
   // A follow-up cannot be a heading: a section is never answered, so it can
   // never be conditional on an answer.
@@ -91,15 +152,100 @@ export function ItemEditor(props: ItemEditorProps) {
         )}
       </div>
 
-      {item.options.length > 0 && (
-        <ul className="doc-options">
+      {choice && (
+        <div className="answers">
+          <div className="field-label">Answers</div>
           {item.options.map((option) => (
-            <li key={option.uid}>
-              {option.label}
-              {option.key && <span className="rt-key-inline"> {option.key}</span>}
-            </li>
+            <div className="answer-row" key={option.uid}>
+              <input
+                value={option.label}
+                onChange={(e) => onPatchOption(item.uid, option.uid, { label: e.target.value })}
+                maxLength={200}
+                placeholder="Yes"
+                readOnly={fixed}
+                title={fixed ? `${typeLabel(item.type)} comes with its answers` : undefined}
+              />
+              <ResultPicker
+                option={option}
+                resultTypes={resultTypes}
+                onChange={(result) => onPatchOption(item.uid, option.uid, { result })}
+              />
+              {option.key && <span className="rt-key-inline">{option.key}</span>}
+              {!fixed && (
+                <button
+                  type="button"
+                  className="btn btn-ghost small"
+                  onClick={() => onRemoveOption(item.uid, option.uid)}
+                >
+                  Remove
+                </button>
+              )}
+            </div>
           ))}
-        </ul>
+          {!fixed && (
+            <button
+              type="button"
+              className="btn btn-ghost small"
+              onClick={() => onAddOption(item.uid)}
+            >
+              + Add answer
+            </button>
+          )}
+        </div>
+      )}
+
+      {item.type === 'INTEGER' && (
+        <div className="form-grid">
+          <label>
+            Unit
+            <input
+              value={item.unit}
+              onChange={(e) => onPatch(item.uid, { unit: e.target.value })}
+              maxLength={20}
+              placeholder="psi"
+            />
+          </label>
+          <label>
+            Minimum
+            <input
+              type="number"
+              value={item.min}
+              onChange={(e) => onPatch(item.uid, { min: e.target.value })}
+            />
+          </label>
+          <label>
+            Maximum
+            <input
+              type="number"
+              value={item.max}
+              onChange={(e) => onPatch(item.uid, { max: e.target.value })}
+            />
+          </label>
+        </div>
+      )}
+
+      {choice && (
+        <div className="form-grid">
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={item.workOrder}
+              onChange={(e) => onPatch(item.uid, { workOrder: e.target.checked })}
+            />
+            Raise a work order when this fails
+          </label>
+          {item.workOrder && (
+            <label className="grow">
+              Alert profile
+              <input
+                value={item.alertProfile}
+                onChange={(e) => onPatch(item.uid, { alertProfile: e.target.value })}
+                maxLength={50}
+                placeholder="Who is told, and how fast"
+              />
+            </label>
+          )}
+        </div>
       )}
 
       <div className="rt-actions">
@@ -122,7 +268,7 @@ export function ItemEditor(props: ItemEditorProps) {
         >
           ▼
         </button>
-        {isChoice(item.type) && (
+        {choice && (
           <button
             type="button"
             className="btn btn-ghost small"
@@ -137,10 +283,17 @@ export function ItemEditor(props: ItemEditorProps) {
         </button>
       </div>
 
-      {isChoice(item.type) && triggers.length === 0 && (
+      {choice && triggers.length === 0 && (
         <p className="field-hint">
           Save the draft before adding a follow-up. A follow-up points at an answer by the key the
           server mints, and these answers have none yet.
+        </p>
+      )}
+
+      {item.workOrder && (
+        <p className="field-hint">
+          Work orders are raised during an inspection and carried out elsewhere. The alert profile is
+          recorded, not resolved — profiles are a later feature.
         </p>
       )}
 

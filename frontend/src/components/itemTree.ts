@@ -124,11 +124,17 @@ function toItem(draft: ItemDraft): DefinitionItem {
     help: draft.help.trim() || undefined,
     type: draft.type,
     required: draft.type === 'SECTION' ? false : draft.required,
-    options: draft.options.map((o) => ({
-      key: o.key,
-      label: o.label.trim(),
-      result: o.result || undefined,
-    })),
+    // An answer row that was added and never filled in carries nothing, so it
+    // is dropped rather than refused. A *keyed* one with a blank label is a
+    // real mistake — something may already point at it — so it goes to the
+    // server and is refused there.
+    options: draft.options
+      .filter((o) => o.key || o.label.trim() !== '')
+      .map((o) => ({
+        key: o.key,
+        label: o.label.trim(),
+        result: o.result || undefined,
+      })),
     unit: draft.unit.trim() || undefined,
     min: number(draft.min),
     max: number(draft.max),
@@ -196,6 +202,53 @@ export function addFollowIn(
   child: ItemDraft,
 ): ItemDraft[] {
   return replaceIn(items, parent, (item) => ({ ...item, follow: [...item.follow, child] }))
+}
+
+// --- answers --------------------------------------------------------------
+
+export function addOptionIn(items: ItemDraft[], target: string): ItemDraft[] {
+  return replaceIn(items, target, (item) => ({ ...item, options: [...item.options, newOption()] }))
+}
+
+export function patchOptionIn(
+  items: ItemDraft[],
+  target: string,
+  option: string,
+  patch: Partial<OptionDraft>,
+): ItemDraft[] {
+  return replaceIn(items, target, (item) => ({
+    ...item,
+    options: item.options.map((o) => (o.uid === option ? { ...o, ...patch } : o)),
+  }))
+}
+
+export function removeOptionIn(
+  items: ItemDraft[],
+  target: string,
+  option: string,
+): ItemDraft[] {
+  return replaceIn(items, target, (item) => ({
+    ...item,
+    options: item.options.filter((o) => o.uid !== option),
+  }))
+}
+
+/**
+ * Why an answer cannot be removed, or null if it can.
+ *
+ * A follow-up names the answer that shows it, so removing that answer would
+ * leave the follow-up pointing at nothing. Saying so beats quietly deleting the
+ * follow-up with it.
+ */
+export function optionRemovalBlockedBy(item: ItemDraft, option: string): string | null {
+  const key = item.options.find((o) => o.uid === option)?.key
+  if (!key) return null
+  const dependent = item.follow.filter((f) => f.when === key)
+  if (dependent.length === 0) return null
+  const named = dependent[0].text.trim() || 'an untitled follow-up'
+  return dependent.length === 1
+    ? `“${named}” is shown by this answer. Remove or repoint it first.`
+    : `${dependent.length} follow-ups are shown by this answer. Remove or repoint them first.`
 }
 
 // --- the rules a type change implies --------------------------------------

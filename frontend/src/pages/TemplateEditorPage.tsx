@@ -2,22 +2,28 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { createProcedure, getDraft, getProcedure, saveDraft, updateProcedure } from '../api/templates'
 import { ApiError } from '../api/client'
-import type { ItemType } from '../api/types'
+import type { ItemType, ResultType } from '../api/types'
+import { listResultTypes } from '../api/resultTypes'
 import { ItemEditor } from '../components/ItemEditor'
 import {
   addFollowIn,
+  addOptionIn,
   findIn,
   fromDocument,
   moveIn,
   newItem,
+  optionRemovalBlockedBy,
   patchIn,
+  patchOptionIn,
   removeIn,
+  removeOptionIn,
   replaceIn,
   retype,
   retypeBlockedBy,
   toDocument,
   triggerOptions,
   type ItemDraft,
+  type OptionDraft,
 } from '../components/itemTree'
 
 /**
@@ -52,6 +58,18 @@ export function TemplateEditorPage() {
   const [loaded, setLoaded] = useState(!editing)
   /** What identity looked like when loaded, so an unchanged name costs no write. */
   const [original, setOriginal] = useState({ name: '', description: '' })
+  /**
+   * The organization's vocabulary for what an answer means. Only the active
+   * ones are offered; a mapping to a deactivated one is kept and marked, since
+   * that is a publish blocker the author needs to see rather than lose.
+   */
+  const [resultTypes, setResultTypes] = useState<ResultType[]>([])
+
+  useEffect(() => {
+    listResultTypes(true)
+      .then(setResultTypes)
+      .catch(() => setResultTypes([]))
+  }, [])
 
   useEffect(() => {
     if (!id) return
@@ -115,6 +133,25 @@ export function TemplateEditorPage() {
     const when = first?.key
     if (!when) return
     setItems((prev) => addFollowIn(prev, uid, { ...newItem(), when }))
+  }
+
+  function onAddOption(uid: string) {
+    setRefused(null)
+    setItems((prev) => addOptionIn(prev, uid))
+  }
+
+  function onPatchOption(uid: string, option: string, patch: Partial<OptionDraft>) {
+    setItems((prev) => patchOptionIn(prev, uid, option, patch))
+  }
+
+  /** Refused rather than applied, for the same reason a type change is. */
+  function onRemoveOption(uid: string, option: string) {
+    const item = findIn(items, uid)
+    if (!item) return
+    const blocked = optionRemovalBlockedBy(item, option)
+    setRefused(blocked)
+    if (blocked) return
+    setItems((prev) => removeOptionIn(prev, uid, option))
   }
 
   async function onSubmit(e: FormEvent) {
@@ -230,11 +267,15 @@ export function TemplateEditorPage() {
             parent={null}
             index={index}
             siblings={items.length}
+            resultTypes={resultTypes}
             onPatch={onPatch}
             onRetype={onRetype}
             onRemove={onRemove}
             onMove={onMove}
             onAddFollow={onAddFollow}
+            onAddOption={onAddOption}
+            onPatchOption={onPatchOption}
+            onRemoveOption={onRemoveOption}
           />
         ))}
 
@@ -252,9 +293,12 @@ export function TemplateEditorPage() {
         </div>
       </div>
 
-      <p className="muted small">
-        Answers and result mapping are not editable here yet — Yes/No questions come with theirs.
-      </p>
+      {resultTypes.length === 0 && (
+        <p className="field-hint">
+          No active result types, so no answer can be given a meaning. Add them under Settings →
+          Result types.
+        </p>
+      )}
     </form>
   )
 }
