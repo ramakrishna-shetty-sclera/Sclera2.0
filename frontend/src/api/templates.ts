@@ -108,6 +108,6 @@ export function diffVersions(id: string, from: number, to: number): Promise<Proc
  */
 export function listPublishedProcedures(): Promise<ProcedureTemplate[]> {
   return listProcedures({ status: 'ACTIVE', size: 100 }).then((r) =>
-    r.data.filter((p) => p.currentPublishedVersionNo !== null),
+    r.data.filter((p) => p.currentPublishedVersionNo != null),
   )
 }

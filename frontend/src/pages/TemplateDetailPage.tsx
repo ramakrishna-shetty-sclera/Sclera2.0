@@ -53,9 +53,9 @@ export function TemplateDetailPage() {
     const p = await getProcedure(id)
     setProcedure(p)
     setVersions(await listVersions(id))
-    if (p.draftVersionNo !== null) {
+    if (p.draftVersionNo != null) {
       setVersion(await getDraft(id))
-    } else if (p.currentPublishedVersionNo !== null) {
+    } else if (p.currentPublishedVersionNo != null) {
       setVersion(await getVersion(id, p.currentPublishedVersionNo))
     } else {
       setVersion(null)
@@ -146,7 +146,7 @@ export function TemplateDetailPage() {
     return error ? <div className="alert alert-error">{error}</div> : <p className="muted">Loading…</p>
   }
 
-  const hasDraft = procedure.draftVersionNo !== null
+  const hasDraft = procedure.draftVersionNo != null
   const published = procedure.currentPublishedVersionNo
   const archived = procedure.status === 'ARCHIVED'
 
@@ -157,7 +157,7 @@ export function TemplateDetailPage() {
           <h1>{procedure.name}</h1>
           <p className="muted">
             <StatusBadge status={procedure.status} />
-            {published === null ? ' · never published' : ` · published v${published}`}
+            {published == null ? ' · never published' : ` · published v${published}`}
             {hasDraft && (
               <>
                 {' · '}
@@ -188,7 +188,7 @@ export function TemplateDetailPage() {
               </button>
             </>
           )}
-          {!archived && !hasDraft && published !== null && (
+          {!archived && !hasDraft && published != null && (
             <button
               className="btn btn-primary"
               disabled={busy}
@@ -197,7 +197,7 @@ export function TemplateDetailPage() {
               Start a draft from v{published}
             </button>
           )}
-          {published !== null && (
+          {published != null && (
             <button className="btn" disabled={busy} onClick={startInspection}>
               New inspection
             </button>

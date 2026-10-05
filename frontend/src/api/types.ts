@@ -261,18 +261,26 @@ export interface DefinitionDocument {
   items: DefinitionItem[]
 }
 
+/**
+ * **Every optional field below arrives absent, not null.**
+ *
+ * The services set `default-property-inclusion: non_null`, so Jackson omits a
+ * null field rather than sending `"field": null`. A field typed `number | null`
+ * therefore reads as `undefined`, and `=== null` never matches it. Compare
+ * these with `== null` / `!= null`, which catch both.
+ */
 export interface ProcedureTemplate {
   id: string
   orgId: string
   name: string
-  description: string | null
-  consumerKey: string | null
+  description?: string | null
+  consumerKey?: string | null
   status: ProcedureStatus
-  /** Null until something is published — which is how you tell a procedure is usable. */
-  currentPublishedVersionId: string | null
-  currentPublishedVersionNo: number | null
-  /** Null when no draft is open. */
-  draftVersionNo: number | null
+  /** Absent until something is published — which is how you tell a procedure is usable. */
+  currentPublishedVersionId?: string | null
+  currentPublishedVersionNo?: number | null
+  /** Absent when no draft is open. */
+  draftVersionNo?: number | null
   createdBy: string
   createdAt: string
   updatedAt: string
@@ -284,13 +292,13 @@ export interface TemplateVersionSummary {
   versionNo: number
   state: VersionState
   origin: VersionOrigin
-  /** SHA-256 of the canonical document. Null on a draft: only publishing sets it. */
-  definitionHash: string | null
-  changeNote: string | null
+  /** SHA-256 of the canonical document. Absent on a draft: only publishing sets it. */
+  definitionHash?: string | null
+  changeNote?: string | null
   createdBy: string
   createdAt: string
-  publishedBy: string | null
-  publishedAt: string | null
+  publishedBy?: string | null
+  publishedAt?: string | null
   /** Optimistic lock. Send the value you last read back on save, or you get a 409. */
   rowVersion: number
 }

@@ -56,3 +56,49 @@ export function typeLabel(type: string): string {
   const words = type.toLowerCase().split('_').join(' ')
   return words.charAt(0).toUpperCase() + words.slice(1)
 }
+
+/** Anything shaped like a document item — the stored one or the editor's draft. */
+interface Numberable<T> {
+  type: ItemType
+  follow: T[]
+}
+
+/**
+ * What each item is called on screen: '1', '2', '2.1', '2.1.1'.
+ *
+ * Three rules, all of them the prototype's, and each one easy to get wrong:
+ *
+ * - **A section has no number at all.** It is a heading with a title, not
+ *   "Section 1", and it does not advance the count — so a section above a
+ *   question does not push that question to 2.
+ * - **The count runs across the whole level, not per section.** A second
+ *   section's first question is 3, not 1. Sections group questions for
+ *   reading; they do not restart them.
+ * - **A follow-up is dotted** — question 2's first follow-up is 2.1, and its
+ *   own follow-up is 2.1.1 — with the count restarting inside each parent.
+ *
+ * Keyed by the item object itself, so the editor and the detail screen can
+ * share one answer without either of them needing a key or an index. Sections
+ * are absent from the map rather than mapped to '': a caller asking for one
+ * gets undefined, which is harder to render by accident.
+ */
+export function numberItems<T extends Numberable<T>>(items: T[]): Map<T, string> {
+  const numbers = new Map<T, string>()
+
+  const walk = (list: T[], prefix: string) => {
+    let n = 0
+    for (const item of list) {
+      // A section carries no number and does not advance the count. It also
+      // cannot hold follow-ups — the validator refuses them — so there is
+      // nothing below it to walk into.
+      if (item.type === 'SECTION') continue
+      n += 1
+      const number = prefix ? `${prefix}.${n}` : String(n)
+      numbers.set(item, number)
+      walk(item.follow, number)
+    }
+  }
+
+  walk(items, '')
+  return numbers
+}

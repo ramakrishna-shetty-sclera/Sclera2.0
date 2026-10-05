@@ -94,14 +94,14 @@ export function TemplatesPage() {
                   <StatusBadge status={p.status} />
                 </td>
                 <td>
-                  {p.currentPublishedVersionNo === null ? (
+                  {p.currentPublishedVersionNo == null ? (
                     <span className="muted">Not published</span>
                   ) : (
                     <>v{p.currentPublishedVersionNo}</>
                   )}
                 </td>
                 <td>
-                  {p.draftVersionNo === null ? (
+                  {p.draftVersionNo == null ? (
                     <span className="muted">—</span>
                   ) : (
                     <span className="badge badge-amber">v{p.draftVersionNo} open</span>

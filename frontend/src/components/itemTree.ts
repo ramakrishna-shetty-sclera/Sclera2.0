@@ -187,6 +187,34 @@ export function moveIn(items: ItemDraft[], target: string, delta: number): ItemD
   return next
 }
 
+/**
+ * Where an item sits, as the indices to walk to reach it.
+ *
+ * A uid is this browser's and the server has never heard of it, so after a save
+ * the reloaded tree has entirely new uids. Position is the one address both
+ * sides agree on: `toDocument` preserves order and so does the server, so the
+ * item at [1, 0] before a save is the item at [1, 0] after it.
+ */
+export function pathTo(items: ItemDraft[], target: string): number[] | null {
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].uid === target) return [i]
+    const below = pathTo(items[i].follow, target)
+    if (below) return [i, ...below]
+  }
+  return null
+}
+
+export function atPath(items: ItemDraft[], path: number[]): ItemDraft | null {
+  let list = items
+  let found: ItemDraft | null = null
+  for (const index of path) {
+    found = list[index] ?? null
+    if (!found) return null
+    list = found.follow
+  }
+  return found
+}
+
 export function findIn(items: ItemDraft[], target: string): ItemDraft | null {
   for (const item of items) {
     if (item.uid === target) return item

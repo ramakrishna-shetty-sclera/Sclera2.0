@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { createProcedure, getDraft, getProcedure, saveDraft, updateProcedure } from '../api/templates'
 import { ApiError } from '../api/client'
+import { numberItems } from '../api/document'
 import type { ItemType, ResultType } from '../api/types'
 import { listResultTypes } from '../api/resultTypes'
 import { ItemEditor } from '../components/ItemEditor'
@@ -9,6 +10,7 @@ import { Refusal } from '../components/Refusal'
 import {
   addFollowIn,
   addOptionIn,
+  atPath,
   findIn,
   fromDocument,
   moveIn,
@@ -16,6 +18,7 @@ import {
   optionRemovalBlockedBy,
   patchIn,
   patchOptionIn,
+  pathTo,
   removeIn,
   removeOptionIn,
   replaceIn,
@@ -26,6 +29,32 @@ import {
   type ItemDraft,
   type OptionDraft,
 } from '../components/itemTree'
+
+/**
+ * Carried through the navigation that creating a procedure forces.
+ *
+ * Clicking "+ Follow-up" on an unsaved procedure has to create it first, which
+ * changes the route — so the position of the question being followed up rides
+ * along and the follow-up is added once the saved draft has loaded.
+ */
+interface PendingFollow {
+  addFollowAt?: number[]
+}
+
+/**
+ * Hangs a new follow-up off the question at `path`, pointed at its first
+ * answer — the usual intent, and changeable from the dropdown.
+ *
+ * Returns the tree unchanged if that question has gone or still has no keyed
+ * answer. Losing the click is better than guessing at a different question:
+ * the author's own edits are all still there, and clicking again costs nothing.
+ */
+function withFollowAt(items: ItemDraft[], path: number[]): ItemDraft[] {
+  const target = atPath(items, path)
+  const when = target ? triggerOptions(target)[0]?.key : undefined
+  if (!target || !when) return items
+  return addFollowIn(items, target.uid, { ...newItem(), when })
+}
 
 /**
  * Authors the one editable thing a procedure has: its draft.
@@ -42,6 +71,7 @@ import {
 export function TemplateEditorPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const editing = Boolean(id)
 
   const [name, setName] = useState('')
@@ -67,6 +97,8 @@ export function TemplateEditorPage() {
    * that is a publish blocker the author needs to see rather than lose.
    */
   const [resultTypes, setResultTypes] = useState<ResultType[]>([])
+  /** The uid whose "+ Follow-up" click is currently saving, so its button can say so. */
+  const [savingFor, setSavingFor] = useState<string | null>(null)
 
   useEffect(() => {
     listResultTypes(true)
@@ -76,6 +108,7 @@ export function TemplateEditorPage() {
 
   useEffect(() => {
     if (!id) return
+    const pending = (location.state as PendingFollow | null)?.addFollowAt
     Promise.all([getProcedure(id), getDraft(id)])
       .then(([procedure, draft]) => {
         setName(procedure.name)
@@ -83,8 +116,17 @@ export function TemplateEditorPage() {
         setOriginal({ name: procedure.name, description: procedure.description ?? '' })
         setSchema(draft.definition.schema)
         setRowVersion(draft.rowVersion)
-        const loadedItems = fromDocument(draft.definition)
-        setItems(loadedItems.length > 0 ? loadedItems : [newItem()])
+        let loadedItems = fromDocument(draft.definition)
+        if (loadedItems.length === 0) loadedItems = [newItem()]
+        // Finishes a "+ Follow-up" that had to create the procedure first. The
+        // answers now carry the keys the server minted, so the follow-up has
+        // something to point at.
+        if (pending) {
+          loadedItems = withFollowAt(loadedItems, pending)
+          // Clear it, or a reload adds a second one.
+          navigate(location.pathname, { replace: true, state: null })
+        }
+        setItems(loadedItems)
         setLoaded(true)
       })
       .catch((e) =>
@@ -128,14 +170,64 @@ export function TemplateEditorPage() {
     setItems((prev) => moveIn(prev, uid, delta))
   }
 
-  /** A follow-up is born pointing at the parent's first answer, which is the usual intent. */
-  function onAddFollow(uid: string) {
+  /**
+   * Adds a follow-up, saving the draft first when it has to.
+   *
+   * A follow-up names the answer that shows it by key, and KeyMinter assigns
+   * option keys on save and refuses any key the template never issued — so an
+   * answer typed a moment ago has nothing a follow-up can point at. Rather than
+   * leave the button dead and make the author work that out, this does the save
+   * and carries on.
+   *
+   * The round trip loses the uids, so the question is found again by position:
+   * `toDocument` preserves order and so does the server.
+   */
+  async function onAddFollow(uid: string) {
     setRefused(null)
     const parent = findIn(items, uid)
-    const first = parent ? triggerOptions(parent)[0] : undefined
-    const when = first?.key
-    if (!when) return
-    setItems((prev) => addFollowIn(prev, uid, { ...newItem(), when }))
+    if (!parent) return
+
+    const when = triggerOptions(parent)[0]?.key
+    if (when) {
+      setItems((prev) => addFollowIn(prev, uid, { ...newItem(), when }))
+      return
+    }
+
+    const path = pathTo(items, uid)
+    if (!path) return
+
+    setSavingFor(uid)
+    setRefusal(null)
+    try {
+      if (!editing) {
+        // Nothing exists server-side yet, so this click is the first save. The
+        // route changes with it, and the position rides along.
+        const created = await createProcedure({
+          name: name.trim(),
+          description: description.trim() || undefined,
+          definition: toDocument(schema, items),
+        })
+        navigate(`/templates/${created.id}/edit`, { state: { addFollowAt: path } })
+        return
+      }
+
+      const saved = await saveDraft(id!, {
+        definition: toDocument(schema, items),
+        rowVersion: rowVersion!,
+        changeNote: changeNote.trim() || undefined,
+      })
+      setRowVersion(saved.rowVersion)
+      setItems(withFollowAt(fromDocument(saved.definition), path))
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        setConflict(true)
+        setError('Someone else saved this draft while you were editing it.')
+      } else {
+        setRefusal(e instanceof Error ? e : new Error('Could not save'))
+      }
+    } finally {
+      setSavingFor(null)
+    }
   }
 
   function onAddOption(uid: string) {
@@ -197,6 +289,10 @@ export function TemplateEditorPage() {
       setBusy(false)
     }
   }
+
+  // One answer for the whole tree, so a section never pushes the count along
+  // and a follow-up reads as 2.1 rather than as another question 1.
+  const numbers = numberItems(items)
 
   if (!loaded) {
     return error ? <div className="alert alert-error">{error}</div> : <p className="muted">Loading…</p>
@@ -272,7 +368,9 @@ export function TemplateEditorPage() {
             parent={null}
             index={index}
             siblings={items.length}
+            numbers={numbers}
             resultTypes={resultTypes}
+            savingFor={savingFor}
             onPatch={onPatch}
             onRetype={onRetype}
             onRemove={onRemove}

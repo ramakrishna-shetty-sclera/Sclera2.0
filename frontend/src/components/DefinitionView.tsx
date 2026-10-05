@@ -1,4 +1,4 @@
-import { typeLabel } from '../api/document'
+import { numberItems, typeLabel } from '../api/document'
 import type { DefinitionDocument, DefinitionItem, DefinitionOption } from '../api/types'
 
 /** What a follow-up hangs off, named by the answer rather than by its key. */
@@ -26,16 +26,20 @@ function bounds(item: DefinitionItem): string | null {
 function QuestionView({
   item,
   parentOptions,
+  numbers,
 }: {
   item: DefinitionItem
   parentOptions: DefinitionOption[]
+  numbers: Map<DefinitionItem, string>
 }) {
   const when = trigger(item.when, parentOptions)
   const range = bounds(item)
+  const number = numbers.get(item)
 
   return (
     <li className="doc-item">
       <div className="q-text">
+        {number && <span className="doc-number">{number}</span>}
         {item.text} {item.required && <span className="req">*</span>}
         {item.key && <span className="rt-key-inline"> {item.key}</span>}
       </div>
@@ -68,7 +72,12 @@ function QuestionView({
       {item.follow.length > 0 && (
         <ul className="doc-follow">
           {item.follow.map((child, index) => (
-            <QuestionView key={child.key ?? `f${index}`} item={child} parentOptions={item.options} />
+            <QuestionView
+              key={child.key ?? `f${index}`}
+              item={child}
+              parentOptions={item.options}
+              numbers={numbers}
+            />
           ))}
         </ul>
       )}
@@ -111,6 +120,10 @@ function group(items: DefinitionItem[]): Group[] {
  * you may do to them, not what they look like.
  */
 export function DefinitionView({ definition }: { definition: DefinitionDocument }) {
+  // Numbered from the document, not from the groups: the count runs across the
+  // whole procedure, so a second section's first question is 3, not 1.
+  const numbers = numberItems(definition.items)
+
   if (definition.items.length === 0) {
     return <p className="muted">Nothing in this procedure yet.</p>
   }
@@ -131,7 +144,12 @@ export function DefinitionView({ definition }: { definition: DefinitionDocument 
           ) : (
             <ul className="doc-list">
               {g.questions.map((item, qIndex) => (
-                <QuestionView key={item.key ?? `q${qIndex}`} item={item} parentOptions={[]} />
+                <QuestionView
+                  key={item.key ?? `q${qIndex}`}
+                  item={item}
+                  parentOptions={[]}
+                  numbers={numbers}
+                />
               ))}
             </ul>
           )}

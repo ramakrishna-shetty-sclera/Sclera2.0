@@ -9,8 +9,12 @@ import { DiffView } from './DiffView'
  *
  * The history is the point of the whole model: published versions are frozen,
  * so this list is a permanent record rather than an audit trail that can drift
- * from what was actually filled in. The hash is shown short because its job
- * here is recognition — two versions with the same hash are the same form.
+ * from what was actually filled in.
+ *
+ * `definitionHash` is deliberately not shown. It is what makes a version
+ * content-addressed, and it is why republishing an unchanged draft is a no-op —
+ * but that is the model working, not something an author acts on, and a row of
+ * truncated hex reads as noise on an authoring screen.
  */
 export function VersionHistory({
   procedureId,
@@ -54,7 +58,6 @@ export function VersionHistory({
             <th>State</th>
             <th>Note</th>
             <th>Published</th>
-            <th>Hash</th>
           </tr>
         </thead>
         <tbody>
@@ -72,7 +75,6 @@ export function VersionHistory({
               <td className="muted">
                 {v.publishedAt ? new Date(v.publishedAt).toLocaleString() : '—'}
               </td>
-              <td className="rt-key">{v.definitionHash ? v.definitionHash.slice(0, 12) : '—'}</td>
             </tr>
           ))}
         </tbody>

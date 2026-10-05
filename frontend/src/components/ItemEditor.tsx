@@ -8,8 +8,12 @@ export interface ItemEditorProps {
   parent: ItemDraft | null
   index: number
   siblings: number
+  /** '1', '2.1', … per item. Sections are absent: a heading carries no number. */
+  numbers: Map<ItemDraft, string>
   /** The organization's active result types, most severe first. */
   resultTypes: ResultType[]
+  /** True while a click is saving the draft to mint answer keys. */
+  savingFor: string | null
   onPatch: (uid: string, patch: Partial<ItemDraft>) => void
   onRetype: (uid: string, type: ItemType) => void
   onRemove: (uid: string) => void
@@ -72,7 +76,9 @@ export function ItemEditor(props: ItemEditorProps) {
     parent,
     index,
     siblings,
+    numbers,
     resultTypes,
+    savingFor,
     onPatch,
     onRetype,
     onRemove,
@@ -91,11 +97,18 @@ export function ItemEditor(props: ItemEditorProps) {
   // never be conditional on an answer.
   const types = parent ? ITEM_TYPES.filter((t) => t !== 'SECTION') : ITEM_TYPES
 
+  // A section is a heading and carries no number; everything else is numbered
+  // by the document, not by its position in this list.
+  const label = section ? 'Section' : parent ? 'Follow-up' : 'Question'
+  const number = numbers.get(item)
+  const saving = savingFor === item.uid
+
   return (
     <div className={`question-editor${section ? ' item-section' : ''}`}>
       <div className="form-grid">
         <label className="grow">
-          {section ? 'Section' : 'Question'} {index + 1} *
+          {label}
+          {number && ` ${number}`} *
           <input
             value={item.text}
             onChange={(e) => onPatch(item.uid, { text: e.target.value })}
@@ -273,9 +286,9 @@ export function ItemEditor(props: ItemEditorProps) {
             type="button"
             className="btn btn-ghost small"
             onClick={() => onAddFollow(item.uid)}
-            disabled={triggers.length === 0}
+            disabled={saving}
           >
-            + Follow-up
+            {saving ? 'Saving…' : '+ Follow-up'}
           </button>
         )}
         <button type="button" className="btn btn-ghost small" onClick={() => onRemove(item.uid)}>
@@ -285,8 +298,8 @@ export function ItemEditor(props: ItemEditorProps) {
 
       {choice && triggers.length === 0 && (
         <p className="field-hint">
-          Save the draft before adding a follow-up. A follow-up points at an answer by the key the
-          server mints, and these answers have none yet.
+          A follow-up points at an answer by the key the server mints, and these answers have none
+          yet — so adding one saves the draft first.
         </p>
       )}
 

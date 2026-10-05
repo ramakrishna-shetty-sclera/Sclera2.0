@@ -1488,3 +1488,12 @@ tr[draggable='true'] {
 .refusal-list li {
   margin-bottom: 3px;
 }
+
+/* The question's number: 1, 2, 2.1. A section has none — it is a heading. */
+.doc-number {
+  display: inline-block;
+  min-width: 2.2em;
+  margin-right: 6px;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
