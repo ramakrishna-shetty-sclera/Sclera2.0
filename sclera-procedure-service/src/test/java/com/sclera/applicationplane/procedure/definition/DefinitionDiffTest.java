@@ -15,17 +15,17 @@ import static org.assertj.core.api.Assertions.tuple;
 class DefinitionDiffTest {
 
     private static Item q(String key, String text) {
-        return new Item(key, text, null, QuestionType.TEXT, false, List.of(), null, null, null,
-                false, null, null, null, null, List.of());
+        return new Item(key, text, null, QuestionType.TEXT, false, false, List.of(), null, null, null,
+                false, null, null, null, null, null, null, List.of());
     }
 
     private static Item section(String key, String title) {
-        return new Item(key, title, null, QuestionType.SECTION, false, List.of(), null, null, null,
-                false, null, null, null, null, List.of());
+        return new Item(key, title, null, QuestionType.SECTION, false, false, List.of(), null, null, null,
+                false, null, null, null, null, null, null, List.of());
     }
 
     private static DefinitionDocument doc(Item... items) {
-        return new DefinitionDocument(2, List.of(items));
+        return new DefinitionDocument(2, List.of(items), List.of());
     }
 
     @Test
@@ -42,8 +42,8 @@ class DefinitionDiffTest {
     void reportsAddedRemovedAndModifiedByKey() {
         DefinitionDocument v1 = doc(q("q2", "Exit clear?"), q("q3", "Old"));
         DefinitionDocument v2 = doc(
-                new Item("q2", "Is the exit clear?", null, QuestionType.YES_NO, true, List.of(),
-                        null, null, null, false, null, null, null, null, List.of()),
+                new Item("q2", "Is the exit clear?", null, QuestionType.YES_NO, true, false, List.of(),
+                        null, null, null, false, null, null, null, null, null, null, List.of()),
                 q("q4", "Brand new"));
 
         DefinitionDiff diff = DefinitionDiff.between(v1, v2);
@@ -101,12 +101,13 @@ class DefinitionDiffTest {
     void rewordingAnAnswerIsReportedWithoutLosingTheFollowUp() {
         // The option keeps its key, so the follow-up that points at it is
         // untouched — which is the whole reason options are keyed.
-        Item v1Parent = new Item("q2", "Clear?", null, QuestionType.YES_NO, false,
-                List.of(new Option("o3", "Yes", "PASS"), new Option("o4", "No", "FAIL")),
-                null, null, null, false, null, null, null, null,
+        Item v1Parent = new Item("q2", "Clear?", null, QuestionType.YES_NO, false, false,
+                List.of(new Option("o3", "Yes", "PASS", null, false), new Option("o4", "No", "FAIL", null, false)),
+                null, null, null, false, null, null, null, null, null,
+                null,
                 List.of(q("q5", "Describe it").withKey("q5")));
         Item v2Parent = v1Parent.withOptions(
-                List.of(new Option("o3", "Yes", "PASS"), new Option("o4", "No — blocked", "FAIL")));
+                List.of(new Option("o3", "Yes", "PASS", null, false), new Option("o4", "No — blocked", "FAIL", null, false)));
 
         DefinitionDiff diff = DefinitionDiff.between(doc(v1Parent), doc(v2Parent));
 
@@ -118,9 +119,9 @@ class DefinitionDiffTest {
 
     @Test
     void aFollowUpIsComparedLikeAnyOtherItem() {
-        Item parent = new Item("q2", "Clear?", null, QuestionType.YES_NO, false,
-                List.of(new Option("o3", "No", "FAIL")), null, null, null,
-                false, null, null, null, null, List.of());
+        Item parent = new Item("q2", "Clear?", null, QuestionType.YES_NO, false, false,
+                List.of(new Option("o3", "No", "FAIL", null, false)), null, null, null,
+                false, null, null, null, null, null, null, List.of());
         DefinitionDocument v1 = doc(parent.withFollow(List.of(q("q4", "Why?"))));
         DefinitionDocument v2 = doc(parent.withFollow(List.of(q("q4", "Why not?"))));
 

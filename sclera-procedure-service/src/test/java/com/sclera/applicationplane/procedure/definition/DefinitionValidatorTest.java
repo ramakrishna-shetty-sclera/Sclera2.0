@@ -18,17 +18,17 @@ class DefinitionValidatorTest {
     private static final Set<String> PASS_FAIL = Set.of("PASS", "FAIL");
 
     private static Item item(String key, String text, QuestionType type) {
-        return new Item(key, text, null, type, false, List.of(), null, null, null,
-                false, null, null, null, null, List.of());
+        return new Item(key, text, null, type, false, false, List.of(), null, null, null,
+                false, null, null, null, null, null, null, List.of());
     }
 
     private static Item yesNo(String key, String text) {
         return item(key, text, QuestionType.YES_NO).withOptions(
-                List.of(new Option("o90", "Yes", "PASS"), new Option("o91", "No", "FAIL")));
+                List.of(new Option("o90", "Yes", "PASS", null, false), new Option("o91", "No", "FAIL", null, false)));
     }
 
     private static DefinitionDocument doc(Item... items) {
-        return new DefinitionDocument(2, List.of(items));
+        return new DefinitionDocument(2, List.of(items), List.of());
     }
 
     // --- structure: refused on save ------------------------------------------
@@ -39,15 +39,15 @@ class DefinitionValidatorTest {
         assertThatCode(() -> DefinitionValidator.validateStructure(doc(
                 item("s1", "Fire exits", QuestionType.SECTION),
                 yesNo("q2", "Exit clear?").withFollow(List.of(
-                        new Item(follow.key(), follow.text(), null, follow.type(), false, List.of(),
-                                null, null, null, false, null, null, null, "o91", List.of()))))))
+                        new Item(follow.key(), follow.text(), null, follow.type(), false, false, List.of(),
+                                null, null, null, false, null, null, null, null, "o91", null, List.of()))))))
                 .doesNotThrowAnyException();
     }
 
     @Test
     void aFollowUpMustNameAnAnswerOfItsOwnParent() {
-        Item stray = new Item("q3", "Why?", null, QuestionType.TEXT, false, List.of(),
-                null, null, null, false, null, null, null, "o77", List.of());
+        Item stray = new Item("q3", "Why?", null, QuestionType.TEXT, false, false, List.of(),
+                null, null, null, false, null, null, null, null, "o77", null, List.of());
 
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(
                 doc(yesNo("q2", "Exit clear?").withFollow(List.of(stray)))))
@@ -65,8 +65,8 @@ class DefinitionValidatorTest {
 
     @Test
     void aTopLevelQuestionCannotBeConditional() {
-        Item conditional = new Item("q2", "Why?", null, QuestionType.TEXT, false, List.of(),
-                null, null, null, false, null, null, null, "o90", List.of());
+        Item conditional = new Item("q2", "Why?", null, QuestionType.TEXT, false, false, List.of(),
+                null, null, null, false, null, null, null, null, "o90", null, List.of());
 
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(doc(conditional)))
                 .isInstanceOf(ValidationException.class)
@@ -75,8 +75,8 @@ class DefinitionValidatorTest {
 
     @Test
     void aFollowUpCannotHangOffAQuestionWithNoAnswers() {
-        Item follow = new Item("q3", "Why?", null, QuestionType.TEXT, false, List.of(),
-                null, null, null, false, null, null, null, "o90", List.of());
+        Item follow = new Item("q3", "Why?", null, QuestionType.TEXT, false, false, List.of(),
+                null, null, null, false, null, null, null, null, "o90", null, List.of());
 
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(
                 doc(item("q2", "Remarks", QuestionType.TEXT).withFollow(List.of(follow)))))
@@ -88,15 +88,15 @@ class DefinitionValidatorTest {
     void onlyChoiceQuestionsMayHaveAnswers() {
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(
                 doc(item("q2", "Remarks", QuestionType.TEXT)
-                        .withOptions(List.of(new Option("o3", "Yes", "PASS"))))))
+                        .withOptions(List.of(new Option("o3", "Yes", "PASS", null, false))))))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("cannot have answers");
     }
 
     @Test
     void onlyNumberQuestionsMayHaveAUnitOrRange() {
-        Item texty = new Item("q2", "Remarks", null, QuestionType.TEXT, false, List.of(),
-                "psi", null, null, false, null, null, null, null, List.of());
+        Item texty = new Item("q2", "Remarks", null, QuestionType.TEXT, false, false, List.of(),
+                "psi", null, null, false, null, null, null, null, null, null, List.of());
 
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(doc(texty)))
                 .isInstanceOf(ValidationException.class)
@@ -105,8 +105,8 @@ class DefinitionValidatorTest {
 
     @Test
     void aRangeCannotRunBackwards() {
-        Item backwards = new Item("q2", "Reading", null, QuestionType.INTEGER, false, List.of(),
-                "psi", 300, 10, false, null, null, null, null, List.of());
+        Item backwards = new Item("q2", "Reading", null, QuestionType.INTEGER, false, false, List.of(),
+                "psi", 300, 10, false, null, null, null, null, null, null, List.of());
 
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(doc(backwards)))
                 .isInstanceOf(ValidationException.class)
@@ -115,8 +115,8 @@ class DefinitionValidatorTest {
 
     @Test
     void onlyChoiceQuestionsMayRaiseAWorkOrder() {
-        Item texty = new Item("q2", "Remarks", null, QuestionType.TEXT, false, List.of(),
-                null, null, null, true, "ap-std", null, null, null, List.of());
+        Item texty = new Item("q2", "Remarks", null, QuestionType.TEXT, false, false, List.of(),
+                null, null, null, true, "ap-std", null, null, null, null, null, List.of());
 
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(doc(texty)))
                 .isInstanceOf(ValidationException.class)
@@ -135,10 +135,10 @@ class DefinitionValidatorTest {
 
     @Test
     void oneSaveReportsEveryStructuralProblem() {
-        Item backwards = new Item("q2", "Reading", null, QuestionType.INTEGER, false, List.of(),
-                null, 300, 10, false, null, null, null, null, List.of());
+        Item backwards = new Item("q2", "Reading", null, QuestionType.INTEGER, false, false, List.of(),
+                null, 300, 10, false, null, null, null, null, null, null, List.of());
         Item withAnswers = item("q3", "Remarks", QuestionType.TEXT)
-                .withOptions(List.of(new Option("o4", "Yes", "PASS")));
+                .withOptions(List.of(new Option("o4", "Yes", "PASS", null, false)));
 
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(doc(backwards, withAnswers)))
                 .isInstanceOf(ValidationException.class)
@@ -164,7 +164,7 @@ class DefinitionValidatorTest {
     @Test
     void aChoiceNeedsTwoAnswersAndOneResult() {
         Item single = item("q2", "Exit clear?", QuestionType.YES_NO)
-                .withOptions(List.of(new Option("o3", "Yes", null)));
+                .withOptions(List.of(new Option("o3", "Yes", null, null, false)));
 
         assertThat(DefinitionValidator.publishBlockers(doc(single), PASS_FAIL))
                 .hasSize(2)
@@ -175,7 +175,7 @@ class DefinitionValidatorTest {
     @Test
     void anAnswerCannotBeMappedToAResultTypeTheOrganizationDoesNotHave() {
         Item amber = item("q2", "Exit clear?", QuestionType.YES_NO).withOptions(
-                List.of(new Option("o3", "Yes", "PASS"), new Option("o4", "Partly", "AMBER")));
+                List.of(new Option("o3", "Yes", "PASS", null, false), new Option("o4", "Partly", "AMBER", null, false)));
 
         assertThat(DefinitionValidator.publishBlockers(doc(amber), PASS_FAIL))
                 .singleElement().asString()
@@ -184,9 +184,9 @@ class DefinitionValidatorTest {
 
     @Test
     void aFollowUpIsCheckedLikeAnyOtherQuestion() {
-        Item follow = new Item("q3", "Which one?", null, QuestionType.DROPDOWN, false,
-                List.of(new Option("o4", "Only answer", "PASS")),
-                null, null, null, false, null, null, null, "o91", List.of());
+        Item follow = new Item("q3", "Which one?", null, QuestionType.DROPDOWN, false, false,
+                List.of(new Option("o4", "Only answer", "PASS", null, false)),
+                null, null, null, false, null, null, null, null, "o91", null, List.of());
 
         assertThat(DefinitionValidator.publishBlockers(
                 doc(yesNo("q2", "Exit clear?").withFollow(List.of(follow))), PASS_FAIL))
