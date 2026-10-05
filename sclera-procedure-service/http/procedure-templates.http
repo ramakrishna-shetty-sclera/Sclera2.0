@@ -291,3 +291,183 @@ Authorization: Bearer {{adminToken}}
 ### M2. Which properties may demo-inspector open? — expect VDMS001 only
 GET {{host}}/api/v1/me/properties
 Authorization: Bearer {{inspectorToken}}
+
+###############################################################################
+# Scoring (feature 6) — what a procedure declares, and what it refuses.
+#
+# Nothing here computes a score: the evaluation endpoint is feature 7. These
+# prove the document can carry a scoring configuration, and that an unfinished
+# one is caught at publish with every reason at once.
+###############################################################################
+
+### S1. A procedure that scores nothing publishes — the rule everything else bends around
+# Guide §5's "Empty" state: no scoring configured, questions count equally.
+# Scoring is opt-in, so this has to stay as publishable as it was before
+# scoring existed.
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Unscored walk {{$random.integer(1000, 9999)}}",
+  "definition": {
+    "items": [
+      { "text": "Is the fire exit clear?", "type": "YES_NO", "required": true,
+        "options": [
+          { "label": "Yes", "result": "PASS" },
+          { "label": "No",  "result": "FAIL" }
+        ]
+      }
+    ]
+  }
+}
+
+> {% client.global.set("unscoredId", response.body.data.id); %}
+
+### S2. Publish it — expect 200, no blockers
+POST {{host}}/api/v1/procedure-templates/{{unscoredId}}/publish
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+### S3. Author a scored procedure — weights, a critical question, N/A, a Pass/Fail scale
+# Two bands rather than the guide's three, because only PASS and FAIL are
+# seeded. Add an AMBER result type first and a 70–89 band maps to it with no
+# change here — which is the point of storing the key rather than a literal.
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Scored walk {{$random.integer(1000, 9999)}}",
+  "description": "Two weighted sections and a Pass/Amber/Fail scale",
+  "definition": {
+    "items": [
+      { "text": "Fire exits", "type": "SECTION", "weight": 2 },
+      { "text": "Is the fire exit clear?", "type": "YES_NO", "required": true,
+        "critical": true, "weight": 3, "followRollup": "WORST",
+        "options": [
+          { "label": "Yes", "result": "PASS", "score": 10 },
+          { "label": "No",  "result": "FAIL", "score": 0 }
+        ]
+      },
+      { "text": "Housekeeping", "type": "SECTION", "weight": 1 },
+      { "text": "Walkways clear?", "type": "YES_NO_NA",
+        "options": [
+          { "label": "Yes", "result": "PASS", "score": 10 },
+          { "label": "No",  "result": "FAIL", "score": 0 },
+          { "label": "Not applicable", "excludeFromScoring": true }
+        ]
+      }
+    ],
+    "thresholds": [
+      {            "max": 69, "result": "FAIL" },
+      { "min": 70,            "result": "PASS" }
+    ]
+  }
+}
+
+> {% client.global.set("scoredId", response.body.data.id); %}
+
+### S4. Read it back — weight, critical, followRollup, score and excludeFromScoring survive
+# Note what is absent: the unscored fields are not echoed as nulls. The
+# canonical form drops empty values, which is why adding scoring did not change
+# the hash of any document that does not use it.
+GET {{host}}/api/v1/procedure-templates/{{scoredId}}/draft
+Authorization: Bearer {{token}}
+
+### S5. Publish it — expect 200
+POST {{host}}/api/v1/procedure-templates/{{scoredId}}/publish
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+### S6. A weight below 1 is refused on save — expect 400
+# Leaving a question out of the score is something to say by not asking it.
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Bad weight {{$random.integer(1000, 9999)}}",
+  "definition": {
+    "items": [
+      { "text": "Counts for nothing", "type": "YES_NO", "weight": 0,
+        "options": [ { "label": "Yes", "result": "PASS" }, { "label": "No", "result": "FAIL" } ]
+      }
+    ]
+  }
+}
+
+### S7. A section cannot be critical — expect 400
+# A heading is never answered, so it can never fail.
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Critical heading {{$random.integer(1000, 9999)}}",
+  "definition": { "items": [ { "text": "Fire exits", "type": "SECTION", "critical": true } ] }
+}
+
+### S8. A half-finished scale saves — expect 200
+# Structure is refused on write; readiness is not. An author has to be able to
+# save a draft mid-thought, which is the whole reason the two checks are
+# separate. The bands below leave 70–89 uncovered and map one to a result type
+# the organization does not have.
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Unfinished scale {{$random.integer(1000, 9999)}}",
+  "definition": {
+    "items": [
+      { "text": "Exit clear?", "type": "YES_NO",
+        "options": [
+          { "label": "Yes", "result": "PASS", "score": 10 },
+          { "label": "No",  "result": "FAIL", "score": 0 }
+        ]
+      },
+      { "text": "Scored by halves", "type": "RADIO",
+        "options": [
+          { "label": "Good", "result": "PASS", "score": 5 },
+          { "label": "Poor", "result": "FAIL" }
+        ]
+      }
+    ],
+    "thresholds": [
+      {            "max": 69, "result": "FAIL"  },
+      { "min": 90,            "result": "AMBER" }
+    ]
+  }
+}
+
+> {% client.global.set("unfinishedId", response.body.data.id); %}
+
+### S9. Publishing it is refused, and names every reason at once — expect 400
+# Three reasons in one message, joined by "; ", in this order:
+#   'Scored by halves' scores some of its answers and not others
+#   The band from 90 is mapped to AMBER, which is not an active result type
+#   No band covers a score of 70
+# All three at once is the point. An author fixing three things wants three
+# lines, not one refusal per attempt.
+POST {{host}}/api/v1/procedure-templates/{{unfinishedId}}/publish
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+### S10. Tidy up — archive what this section created
+POST {{host}}/api/v1/procedure-templates/{{unscoredId}}/archive
+Authorization: Bearer {{token}}
+
+###
+POST {{host}}/api/v1/procedure-templates/{{scoredId}}/archive
+Authorization: Bearer {{token}}
+
+###
+POST {{host}}/api/v1/procedure-templates/{{unfinishedId}}/archive
+Authorization: Bearer {{token}}
