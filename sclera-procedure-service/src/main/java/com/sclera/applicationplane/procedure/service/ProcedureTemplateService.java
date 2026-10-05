@@ -5,6 +5,7 @@ import com.sclera.applicationplane.procedure.definition.DefinitionCanonicalizer;
 import com.sclera.applicationplane.procedure.definition.DefinitionCanonicalizer.Canonical;
 import com.sclera.applicationplane.procedure.definition.DefinitionDiff;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument;
+import com.sclera.applicationplane.procedure.definition.DefinitionValidator;
 import com.sclera.applicationplane.procedure.definition.KeyMinter;
 import com.sclera.applicationplane.procedure.domain.ProcedureTemplate;
 import com.sclera.applicationplane.procedure.domain.ProcedureTemplateVersion;
@@ -26,6 +27,7 @@ import com.sclera.applicationplane.procedure.event.TemplateEventPublisher;
 import com.sclera.applicationplane.procedure.mapper.ProcedureTemplateMapper;
 import com.sclera.applicationplane.procedure.repository.ProcedureTemplateRepository;
 import com.sclera.applicationplane.procedure.repository.ProcedureTemplateVersionRepository;
+import com.sclera.applicationplane.procedure.repository.ResultTypeRepository;
 import com.sclera.applicationplane.procedure.tenancy.PropertyContext;
 import com.sclera.controlplane.common.exception.BusinessRuleException;
 import com.sclera.controlplane.common.exception.ConflictException;
@@ -42,6 +44,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -69,19 +72,22 @@ public class ProcedureTemplateService {
     private final ProcedureTemplateMapper mapper;
     private final TemplateEventPublisher events;
     private final FgaAuthorizationService fga;
+    private final ResultTypeRepository resultTypes;
 
     public ProcedureTemplateService(ProcedureTemplateRepository templates,
                                     ProcedureTemplateVersionRepository versions,
                                     DefinitionCanonicalizer canonicalizer,
                                     ProcedureTemplateMapper mapper,
                                     TemplateEventPublisher events,
-                                    FgaAuthorizationService fga) {
+                                    FgaAuthorizationService fga,
+                                    ResultTypeRepository resultTypes) {
         this.templates = templates;
         this.versions = versions;
         this.canonicalizer = canonicalizer;
         this.mapper = mapper;
         this.events = events;
         this.fga = fga;
+        this.resultTypes = resultTypes;
     }
 
     // --- template identity --------------------------------------------------
@@ -278,8 +284,14 @@ public class ProcedureTemplateService {
         if (!DefinitionCanonicalizer.sha256Hex(draft.getDefinitionJson()).equals(draft.getDefinitionHash())) {
             throw new IllegalStateException("Draft " + draft.getId() + " has a hash that does not match its content");
         }
-        if (canonicalizer.parse(draft.getDefinitionJson()).questionCount() == 0) {
-            throw new BusinessRuleException("Add at least one question before publishing");
+        // Every reason at once. An author fixing a checklist wants the whole
+        // list, not one refusal per attempt — and the screens that show it are
+        // built for a list.
+        List<String> blockers = DefinitionValidator.publishBlockers(
+                canonicalizer.parse(draft.getDefinitionJson()), activeResultKeys(template.getOrgId()));
+        if (!blockers.isEmpty()) {
+            throw new BusinessRuleException("This procedure cannot be published yet: "
+                    + String.join("; ", blockers));
         }
 
         Optional<ProcedureTemplateVersion> sameContent = versions.findByTemplateIdAndStateAndDefinitionHash(
@@ -329,8 +341,25 @@ public class ProcedureTemplateService {
 
     // --- helpers ------------------------------------------------------------
 
+    /**
+     * The result-type keys an author may map an answer to. Inactive ones are
+     * left out: deactivating a result type is how an organization retires it,
+     * and a new version should not start using it again.
+     */
+    private Set<String> activeResultKeys(UUID orgId) {
+        return resultTypes.findAllByOrgIdAndActiveOrderBySeverityOrderAsc(orgId, true).stream()
+                .map(rt -> rt.getKey())
+                .collect(Collectors.toSet());
+    }
+
+    /**
+     * The one place a document becomes stored bytes, so the one place structure
+     * is checked. Keys are minted first: the rules talk about which option a
+     * follow-up points at, and a new option has no key until this has run.
+     */
     private Canonical assignKeysAndCanonicalize(ProcedureTemplate template, DefinitionDocument document) {
         DefinitionDocument keyed = KeyMinter.assignKeys(document, template.getKeySeq(), template::nextKeyNumber);
+        DefinitionValidator.validateStructure(keyed);
         return canonicalizer.canonicalize(keyed);
     }
 

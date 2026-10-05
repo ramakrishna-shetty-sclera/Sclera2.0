@@ -3,6 +3,7 @@ package com.sclera.applicationplane.procedure.service;
 import com.sclera.applicationplane.procedure.definition.DefinitionDiff;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Item;
+import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Option;
 import com.sclera.applicationplane.procedure.domain.QuestionType;
 import com.sclera.applicationplane.procedure.domain.TemplateStatus;
 import com.sclera.applicationplane.procedure.domain.VersionState;
@@ -280,6 +281,29 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
             assertThatThrownBy(() -> service.publish(id, null))
                     .isInstanceOf(BusinessRuleException.class)
                     .hasMessageContaining("at least one question");
+            verify(events, never()).publish(any(), any(), any());
+        }
+
+        @Test
+        void publishNamesEveryReasonAndChecksTheOrganizationsOwnResultTypes() {
+            actAsNewOrg();
+            // PASS and FAIL are seeded for a new organization; AMBER is not.
+            Item mappedToAmber = new Item(null, "Is the gauge in range?", null, QuestionType.YES_NO, false,
+                    List.of(new Option(null, "Yes", "PASS"), new Option(null, "Partly", "AMBER")),
+                    null, null, null, false, null, null, null, null, List.of());
+            Item onlyOneAnswer = new Item(null, "Is the seal intact?", null, QuestionType.DROPDOWN, false,
+                    List.of(new Option(null, "Yes", "PASS")),
+                    null, null, null, false, null, null, null, null, List.of());
+            UUID id = service.create(new CreateTemplateRequest("Blockers", null, null,
+                    new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
+                            List.of(mappedToAmber, onlyOneAnswer)))).id();
+
+            // Both problems in one refusal: an author fixing a checklist should
+            // not have to publish once per mistake to find them all.
+            assertThatThrownBy(() -> service.publish(id, null))
+                    .isInstanceOf(BusinessRuleException.class)
+                    .hasMessageContaining("not an active result type")
+                    .hasMessageContaining("needs at least two answers");
             verify(events, never()).publish(any(), any(), any());
         }
 
