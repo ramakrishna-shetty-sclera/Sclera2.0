@@ -1,7 +1,8 @@
 package com.sclera.applicationplane.procedure.definition;
 
-import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Category;
-import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Question;
+import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Item;
+import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Option;
+import com.sclera.applicationplane.procedure.domain.QuestionType;
 import com.sclera.controlplane.common.exception.ValidationException;
 
 import java.util.ArrayList;
@@ -14,25 +15,31 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Gives every category and question a stable key. Keys are the whole reason a
- * question can be "the same question" in v1 and v7: rules, reporting and
- * answers all refer to it by key.
+ * Gives every section, question and option a stable key. Keys are the whole
+ * reason a question can be "the same question" in v1 and v7: rules, reporting
+ * and stored answers all refer to it by key.
  *
  * A key is a prefix plus a number from the template's {@code key_seq}:
- * {@code c<n>} for categories, {@code q<n>} for questions. One counter serves
- * both, so a number is never used twice within a template.
+ * {@code s<n>} for sections, {@code q<n>} for questions, {@code o<n>} for
+ * options. One counter serves all three, so a number is never used twice within
+ * a template and a key's prefix alone says what kind of thing it is.
  *
- * On every save the client sends back the keys it was given and omits the key
- * on anything new. A supplied key must be one this template actually minted
- * (its number is at most {@code highestMinted}), must carry the right prefix,
- * and must appear only once. New items are minted fresh; nothing is re-minted.
+ * Options are keyed because a follow-up's {@code when} points at one. A renamed
+ * option keeps its key, so "show this when they answer No" survives the author
+ * rewording "No" to "No — blocked".
+ *
+ * On every save the client sends back the keys it was given and omits the key on
+ * anything new. A supplied key must be one this template actually minted (its
+ * number is at most {@code highestMinted}), must carry the right prefix, and must
+ * appear only once. New items are minted fresh; nothing is ever re-minted.
  */
 public final class KeyMinter {
 
-    public static final String CATEGORY_PREFIX = "c";
+    public static final String SECTION_PREFIX = "s";
     public static final String QUESTION_PREFIX = "q";
+    public static final String OPTION_PREFIX = "o";
 
-    private static final Pattern KEY = Pattern.compile("^([cq])([1-9][0-9]{0,8})$");
+    private static final Pattern KEY = Pattern.compile("^([sqo])([1-9][0-9]{0,8})$");
 
     private KeyMinter() {
     }
@@ -45,34 +52,49 @@ public final class KeyMinter {
      */
     public static DefinitionDocument assignKeys(DefinitionDocument document, int highestMinted, IntSupplier next) {
         validateSuppliedKeys(document, highestMinted);
+        return new DefinitionDocument(document.schema(), assignToAll(document.items(), next));
+    }
 
-        List<Category> categories = new ArrayList<>();
-        for (Category category : document.categories()) {
-            String categoryKey = isBlank(category.key())
-                    ? CATEGORY_PREFIX + next.getAsInt()
-                    : category.key().strip();
-            List<Question> questions = new ArrayList<>();
-            for (Question question : category.questions()) {
-                questions.add(isBlank(question.key())
-                        ? question.withKey(QUESTION_PREFIX + next.getAsInt())
-                        : question.withKey(question.key().strip()));
-            }
-            categories.add(category.withKey(categoryKey).withQuestions(questions));
+    private static List<Item> assignToAll(List<Item> items, IntSupplier next) {
+        List<Item> out = new ArrayList<>();
+        for (Item item : items) {
+            out.add(assignTo(item, next));
         }
-        return new DefinitionDocument(document.schema(), categories);
+        return out;
+    }
+
+    private static Item assignTo(Item item, IntSupplier next) {
+        String prefix = item.type() == QuestionType.SECTION ? SECTION_PREFIX : QUESTION_PREFIX;
+        Item keyed = item.withKey(isBlank(item.key()) ? prefix + next.getAsInt() : item.key().strip());
+
+        List<Option> options = new ArrayList<>();
+        for (Option option : keyed.options()) {
+            options.add(isBlank(option.key())
+                    ? new Option(OPTION_PREFIX + next.getAsInt(), option.label(), option.result())
+                    : new Option(option.key().strip(), option.label(), option.result()));
+        }
+
+        return keyed.withOptions(options).withFollow(assignToAll(keyed.follow(), next));
     }
 
     private static void validateSuppliedKeys(DefinitionDocument document, int highestMinted) {
         Set<String> errors = new LinkedHashSet<>();
         Set<String> seen = new HashSet<>();
-        for (Category category : document.categories()) {
-            check(category.key(), CATEGORY_PREFIX, "category", highestMinted, seen, errors);
-            for (Question question : category.questions()) {
-                check(question.key(), QUESTION_PREFIX, "question", highestMinted, seen, errors);
-            }
-        }
+        checkAll(document.items(), highestMinted, seen, errors);
         if (!errors.isEmpty()) {
             throw new ValidationException(String.join("; ", errors));
+        }
+    }
+
+    private static void checkAll(List<Item> items, int highestMinted, Set<String> seen, Set<String> errors) {
+        for (Item item : items) {
+            boolean section = item.type() == QuestionType.SECTION;
+            check(item.key(), section ? SECTION_PREFIX : QUESTION_PREFIX,
+                    section ? "a section" : "a question", highestMinted, seen, errors);
+            for (Option option : item.options()) {
+                check(option.key(), OPTION_PREFIX, "an answer", highestMinted, seen, errors);
+            }
+            checkAll(item.follow(), highestMinted, seen, errors);
         }
     }
 
@@ -88,7 +110,7 @@ public final class KeyMinter {
             return;
         }
         if (!m.group(1).equals(prefix)) {
-            errors.add("Key '" + key + "' cannot be used on a " + kind);
+            errors.add("Key '" + key + "' cannot be used on " + kind);
             return;
         }
         if (Integer.parseInt(m.group(2)) > highestMinted) {

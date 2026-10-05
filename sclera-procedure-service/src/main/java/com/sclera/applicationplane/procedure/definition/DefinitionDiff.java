@@ -1,7 +1,7 @@
 package com.sclera.applicationplane.procedure.definition;
 
-import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Category;
-import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Question;
+import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Item;
+import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Option;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -13,101 +13,115 @@ import java.util.Set;
 
 /**
  * What changed between two versions of one procedure, matched on stable keys.
- * Because keys never change, "q7 was modified" is exact; a renamed question is
- * a modification, not a removal plus an addition.
+ * Because keys never change, "q7 was modified" is exact; a reworded question is
+ * a modification rather than a removal plus an addition the reader has to pair
+ * up.
  *
- * Reordering is reported without noise: a question inserted at the top does
- * not mark every question below it as moved. Only a change in the relative
- * order of items present in both versions counts.
+ * One list, not two: sections and questions live in one list in the document, so
+ * they do too here. {@code parentKey} says where an item sits — the section or
+ * the question it hangs under — which is what makes "moved" meaningful.
+ *
+ * Reordering is reported without noise. Only a change in the relative order of
+ * items present in both versions counts, so inserting one at the top does not
+ * mark everything below it as moved.
  */
 public record DefinitionDiff(
         boolean identical,
-        boolean categoryOrderChanged,
-        List<CategoryChange> categories,
-        List<QuestionChange> questions
+        boolean orderChanged,
+        List<ItemChange> items
 ) {
     public enum Kind { ADDED, REMOVED, MODIFIED }
 
-    /** changedFields: name, questionOrder. */
-    public record CategoryChange(String key, Kind kind, String name, List<String> changedFields) {}
-
-    /** changedFields: text, helpText, type, required, category. */
-    public record QuestionChange(String key, Kind kind, String text, String categoryKey, List<String> changedFields) {}
+    /**
+     * @param changedFields any of: text, help, type, required, options, unit,
+     *                      min, max, workOrder, alertProfile, standard, when,
+     *                      parent
+     */
+    public record ItemChange(
+            String key,
+            Kind kind,
+            String text,
+            String parentKey,
+            List<String> changedFields) {}
 
     public static DefinitionDiff between(DefinitionDocument from, DefinitionDocument to) {
-        Map<String, Category> fromCats = categoriesByKey(from);
-        Map<String, Category> toCats = categoriesByKey(to);
-        Map<String, Located> fromQs = questionsByKey(from);
-        Map<String, Located> toQs = questionsByKey(to);
+        Map<String, Located> before = index(from);
+        Map<String, Located> after = index(to);
 
-        List<CategoryChange> categoryChanges = new ArrayList<>();
-        for (Category after : toCats.values()) {
-            Category before = fromCats.get(after.key());
-            if (before == null) {
-                categoryChanges.add(new CategoryChange(after.key(), Kind.ADDED, after.name(), List.of()));
+        List<ItemChange> changes = new ArrayList<>();
+        for (Located now : after.values()) {
+            Located then = before.get(now.item().key());
+            if (then == null) {
+                changes.add(change(now, Kind.ADDED, List.of()));
                 continue;
             }
-            List<String> fields = new ArrayList<>();
-            if (!Objects.equals(before.name(), after.name())) {
-                fields.add("name");
-            }
-            if (relativeOrderChanged(questionKeys(before), questionKeys(after))) {
-                fields.add("questionOrder");
-            }
+            List<String> fields = changedFields(then, now);
             if (!fields.isEmpty()) {
-                categoryChanges.add(new CategoryChange(after.key(), Kind.MODIFIED, after.name(), fields));
+                changes.add(change(now, Kind.MODIFIED, fields));
             }
         }
-        for (Category before : fromCats.values()) {
-            if (!toCats.containsKey(before.key())) {
-                categoryChanges.add(new CategoryChange(before.key(), Kind.REMOVED, before.name(), List.of()));
+        for (Located then : before.values()) {
+            if (!after.containsKey(then.item().key())) {
+                changes.add(change(then, Kind.REMOVED, List.of()));
             }
         }
 
-        List<QuestionChange> questionChanges = new ArrayList<>();
-        for (Located after : toQs.values()) {
-            Located before = fromQs.get(after.question().key());
-            if (before == null) {
-                questionChanges.add(change(after, Kind.ADDED, List.of()));
-                continue;
-            }
-            List<String> fields = changedFields(before, after);
-            if (!fields.isEmpty()) {
-                questionChanges.add(change(after, Kind.MODIFIED, fields));
-            }
-        }
-        for (Located before : fromQs.values()) {
-            if (!toQs.containsKey(before.question().key())) {
-                questionChanges.add(change(before, Kind.REMOVED, List.of()));
-            }
-        }
-
-        boolean categoryOrderChanged = relativeOrderChanged(
-                List.copyOf(fromCats.keySet()), List.copyOf(toCats.keySet()));
+        boolean orderChanged = relativeOrderChanged(
+                List.copyOf(before.keySet()), List.copyOf(after.keySet()));
 
         return new DefinitionDiff(
-                categoryChanges.isEmpty() && questionChanges.isEmpty() && !categoryOrderChanged,
-                categoryOrderChanged,
-                List.copyOf(categoryChanges),
-                List.copyOf(questionChanges));
+                changes.isEmpty() && !orderChanged,
+                orderChanged,
+                List.copyOf(changes));
     }
 
-    private record Located(Question question, String categoryKey) {}
+    /** An item plus the key of whatever it hangs under, or null at the top level. */
+    private record Located(Item item, String parentKey) {}
 
-    private static QuestionChange change(Located q, Kind kind, List<String> fields) {
-        return new QuestionChange(q.question().key(), kind, q.question().text(), q.categoryKey(), List.copyOf(fields));
+    private static ItemChange change(Located located, Kind kind, List<String> fields) {
+        return new ItemChange(located.item().key(), kind, located.item().text(),
+                located.parentKey(), List.copyOf(fields));
     }
 
     private static List<String> changedFields(Located before, Located after) {
-        Question b = before.question();
-        Question a = after.question();
+        Item b = before.item();
+        Item a = after.item();
         List<String> fields = new ArrayList<>();
         if (!Objects.equals(b.text(), a.text())) fields.add("text");
-        if (!Objects.equals(b.helpText(), a.helpText())) fields.add("helpText");
+        if (!Objects.equals(b.help(), a.help())) fields.add("help");
         if (b.type() != a.type()) fields.add("type");
         if (b.required() != a.required()) fields.add("required");
-        if (!Objects.equals(before.categoryKey(), after.categoryKey())) fields.add("category");
+        if (!sameOptions(b.options(), a.options())) fields.add("options");
+        if (!Objects.equals(b.unit(), a.unit())) fields.add("unit");
+        if (!Objects.equals(b.min(), a.min())) fields.add("min");
+        if (!Objects.equals(b.max(), a.max())) fields.add("max");
+        if (b.workOrder() != a.workOrder()) fields.add("workOrder");
+        if (!Objects.equals(b.alertProfile(), a.alertProfile())) fields.add("alertProfile");
+        if (!Objects.equals(b.standard(), a.standard())) fields.add("standard");
+        if (!Objects.equals(b.when(), a.when())) fields.add("when");
+        if (!Objects.equals(before.parentKey(), after.parentKey())) fields.add("parent");
         return fields;
+    }
+
+    /**
+     * Options compare by key, label and result together. Reporting which option
+     * changed would need a diff of its own; "the answers changed" is enough to
+     * send a reader to look, and the keys make it obvious once they do.
+     */
+    private static boolean sameOptions(List<Option> before, List<Option> after) {
+        if (before.size() != after.size()) {
+            return false;
+        }
+        for (int i = 0; i < before.size(); i++) {
+            Option b = before.get(i);
+            Option a = after.get(i);
+            if (!Objects.equals(b.key(), a.key())
+                    || !Objects.equals(b.label(), a.label())
+                    || !Objects.equals(b.result(), a.result())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** True if the items present in both lists appear in a different order. */
@@ -119,25 +133,16 @@ public record DefinitionDiff(
         return !b.equals(a);
     }
 
-    private static List<String> questionKeys(Category category) {
-        return category.questions().stream().map(Question::key).toList();
-    }
-
-    private static Map<String, Category> categoriesByKey(DefinitionDocument doc) {
-        Map<String, Category> map = new LinkedHashMap<>();
-        for (Category c : doc.categories()) {
-            map.put(c.key(), c);
-        }
-        return map;
-    }
-
-    private static Map<String, Located> questionsByKey(DefinitionDocument doc) {
+    private static Map<String, Located> index(DefinitionDocument document) {
         Map<String, Located> map = new LinkedHashMap<>();
-        for (Category c : doc.categories()) {
-            for (Question q : c.questions()) {
-                map.put(q.key(), new Located(q, c.key()));
-            }
-        }
+        walk(document.items(), null, map);
         return map;
+    }
+
+    private static void walk(List<Item> items, String parentKey, Map<String, Located> into) {
+        for (Item item : items) {
+            into.put(item.key(), new Located(item, parentKey));
+            walk(item.follow(), item.key(), into);
+        }
     }
 }
