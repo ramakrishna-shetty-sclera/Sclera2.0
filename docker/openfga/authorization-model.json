@@ -9,7 +9,11 @@
       "relations": {
         "admin": { "this": {} },
         "inspector": { "this": {} },
+        "supervisor": { "this": {} },
         "template_author": { "this": {} },
+        "template_publisher": { "this": {} },
+        "template_importer": { "this": {} },
+        "result_type_manager": { "this": {} },
         "asset_manager": { "this": {} },
         "viewer": { "this": {} },
         "member": {
@@ -18,7 +22,11 @@
               { "computedUserset": { "object": "", "relation": "viewer" } },
               { "computedUserset": { "object": "", "relation": "admin" } },
               { "computedUserset": { "object": "", "relation": "inspector" } },
+              { "computedUserset": { "object": "", "relation": "supervisor" } },
               { "computedUserset": { "object": "", "relation": "template_author" } },
+              { "computedUserset": { "object": "", "relation": "template_publisher" } },
+              { "computedUserset": { "object": "", "relation": "template_importer" } },
+              { "computedUserset": { "object": "", "relation": "result_type_manager" } },
               { "computedUserset": { "object": "", "relation": "asset_manager" } }
             ]
           }
@@ -32,11 +40,43 @@
             ]
           }
         },
+        "can_review": {
+          "union": {
+            "child": [
+              { "computedUserset": { "object": "", "relation": "admin" } },
+              { "computedUserset": { "object": "", "relation": "supervisor" } }
+            ]
+          }
+        },
         "can_manage_templates": {
           "union": {
             "child": [
               { "computedUserset": { "object": "", "relation": "admin" } },
               { "computedUserset": { "object": "", "relation": "template_author" } }
+            ]
+          }
+        },
+        "can_publish_templates": {
+          "union": {
+            "child": [
+              { "computedUserset": { "object": "", "relation": "admin" } },
+              { "computedUserset": { "object": "", "relation": "template_publisher" } }
+            ]
+          }
+        },
+        "can_import_templates": {
+          "union": {
+            "child": [
+              { "computedUserset": { "object": "", "relation": "admin" } },
+              { "computedUserset": { "object": "", "relation": "template_importer" } }
+            ]
+          }
+        },
+        "can_manage_result_types": {
+          "union": {
+            "child": [
+              { "computedUserset": { "object": "", "relation": "admin" } },
+              { "computedUserset": { "object": "", "relation": "result_type_manager" } }
             ]
           }
         },
@@ -54,13 +94,21 @@
         "relations": {
           "admin": { "directly_related_user_types": [{ "type": "user" }] },
           "inspector": { "directly_related_user_types": [{ "type": "user" }] },
+          "supervisor": { "directly_related_user_types": [{ "type": "user" }] },
           "template_author": { "directly_related_user_types": [{ "type": "user" }] },
+          "template_publisher": { "directly_related_user_types": [{ "type": "user" }] },
+          "template_importer": { "directly_related_user_types": [{ "type": "user" }] },
+          "result_type_manager": { "directly_related_user_types": [{ "type": "user" }] },
           "asset_manager": { "directly_related_user_types": [{ "type": "user" }] },
           "viewer": { "directly_related_user_types": [{ "type": "user" }] },
           "member": { "directly_related_user_types": [] },
           "can_view": { "directly_related_user_types": [] },
           "can_manage_inspections": { "directly_related_user_types": [] },
+          "can_review": { "directly_related_user_types": [] },
           "can_manage_templates": { "directly_related_user_types": [] },
+          "can_publish_templates": { "directly_related_user_types": [] },
+          "can_import_templates": { "directly_related_user_types": [] },
+          "can_manage_result_types": { "directly_related_user_types": [] },
           "can_manage_assets": { "directly_related_user_types": [] },
           "can_administer": { "directly_related_user_types": [] }
         }
@@ -172,7 +220,7 @@
         "can_publish": {
           "tupleToUserset": {
             "tupleset": { "object": "", "relation": "org" },
-            "computedUserset": { "object": "", "relation": "can_manage_templates" }
+            "computedUserset": { "object": "", "relation": "can_publish_templates" }
           }
         },
         "can_delete": {

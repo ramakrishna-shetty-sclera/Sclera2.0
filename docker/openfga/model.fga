@@ -23,15 +23,25 @@ type organization
     # --- assignable roles -------------------------------------------------
     define admin: [user]              # full control over the org's resources
     define inspector: [user]          # runs inspections / checklists
+    define supervisor: [user]         # reviews completed checklists
     define template_author: [user]    # authors question templates
+    define template_publisher: [user] # freezes a draft as a published version
+    define template_importer: [user]  # imports and exports templates
+    define result_type_manager: [user] # manages the org's result types
     define asset_manager: [user]      # manages locations & assets
     define viewer: [user]             # read-only
 
     # --- derived permissions (what the services actually check) -----------
-    define member: viewer or admin or inspector or template_author or asset_manager
+    # Every role must be in member, or its holder can act but cannot read:
+    # can_view derives from member, here and on every org-owned object type.
+    define member: viewer or admin or inspector or supervisor or template_author or template_publisher or template_importer or result_type_manager or asset_manager
     define can_view: member
     define can_manage_inspections: admin or inspector
+    define can_review: admin or supervisor
     define can_manage_templates: admin or template_author
+    define can_publish_templates: admin or template_publisher
+    define can_import_templates: admin or template_importer
+    define can_manage_result_types: admin or result_type_manager
     define can_manage_assets: admin or asset_manager
     define can_administer: admin
 
@@ -63,7 +73,7 @@ type procedure_template
     define creator: [user]
     define can_view: can_view from org
     define can_edit: creator or can_manage_templates from org
-    define can_publish: can_manage_templates from org
+    define can_publish: can_publish_templates from org
     define can_delete: can_manage_templates from org
 
 type inspection_config

@@ -379,3 +379,13 @@ export interface CloneProcedureRequest {
   /** Defaults to the current published version, else the draft. */
   fromVersionNo?: number
 }
+
+/**
+ * A property (VDMS) the signed-in user may open. `id` is what goes in the
+ * X-Sclera-Property header; `code` is a label such as VDMS001, unique only
+ * within the organization.
+ */
+export interface Property {
+  id: string
+  code: string
+}

@@ -1,4 +1,4 @@
-# Creates four demo accounts in Keycloak (realm sclera) and grants their
+# Creates seven demo accounts in Keycloak (realm sclera) and grants their
 # OpenFGA roles, to exercise every authorization tier. Idempotent - safe to
 # re-run after docker compose down (Keycloak wipe) or an OpenFGA store wipe.
 #
@@ -7,12 +7,22 @@
 #   demo-superadmin  / demo-superadmin  is_platform_admin=true claim -> bypasses FGA entirely
 #   demo-inspector   / demo-inspector   FGA 'inspector' on the dev org, and
 #                                       'viewer' on VDMS001 only -> cannot reach VDMS002
+#   demo-inspector2  / demo-inspector2  the same on VDMS002 only -> cannot reach VDMS001
+#   demo-supervisor  / demo-supervisor  FGA 'inspector' + 'supervisor' -> runs and reviews,
+#                                       cannot author, publish or change result types
+#   demo-author      / demo-author      FGA 'template_author' -> drafts procedures,
+#                                       cannot publish them or change result types
 #
 # Also seeds two properties (VDMS001, VDMS002) so property isolation has
-# something to isolate. The new tuples need the 'property' type in the
-# authorization model, so re-run setup-openfga.ps1 first if this errors.
+# something to isolate.
 #
-# All three belong to org 11111111-1111-1111-1111-111111111111 (org_type CLIENT).
+# RUN setup-openfga.ps1 FIRST. The 'property' type and the 'supervisor' role
+# exist only in the current authorization model; against an older one those
+# tuples are rejected and this script stops partway - after creating the
+# Keycloak users, before finishing the grants. Re-running then works, which
+# makes it look flaky when it is only out of order.
+#
+# All of them belong to org 11111111-1111-1111-1111-111111111111 (org_type CLIENT).
 # Also adds the boolean 'is_platform_admin' claim mapper to the sclera-app and
 # sclera-bff clients (ScleraJwtConverter reads it into OrgContext.isPlatformAdmin).
 #
@@ -89,6 +99,9 @@ $userUuid = New-DemoUser 'demo-user' $null
 $adminUuid = New-DemoUser 'demo-admin' $null
 $superUuid = New-DemoUser 'demo-superadmin' @{ is_platform_admin = @('true') }
 $inspectorUuid = New-DemoUser 'demo-inspector' $null
+$inspector2Uuid = New-DemoUser 'demo-inspector2' $null
+$supervisorUuid = New-DemoUser 'demo-supervisor' $null
+$authorUuid = New-DemoUser 'demo-author' $null
 "passwords set (same as each username)"
 
 # --- FGA role tuples ---------------------------------------------------------
@@ -113,6 +126,14 @@ function Write-FgaTuple($user, $relation, $object) {
 Write-FgaTuple "user:$userUuid" 'viewer' "organization:$orgId"
 Write-FgaTuple "user:$adminUuid" 'admin' "organization:$orgId"
 Write-FgaTuple "user:$inspectorUuid" 'inspector' "organization:$orgId"
+Write-FgaTuple "user:$inspector2Uuid" 'inspector' "organization:$orgId"
+# Two tuples, not one, on purpose. A supervisor runs checklists AND reviews
+# them, but 'supervisor' grants only can_review; running comes from
+# 'inspector' (can_manage_inspections). Dropping either one breaks half the role.
+Write-FgaTuple "user:$supervisorUuid" 'inspector' "organization:$orgId"
+Write-FgaTuple "user:$supervisorUuid" 'supervisor' "organization:$orgId"
+# Authoring only: can draft procedures, cannot publish them or change result types.
+Write-FgaTuple "user:$authorUuid" 'template_author' "organization:$orgId"
 # demo-superadmin gets NO tuple on purpose: platform admins bypass FGA checks.
 
 # --- properties (VDMS) -------------------------------------------------------
@@ -132,14 +153,20 @@ Write-FgaTuple "organization:$orgId" 'org' "property:$vdms002"
 # demo-inspector is granted ONE of them. Asking for the other is the case worth
 # seeing: refused at the filter, and invisible at the database behind it.
 Write-FgaTuple "user:$inspectorUuid" 'viewer' "property:$vdms001"
+# demo-inspector2 is the mirror image, granted the other one. With the org
+# admin seeing both, three sign-ins show three different procedure lists.
+Write-FgaTuple "user:$inspector2Uuid" 'viewer' "property:$vdms002"
 ""
 "Done."
 "  demo-user       (viewer)          $userUuid"
 "  demo-admin      (org admin)       $adminUuid"
 "  demo-superadmin (platform admin)  $superUuid"
 "  demo-inspector  (VDMS001 only)    $inspectorUuid"
+"  demo-inspector2 (VDMS002 only)    $inspector2Uuid"
+"  demo-supervisor (runs + reviews)  $supervisorUuid"
+"  demo-author     (drafts only)     $authorUuid"
 ""
 "Properties - send one as the X-Sclera-Property header; omit it for org level:"
 "  VDMS001  $vdms001   demo-inspector and demo-admin"
-"  VDMS002  $vdms002   demo-admin only"
+"  VDMS002  $vdms002   demo-inspector2 and demo-admin"
 "Note: services cache check decisions for up to 30s (sclera.fga.check-cache-ttl-seconds)."

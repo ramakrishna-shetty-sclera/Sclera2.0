@@ -28,9 +28,10 @@ import java.util.UUID;
  * envelope by sclera-common's ResponseEnvelopeAdvice.
  *
  * <p>Result types are org-level settings, so they are guarded by org relations
- * rather than a per-object OpenFGA type. {@code can_manage_templates} is an
- * interim: a dedicated {@code can_manage_result_types} relation is split out
- * when the authorization model is extended.
+ * rather than a per-object OpenFGA type: anyone in the organization may read
+ * them, and only {@code can_manage_result_types} (an admin or a
+ * result_type_manager) may change them. Authoring procedures does not include
+ * changing the vocabulary their answers are judged by.
  */
 @RestController
 @RequestMapping("/api/v1/result-types")
@@ -44,7 +45,7 @@ public class ResultTypeController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("@fga.checkOrg('can_manage_templates')")
+    @PreAuthorize("@fga.checkOrg('can_manage_result_types')")
     public ResultTypeResponse create(@Valid @RequestBody ResultTypeRequest request) {
         return service.create(request);
     }
@@ -63,7 +64,7 @@ public class ResultTypeController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("@fga.checkOrg('can_manage_templates')")
+    @PreAuthorize("@fga.checkOrg('can_manage_result_types')")
     public ResultTypeResponse update(@PathVariable UUID id,
                                      @Valid @RequestBody ResultTypeUpdateRequest request) {
         return service.update(id, request);
@@ -71,26 +72,26 @@ public class ResultTypeController {
 
     /** Drag-to-reorder. Takes every result type in the organization, most severe first. */
     @PostMapping("/reorder")
-    @PreAuthorize("@fga.checkOrg('can_manage_templates')")
+    @PreAuthorize("@fga.checkOrg('can_manage_result_types')")
     public List<ResultTypeResponse> reorder(@Valid @RequestBody ResultTypeReorderRequest request) {
         return service.reorder(request.orderedIds());
     }
 
     @PostMapping("/{id}/activate")
-    @PreAuthorize("@fga.checkOrg('can_manage_templates')")
+    @PreAuthorize("@fga.checkOrg('can_manage_result_types')")
     public ResultTypeResponse activate(@PathVariable UUID id) {
         return service.activate(id);
     }
 
     @PostMapping("/{id}/deactivate")
-    @PreAuthorize("@fga.checkOrg('can_manage_templates')")
+    @PreAuthorize("@fga.checkOrg('can_manage_result_types')")
     public ResultTypeResponse deactivate(@PathVariable UUID id) {
         return service.deactivate(id);
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("@fga.checkOrg('can_manage_templates')")
+    @PreAuthorize("@fga.checkOrg('can_manage_result_types')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }

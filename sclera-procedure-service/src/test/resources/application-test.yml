@@ -21,7 +21,9 @@ sclera:
   fga:
     # FgaAuthorizationService short-circuits to allow when disabled, so tests
     # exercise service rules rather than OpenFGA tuples. Endpoint authorization
-    # is a separate concern, covered when the authorization model is extended.
+    # is tested on its own: AuthorizationModelTest and AuthorizationModelIT
+    # check the model, ControllerAuthorizationTest that every endpoint is
+    # guarded by a relation the model defines.
     enabled: false
 
 logging:

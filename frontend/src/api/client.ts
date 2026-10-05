@@ -10,6 +10,35 @@ const DEV_CLIENT_ID = 'sclera-app'
 // Prod HTTPS uses the __Host- prefixed name; local HTTP uses the plain one.
 const CSRF_COOKIE_NAMES = ['__Host-sclera-csrf', 'sclera-csrf']
 
+// The property (VDMS) the user has opened, sent as X-Sclera-Property on every
+// request. Null is organization level: only what the whole organization
+// shares. Kept per browser tab, so two tabs can look at two properties. The
+// backend checks the header against the user's grants; this only carries it.
+const PROPERTY_STORAGE_KEY = 'sclera.property'
+let selectedProperty: string | null = readStoredProperty()
+
+function readStoredProperty(): string | null {
+  try {
+    return sessionStorage.getItem(PROPERTY_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function getSelectedProperty(): string | null {
+  return selectedProperty
+}
+
+export function setSelectedProperty(propertyId: string | null): void {
+  selectedProperty = propertyId
+  try {
+    if (propertyId) sessionStorage.setItem(PROPERTY_STORAGE_KEY, propertyId)
+    else sessionStorage.removeItem(PROPERTY_STORAGE_KEY)
+  } catch {
+    // Storage unavailable: the selection still holds for this page load.
+  }
+}
+
 /** One rejected field from a 400 VALIDATION_FAILED, e.g. { field: 'color', message: 'must be a six-digit hex colour…' }. */
 export interface FieldError {
   field: string
@@ -108,6 +137,7 @@ function gatewayHeaders(extra: Record<string, string> = {}): Record<string, stri
   }
   const csrf = readCsrfCookie()
   if (csrf) headers['X-CSRF-Token'] = csrf
+  if (selectedProperty) headers['X-Sclera-Property'] = selectedProperty
   return headers
 }
 

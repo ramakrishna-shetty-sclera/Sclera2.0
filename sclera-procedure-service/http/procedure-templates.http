@@ -281,3 +281,13 @@ X-Sclera-Property: {{vdms002}}
 GET {{host}}/api/v1/procedure-templates
 Authorization: Bearer {{adminToken}}
 X-Sclera-Property: not-a-uuid
+
+### M1. Which properties may demo-admin open? — expect VDMS001 and VDMS002
+# What the property switcher lists. Read from the grants, so it never offers a
+# property the X-Sclera-Property check would then refuse.
+GET {{host}}/api/v1/me/properties
+Authorization: Bearer {{adminToken}}
+
+### M2. Which properties may demo-inspector open? — expect VDMS001 only
+GET {{host}}/api/v1/me/properties
+Authorization: Bearer {{inspectorToken}}
