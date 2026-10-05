@@ -427,8 +427,11 @@ refused with a 404 before they ever reach us. The paths live in the `procedure-s
 - id: procedure-service
   uri: ${PROCEDURE_SERVICE_URL:http://localhost:8095}
   predicates:
-    - Path=/api/v1/procedure-templates/**,/api/v1/result-types/**
+    - Path=/api/v1/procedure-templates/**,/api/v1/result-types/**,/api/v1/me/properties
 ```
+
+`/api/v1/me/properties` is listed exactly rather than as `/api/v1/me/**`, so the rest of `/me`
+stays free for other services.
 
 The gateway is a **separate repository** — `ScleraHoldingsLLC/sclera2.0v-api-gateway` — and the copy
 in this working tree is gitignored, so a route change cannot be committed alongside the service that

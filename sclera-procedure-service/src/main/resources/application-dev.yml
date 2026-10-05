@@ -44,6 +44,13 @@ sclera:
     dapr:
       # Flip to true when running under `dapr run` with a sidecar
       enabled: ${SCLERA_DAPR_HEALTH_ENABLED:false}
+  properties:
+    # Stand-in until a property service exists: codes for the two properties
+    # setup-demo-users.ps1 seeds, so the property switcher can show VDMS001
+    # rather than an id. A property with no entry shows the first block of its id.
+    labels:
+      "[aaaaaaaa-0000-0000-0000-000000000001]": VDMS001
+      "[aaaaaaaa-0000-0000-0000-000000000002]": VDMS002
 
 logging:
   level:

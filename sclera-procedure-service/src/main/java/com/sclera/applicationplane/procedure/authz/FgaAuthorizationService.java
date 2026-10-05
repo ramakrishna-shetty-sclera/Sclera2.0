@@ -5,9 +5,13 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.sclera.controlplane.common.security.OrgContext;
 import dev.openfga.sdk.api.client.OpenFgaClient;
 import dev.openfga.sdk.api.client.model.ClientCheckRequest;
+import dev.openfga.sdk.api.client.model.ClientReadRequest;
+import dev.openfga.sdk.api.client.model.ClientReadResponse;
 import dev.openfga.sdk.api.client.model.ClientTupleKey;
 import dev.openfga.sdk.api.client.model.ClientWriteRequest;
+import dev.openfga.sdk.api.configuration.ClientReadOptions;
 import dev.openfga.sdk.api.model.Store;
+import dev.openfga.sdk.api.model.Tuple;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -73,6 +77,61 @@ public class FgaAuthorizationService {
             return false;
         }
         return checkInternal(relation, "organization:" + orgId);
+    }
+
+    /** False when sclera.fga.enabled=false: every check allows and nothing can be read. */
+    public boolean isEnabled() {
+        return properties.isEnabled();
+    }
+
+    /**
+     * Every object of {@code objectType} that belongs to the current
+     * organization, read from its {@code org} tuples. Properties have no table
+     * of their own yet, so the tuple linking a property to its organization is
+     * the only record that it exists.
+     *
+     * Ids only: whether the current user may see each one is a separate
+     * {@link #check}. Fails closed — if OpenFGA cannot be read, nothing is
+     * listed. Empty when OpenFGA is disabled; callers decide what that means.
+     */
+    public List<UUID> orgObjects(String objectType) {
+        UUID orgId = OrgContext.getOrgId();
+        if (!properties.isEnabled() || orgId == null) {
+            return List.of();
+        }
+        String prefix = objectType + ":";
+        List<UUID> ids = new ArrayList<>();
+        try {
+            OpenFgaClient client = readyClient();
+            String token = null;
+            do {
+                ClientReadOptions page = new ClientReadOptions().pageSize(100);
+                if (token != null) {
+                    page.continuationToken(token);
+                }
+                ClientReadResponse response = client.read(new ClientReadRequest()
+                                .user("organization:" + orgId)
+                                .relation("org")
+                                ._object(prefix), page)
+                        .get();
+                for (Tuple tuple : response.getTuples()) {
+                    String object = tuple.getKey().getObject();
+                    try {
+                        ids.add(UUID.fromString(object.substring(prefix.length())));
+                    } catch (IllegalArgumentException e) {
+                        log.warn("Skipping {}: its id is not a UUID", object);
+                    }
+                }
+                token = response.getContinuationToken();
+            } while (token != null && !token.isEmpty());
+            return ids;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return List.of();
+        } catch (Exception e) {
+            log.error("OpenFGA read failed (org={}, type={}): {}", orgId, objectType, e.getMessage());
+            return List.of();
+        }
     }
 
     /**

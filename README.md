@@ -235,7 +235,7 @@ for the application-plane services:
 
 | Route id | Path predicate | Downstream (env var) |
 |---|---|---|
-| `procedure-service` | `/api/v1/procedure-templates/**,/api/v1/result-types/**` | `PROCEDURE_SERVICE_URL` (`:8095`) |
+| `procedure-service` | `/api/v1/procedure-templates/**,/api/v1/result-types/**,/api/v1/me/properties` | `PROCEDURE_SERVICE_URL` (`:8095`) |
 | `inspection-service` | `/api/v1/inspections/**,/api/v1/inspection-configs/**,/api/v1/checklists/**` | `INSPECTION_SERVICE_URL` (`:8096`) |
 
 **CORS allowed headers must also include `X-Sclera-Property`** — the header that
