@@ -526,6 +526,21 @@ type procedure_template
     define can_delete:  can_manage_templates from org
 ```
 
+The block shows only what differs from the original model. As built, `member` — which `can_view`
+derives from — also lists all four new roles; without that, someone holding only one of them could
+act but not read. Every change to a result type needs `can_manage_result_types`, reads need
+`can_view`. `can_import_templates` and `can_review` are declared but not yet enforced: nothing calls
+them until import/export and review exist. Publishing as a right separate from authoring is our
+proposal rather than a written requirement, and is open with the lead.
+
+A property is its own type: `viewer` on it, or being an organization admin, gives `can_view`, which
+is what `X-Sclera-Property` is checked against and what `GET /api/v1/me/properties` lists.
+
+Three tests hold the model to this design: `AuthorizationModelTest` (the two files agree, every
+role is in `member`), `AuthorizationModelIT` (a real OpenFGA answers the role matrix) and
+`ControllerAuthorizationTest` (every endpoint is guarded, and every relation a guard names exists).
+The full role list and demo accounts are in `docs/openfga.md`.
+
 Tuples are written when a template is created, in the same transaction as the insert, so a failed
 tuple write rolls the insert back. The model lives in both `docker/openfga/model.fga` and
 `docker/openfga/authorization-model.json`; they are kept in sync by hand and applied by
@@ -619,6 +634,9 @@ docker compose up -d          # postgres, redis, kafka, keycloak, openfga
 .\setup-demo-users.ps1
 .\run-procedure-service.ps1   # service on 8095, Dapr sidecar on 3500 / 50001
 ```
+
+Permission decisions are cached for 30 seconds, so a role granted or a model re-posted while the
+service runs can take that long to show.
 
 Swagger UI is on under the `dev` profile at `http://localhost:8095/swagger-ui.html`.
 
