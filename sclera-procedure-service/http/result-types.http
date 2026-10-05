@@ -148,3 +148,56 @@ Authorization: Bearer {{access_token}}
 Content-Type: application/json
 
 { "orderedIds": ["REPLACE_WITH_FAIL_ID"] }
+
+
+###############################################################################
+# Authorization — who may change result types
+#
+# Everything above runs as testuser, an organization admin, so it passes the
+# same whether or not the guards work. These run as people who may read result
+# types but not change them: only an admin or a result_type_manager may.
+#
+# A 200 on the GETs matters as much as the 403s: if a read is refused, a role
+# was left out of `member` in the authorization model.
+#
+# Run .\setup-openfga.ps1 and then .\setup-demo-users.ps1 first. Decisions are
+# cached for 30 s, so a grant made just now can take that long to show.
+###############################################################################
+
+### demo-author — template_author only: may draft procedures, not change result types
+POST {{keycloak}}/realms/sclera/protocol/openid-connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=password&client_id=sclera-app&username=demo-author&password=demo-author
+
+> {% client.global.set("authorToken", response.body.access_token); %}
+
+### demo-supervisor — inspector + supervisor: runs and reviews, changes nothing here
+POST {{keycloak}}/realms/sclera/protocol/openid-connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=password&client_id=sclera-app&username=demo-supervisor&password=demo-supervisor
+
+> {% client.global.set("supervisorToken", response.body.access_token); %}
+
+### A1. demo-author lists result types → 200
+GET {{host}}/api/v1/result-types
+Authorization: Bearer {{authorToken}}
+
+### A2. demo-author creates one → 403. Before feature 3 this was a 201: authoring included it.
+POST {{host}}/api/v1/result-types
+Authorization: Bearer {{authorToken}}
+Content-Type: application/json
+
+{ "key": "AUTHZ_PROBE", "name": "Should never exist", "color": "#123456" }
+
+### A3. demo-supervisor lists result types → 200
+GET {{host}}/api/v1/result-types
+Authorization: Bearer {{supervisorToken}}
+
+### A4. demo-supervisor creates one → 403
+POST {{host}}/api/v1/result-types
+Authorization: Bearer {{supervisorToken}}
+Content-Type: application/json
+
+{ "key": "AUTHZ_PROBE", "name": "Should never exist", "color": "#123456" }
