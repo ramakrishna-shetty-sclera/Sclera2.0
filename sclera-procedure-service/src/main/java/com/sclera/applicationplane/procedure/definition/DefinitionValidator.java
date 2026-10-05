@@ -122,8 +122,8 @@ public final class DefinitionValidator {
         }
         boolean known = parent.options().stream().anyMatch(o -> item.when().equals(o.key()));
         if (!known) {
-            problems.add(where + " depends on an answer that is not one of "
-                    + describe(parent) + "'s");
+            problems.add(where + " depends on an answer that does not belong to "
+                    + describe(parent));
         }
     }
 

@@ -52,7 +52,7 @@ class DefinitionValidatorTest {
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(
                 doc(yesNo("q2", "Exit clear?").withFollow(List.of(stray)))))
                 .isInstanceOf(ValidationException.class)
-                .hasMessageContaining("depends on an answer that is not one of");
+                .hasMessageContaining("depends on an answer that does not belong to");
     }
 
     @Test
