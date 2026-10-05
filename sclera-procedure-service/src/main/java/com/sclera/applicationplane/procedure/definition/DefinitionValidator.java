@@ -59,10 +59,11 @@ public final class DefinitionValidator {
     }
 
     /**
-     * The two things about a band that are nonsense rather than unfinished: a
-     * range that runs backwards, and a section band in a document with no
-     * sections. Whether the bands between them cover every score is a readiness
-     * question, because a half-written set of bands is a normal thing to save.
+     * What is nonsense about a band rather than unfinished: a range that runs
+     * backwards, a bound outside the scale, and a section band in a document
+     * with no sections. Whether the bands between them cover every score is a
+     * readiness question, because a half-written set of bands is a normal thing
+     * to save.
      */
     private static void checkThresholdShape(DefinitionDocument document, List<String> problems) {
         boolean hasSections = document.flatten().stream()
@@ -72,11 +73,22 @@ public final class DefinitionValidator {
             if (band.min() != null && band.max() != null && band.min() > band.max()) {
                 problems.add("The band " + describe(band) + " has a minimum above its maximum");
             }
+            // Refused here rather than left to the coverage check, which would
+            // otherwise report a single out-of-range band as two bands
+            // overlapping — true of the arithmetic and useless to the author.
+            if (outsideScale(band.min()) || outsideScale(band.max())) {
+                problems.add("The band " + describe(band) + " is outside the "
+                        + MIN_SCORE + " to " + MAX_SCORE + " scale");
+            }
             if (scopeOf(band) == Scope.SECTION && !hasSections) {
                 problems.add("The band " + describe(band)
                         + " scores a section, but this procedure has none");
             }
         }
+    }
+
+    private static boolean outsideScale(Integer bound) {
+        return bound != null && (bound < MIN_SCORE || bound > MAX_SCORE);
     }
 
     private static void checkItems(List<Item> items, Item parent, List<String> problems) {
@@ -276,11 +288,13 @@ public final class DefinitionValidator {
             }
         }
 
-        if (bands.isEmpty()) {
-            if (document.hasScoring()) {
-                blockers.add("Scoring is configured, but no thresholds say what a score means");
-            }
-            return;
+        // Specifically the version-wide bands. Section bands score one section
+        // and cannot decide the inspection, so a procedure carrying only those
+        // has still not said what its total means — which looked like a
+        // finished configuration until this counted the right list.
+        List<Threshold> whole = bands.stream().filter(b -> scopeOf(b) == Scope.VERSION).toList();
+        if (whole.isEmpty() && document.hasScoring()) {
+            blockers.add("Scoring is configured, but no thresholds say what a score means");
         }
 
         for (Scope scope : Scope.values()) {

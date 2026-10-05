@@ -298,6 +298,37 @@ class DefinitionValidatorTest {
     }
 
     @Test
+    void aBandOutsideTheScaleIsRefusedOnSave() {
+        // Caught here rather than left to the coverage check, which would
+        // report one out-of-range band as two bands overlapping — true of the
+        // arithmetic and useless to the author.
+        assertThatThrownBy(() -> DefinitionValidator.validateStructure(
+                scored(List.of(band(-10, 69, "FAIL"), band(70, null, "PASS")),
+                        yesNo("q2", "Exit clear?"))))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("is outside the 0 to 100 scale");
+
+        assertThatThrownBy(() -> DefinitionValidator.validateStructure(
+                scored(List.of(band(0, 200, "PASS")), yesNo("q2", "Exit clear?"))))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("is outside the 0 to 100 scale");
+    }
+
+    @Test
+    void sectionBandsAloneDoNotSayWhatTheInspectionScored() {
+        // A section band scores one section and cannot decide the inspection,
+        // so a procedure carrying only those has still not finished. It looked
+        // complete until the check counted version bands rather than all bands.
+        Threshold forSection = new Threshold(DefinitionDocument.Scope.SECTION, null, null, "PASS");
+
+        assertThat(DefinitionValidator.publishBlockers(
+                scored(List.of(forSection),
+                        item("s1", "Fire exits", QuestionType.SECTION),
+                        scoredYesNo("q2", "Exit clear?", 10, 0)), PASS_FAIL))
+                .containsExactly("Scoring is configured, but no thresholds say what a score means");
+    }
+
+    @Test
     void aSectionBandNeedsASection() {
         Threshold forSection = new Threshold(DefinitionDocument.Scope.SECTION, 0, 100, "PASS");
 

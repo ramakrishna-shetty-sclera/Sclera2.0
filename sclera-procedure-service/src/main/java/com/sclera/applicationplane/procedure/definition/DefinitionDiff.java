@@ -24,18 +24,20 @@ import java.util.Set;
  * Reordering is reported without noise. Only a change in the relative order of
  * items present in both versions counts, so inserting one at the top does not
  * mark everything below it as moved.
+ *
+ * @param thresholdsChanged scoring bands are version-wide rather than attached
+ *                          to any item, so a change to them belongs to the
+ *                          document and not to a row in the list. It is
+ *                          reported separately for the same reason
+ *                          {@code identical} has to account for it: two
+ *                          versions whose items match exactly are still
+ *                          different versions if one of them scores 90 as a
+ *                          Pass and the other does not, and the hash already
+ *                          knows that.
  */
 public record DefinitionDiff(
         boolean identical,
         boolean orderChanged,
-        /**
-         * Scoring bands are version-wide rather than attached to any item, so a
-         * change to them belongs to the document and not to a row in the list.
-         * It is reported separately for the same reason {@code identical} has to
-         * account for it: two versions whose items match exactly are still
-         * different versions if one of them scores 90 as a Pass and the other
-         * does not, and the hash already knows that.
-         */
         boolean thresholdsChanged,
         List<ItemChange> items
 ) {

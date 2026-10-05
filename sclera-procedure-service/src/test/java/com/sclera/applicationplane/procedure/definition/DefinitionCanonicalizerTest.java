@@ -188,6 +188,32 @@ class DefinitionCanonicalizerTest {
         assertThat(again.hash()).isEqualTo(first.hash());
     }
 
+    /** Canonical bytes exactly as a version published before scoring existed holds them. */
+    private static final String STORED_BEFORE_SCORING =
+            "{\"items\":[{\"key\":\"s1\",\"text\":\"Fire exits\",\"type\":\"SECTION\"},"
+            + "{\"alertProfile\":\"ap-fire\","
+            + "\"follow\":[{\"key\":\"q5\",\"required\":true,\"text\":\"Why not?\","
+            + "\"type\":\"TEXT\",\"when\":\"o4\"}],"
+            + "\"key\":\"q2\",\"options\":["
+            + "{\"key\":\"o3\",\"label\":\"Yes\",\"result\":\"PASS\"},"
+            + "{\"key\":\"o4\",\"label\":\"No\",\"result\":\"FAIL\"}],"
+            + "\"required\":true,\"text\":\"Exit clear?\",\"type\":\"YES_NO\",\"workOrder\":true}],"
+            + "\"schema\":2}";
+
+    @Test
+    void aVersionStoredBeforeScoringExistedKeepsItsBytesAndItsHash() {
+        // The guarantee the whole feature rests on, and the one no test written
+        // against freshly built objects can make: a published version is
+        // content-addressed and immutable, so if adding scoring changed what
+        // these bytes canonicalise to, every version already published would
+        // stop matching its own hash.
+        var again = canonicalizer.canonicalize(canonicalizer.parse(STORED_BEFORE_SCORING));
+
+        assertThat(again.json()).isEqualTo(STORED_BEFORE_SCORING);
+        assertThat(again.hash()).isEqualTo(DefinitionCanonicalizer.sha256Hex(STORED_BEFORE_SCORING));
+        assertThat(again.document().hasScoring()).isFalse();
+    }
+
     @Test
     void rejectsStoredBytesWithUnknownFields() {
         assertThatThrownBy(() -> canonicalizer.parse("{\"schema\":2,\"surprise\":true}"))
