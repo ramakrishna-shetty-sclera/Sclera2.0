@@ -200,94 +200,86 @@ stale.
 
 ## The definition document
 
-Shown pretty-printed; the stored bytes are one line.
+One flat list. Shown pretty-printed; the stored bytes are one line.
 
 ```json
 {
-  "schema": 1,
-  "categories": [
-    { "key": "c1", "name": "Fire safety", "weight": 2, "questions": [
+  "schema": 2,
+  "items": [
+    { "key": "s1", "text": "Location and access", "type": "SECTION" },
 
-      { "key": "q1", "text": "Is the fire exit clear?", "type": "YES_NO",
-        "required": true, "critical": true, "subquestionRollup": "WORST",
-        "options": [
-          { "key": "o1", "label": "Yes", "result": "PASS", "score": 10 },
-          { "key": "o2", "label": "No",  "result": "FAIL", "score": 0 }
-        ],
-        "questions": [
-          { "key": "q2", "text": "Describe the obstruction", "type": "TEXT",
-            "required": true,
-            "displayCondition": { "question": "q1", "op": "IN", "options": ["o2"] } },
-          { "key": "q3", "text": "Attach a photo", "type": "FILE",
-            "required": true, "evidenceRequired": true,
-            "displayCondition": { "question": "q1", "op": "IN", "options": ["o2"] } }
-        ] },
+    { "key": "q2", "text": "Is the fire exit clear?", "type": "YES_NO",
+      "required": true, "workOrder": true, "alertProfile": "ap-fire",
+      "standard": "NFPA 10", "source": "DOCUMENT",
+      "options": [
+        { "key": "o3", "label": "Yes", "result": "PASS" },
+        { "key": "o4", "label": "No",  "result": "FAIL" }
+      ],
+      "follow": [
+        { "key": "q5", "text": "Describe the obstruction", "type": "TEXT",
+          "required": true, "when": "o4" },
+        { "key": "q6", "text": "Photograph it", "type": "IMAGE",
+          "required": true, "when": "o4" }
+      ] },
 
-      { "key": "q4", "text": "Extinguisher inspection date", "type": "DATE",
-        "required": true,
-        "rules": [
-          { "op": "WITHIN_MONTHS",  "max": 12,            "result": "PASS",     "score": 10 },
-          { "op": "BETWEEN_MONTHS", "min": 12, "max": 15, "result": "AMBER",    "score": 5  },
-          { "op": "OVER_MONTHS",    "min": 15,            "result": "REQUIRED", "score": 0  }
-        ],
-        "options": [
-          { "key": "o9", "label": "Not applicable", "result": "NOT_APPLICABLE",
-            "excludeFromScoring": true }
-        ] }
-    ] }
-  ],
-  "thresholds": [
-    { "scope": "VERSION", "min": 90,            "result": "PASS"  },
-    { "scope": "VERSION", "min": 70, "max": 90, "result": "AMBER" },
-    { "scope": "VERSION",            "max": 70, "result": "FAIL"  }
-  ],
-  "targetTypes":   [ { "kind": "ASSET_CLASS", "key": "EXTINGUISHER" } ],
-  "signatureMode": "SEQUENTIAL",
-  "signatureRequirements": [
-    { "role": "INSPECTOR",  "required": true,  "format": "DRAWN" },
-    { "role": "SUPERVISOR", "required": false, "format": "TYPED" }
-  ],
-  "documents":     [ { "id": "d1", "name": "BS 5306 extract.pdf" } ]
+    { "key": "s7", "text": "Condition", "type": "SECTION" },
+
+    { "key": "q8", "text": "Record the gauge reading", "type": "INTEGER",
+      "unit": "psi", "min": 100, "max": 175,
+      "help": "Tap the gauge lightly before reading it." }
+  ]
 }
 ```
 
-**Options nest inside their question.** They have no independent existence, which is why they are not
-a table.
+**A section is an item, not a level.** `s1` is a heading; the questions after it are its siblings.
+There is no wrapper, so a document is one list and moving a question between sections is a move
+within that list rather than a change of parent.
 
-**Sub-questions nest inside their parent question** and reference the parent's *option keys* through
-`displayCondition`. A sub-question is a child of the question, not of an option, so the condition can
-also express numeric ranges, dates, multi-select and AND/OR triggers.
+**Follow-ups nest, and point at an answer.** `q5` sits inside `q2`'s `follow` and names `o4` — the
+option, not the label. Rewording "No" to "No — blocked" leaves `o4` alone, so the condition survives
+an edit that changes what the inspector reads. They nest to any depth: a follow-up may have
+follow-ups of its own.
 
-**Keys are stable across versions.** `q1` means the same question in v1 and v7, which is what lets
-rules, reporting and amendments refer to the same question over time. Keys are minted from
-`procedure_template.key_seq` and never reused, even after a question is deleted.
+**Options carry the meaning.** Each holds a result-type *key*, so an organization that later defines
+Amber maps an answer to `AMBER` with no change here. An option with no result decides nothing, which
+is how "Not applicable" works — it records that the inspector chose it, which a per-question flag
+could not, because that leaves N/A indistinguishable from unanswered.
 
-**Sibling order is the array index.** There is no `order` field to renumber, and no way for two
-siblings to claim the same position.
+**Keys are stable across versions and never reused.** `q2` means the same question in v1 and v7,
+which is what lets reporting and amendments refer to one question over time. Minted from
+`procedure_template.key_seq`: `s` for sections, `q` for questions, `o` for options, one counter
+behind all three, so a key's prefix alone says what it names.
 
-**Question types:** `YES_NO`, `SINGLE_CHOICE`, `MULTI_CHOICE`, `NUMBER`, `TEXT`, `DATE`, `FILE`. A
-rating or scale is a single choice with ordered options. Per-question `config` and `validation` hold
-type-specific settings, so adding a type does not change the schema.
+**Sibling order is the array index.** No `order` field to renumber, and no way for two siblings to
+claim the same position.
 
-**`evidenceRequired` is per question, not a question type.** A `YES_NO` question can demand a photo
-without becoming a `FILE` question; submission is blocked until something is attached. Requiring
-evidence and asking for a file are different things, and conflating them is how the old model lost
-the distinction.
+**Types.** Choice — `YES_NO`, `YES_NO_NA`, `RADIO`, `CHECKBOX`, `DROPDOWN`, whose options carry the
+result. Input — `TEXT`, `INTEGER`, the latter taking `unit`, `min` and `max`. Media — `IMAGE`,
+`MULTI_IMAGE`, `AUDIO`, `VIDEO`, `DOCUMENT`. Plus `SECTION` for a heading.
 
-**Not applicable is an option, not a flag.** An option carrying `excludeFromScoring` produces the
-`NOT_APPLICABLE` result and is left out of the score. This records that the inspector *chose* N/A,
-which a per-question boolean could not — it would leave "not applicable" indistinguishable from
-"nobody answered" — and the evaluator needs no special case for it.
+No date and no signature type. The prototype dropped date; signature is still R&D. Neither is ruled
+out, both are simply outside what the product has committed to.
 
-**`thresholds[].scope`** lets a threshold attach to the whole version or, later, to a category —
-without a schema change.
+**`workOrder` and `alertProfile`** record that a failed answer should raise work. Only a choice
+question can carry them, since only its answers produce a result. The profile is a reference the
+procedure service stores and does not resolve — alert profiles are a later feature, and executing
+the work order belongs to the facilities layer, not here.
 
-**Signatures** carry `required` (an optional signature is collected if available), a `format` of
-drawn, typed or photo, and a version-level `signatureMode` of sequential or parallel. Roles are open:
-inspector, supervisor, manager, witness or anything an organization defines.
+**`source`** says where a question came from: typed by an author, generated from an uploaded
+standard, copied from a Sclera template, or taken from a suggestion. Cheap to record now and
+impossible to reconstruct later, once a procedure has been edited a few times.
+
+**What is checked, and when.** Structure is enforced on every write and refused, because storing a
+follow-up that points at a missing answer is storing corruption. Readiness — nothing authored yet, a
+choice with one answer, an answer mapped to a result type the organization does not have — is
+checked at publish and returned as a list, so an author sees every reason at once instead of one per
+attempt. The split is what lets a half-finished draft be saved, which is the normal way of working.
+
+**Schema 2.** Schema 1 was `categories[] → questions[]` and is not readable. Nothing was carrying it
+worth keeping. That was free exactly once: a published version is content-addressed, so once a real
+organization has one, reshaping the document means reading both shapes forever.
 
 ---
-
 ## Multi-tenancy
 
 Schema-per-tenant. The organization id comes from the JWT `org_id` claim, and every request runs

@@ -22,7 +22,7 @@ grant_type=password&client_id=sclera-app&username=testuser&password=testuser
 
 > {% client.global.set("token", response.body.access_token); %}
 
-### 1. Create a template — also creates draft v1. Keys are minted: c1, q2, q3
+### 1. Create a template — also creates draft v1. Keys are minted: s1, q2, o3, o4
 POST {{host}}/api/v1/procedure-templates
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -31,11 +31,15 @@ Content-Type: application/json
   "name": "Fire safety walk {{$random.integer(1000, 9999)}}",
   "description": "Daily walk-through",
   "definition": {
-    "categories": [
-      { "name": "Fire exits", "questions": [
-          { "text": "Is the fire exit clear?", "type": "BOOLEAN", "required": true },
-          { "text": "Describe any obstruction", "type": "TEXT" }
-      ] }
+    "items": [
+      { "text": "Fire exits", "type": "SECTION" },
+      { "text": "Is the fire exit clear?", "type": "YES_NO", "required": true,
+        "workOrder": true, "alertProfile": "ap-fire", "standard": "NFPA 10",
+        "options": [
+          { "label": "Yes", "result": "PASS" },
+          { "label": "No",  "result": "FAIL" }
+        ]
+      }
     ]
   }
 }
@@ -48,7 +52,7 @@ Authorization: Bearer {{token}}
 
 > {% client.global.set("rowVersion", response.body.data.rowVersion); %}
 
-### 3. Save the draft — send keys back for existing items, omit for new ones (gets q4)
+### 3. Save the draft — send keys back for existing items, omit for new ones (the follow-up gets one)
 PUT {{host}}/api/v1/procedure-templates/{{id}}/draft
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -57,12 +61,18 @@ Content-Type: application/json
   "rowVersion": {{rowVersion}},
   "changeNote": "Reworded q2, added a photo",
   "definition": {
-    "categories": [
-      { "key": "c1", "name": "Fire exits", "questions": [
-          { "key": "q2", "text": "Is every fire exit clear?", "type": "BOOLEAN", "required": true },
-          { "key": "q3", "text": "Describe any obstruction", "type": "TEXT" },
-          { "text": "Photo of the exit", "type": "PHOTO" }
-      ] }
+    "items": [
+      { "key": "s1", "text": "Fire exits", "type": "SECTION" },
+      { "key": "q2", "text": "Is every fire exit clear?", "type": "YES_NO", "required": true,
+        "workOrder": true, "alertProfile": "ap-fire", "standard": "NFPA 10",
+        "options": [
+          { "key": "o3", "label": "Yes", "result": "PASS" },
+          { "key": "o4", "label": "No",  "result": "FAIL" }
+        ],
+        "follow": [
+          { "text": "Describe the obstruction", "type": "TEXT", "required": true, "when": "o4" }
+        ]
+      }
     ]
   }
 }
@@ -74,7 +84,7 @@ PUT {{host}}/api/v1/procedure-templates/{{id}}/draft
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "rowVersion": 0, "definition": { "categories": [] } }
+{ "rowVersion": 0, "definition": { "items": [] } }
 
 ### 5. Publish — creates v1 (PUBLISHED, frozen)
 POST {{host}}/api/v1/procedure-templates/{{id}}/publish
@@ -94,7 +104,7 @@ Content-Type: application/json
 POST {{host}}/api/v1/procedure-templates/{{id}}/publish
 Authorization: Bearer {{token}}
 
-### 8. Draft again, then move q4 into a new category (gets c5)
+### 8. Draft again, then add a second section and a number question
 POST {{host}}/api/v1/procedure-templates/{{id}}/draft
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -112,14 +122,20 @@ Content-Type: application/json
   "rowVersion": {{rowVersion}},
   "changeNote": "Split out extinguishers",
   "definition": {
-    "categories": [
-      { "key": "c1", "name": "Fire exits", "questions": [
-          { "key": "q2", "text": "Is every fire exit clear?", "type": "BOOLEAN", "required": true },
-          { "key": "q3", "text": "Describe any obstruction", "type": "TEXT" }
-      ] },
-      { "name": "Extinguishers", "questions": [
-          { "key": "q4", "text": "Photo of the exit", "type": "PHOTO" }
-      ] }
+    "items": [
+      { "key": "s1", "text": "Fire exits", "type": "SECTION" },
+      { "key": "q2", "text": "Is every fire exit clear?", "type": "YES_NO", "required": true,
+        "workOrder": true, "alertProfile": "ap-fire", "standard": "NFPA 10",
+        "options": [
+          { "key": "o3", "label": "Yes", "result": "PASS" },
+          { "key": "o4", "label": "No",  "result": "FAIL" }
+        ],
+        "follow": [
+          { "key": "q5", "text": "Describe the obstruction", "type": "TEXT", "required": true, "when": "o4" }
+        ]
+      },
+      { "text": "Extinguishers", "type": "SECTION" },
+      { "text": "Record the gauge reading", "type": "INTEGER", "unit": "psi", "min": 100, "max": 175 }
     ]
   }
 }
@@ -136,7 +152,7 @@ Authorization: Bearer {{token}}
 GET {{host}}/api/v1/procedure-templates/{{id}}/versions/1
 Authorization: Bearer {{token}}
 
-### 12. Diff v1 → v2 — c5 added, q4 moved to c5
+### 12. Diff v1 → v2 — a section and a question added
 GET {{host}}/api/v1/procedure-templates/{{id}}/diff?from=1&to=2
 Authorization: Bearer {{token}}
 
@@ -214,8 +230,9 @@ Authorization: Bearer {{adminToken}}
 X-Sclera-Property: {{vdms001}}
 Content-Type: application/json
 
-{ "name": "Extinguisher check — VDMS001", "definition": { "categories": [
-  { "name": "Monthly", "questions": [ { "text": "Is it in place?", "type": "BOOLEAN", "required": true } ] } ] } }
+{ "name": "Extinguisher check — VDMS001", "definition": { "items": [
+  { "text": "Is it in place?", "type": "YES_NO", "required": true,
+    "options": [ { "label": "Yes", "result": "PASS" }, { "label": "No", "result": "FAIL" } ] } ] } }
 
 ### P2. Author one inside VDMS002
 POST {{host}}/api/v1/procedure-templates
@@ -223,16 +240,18 @@ Authorization: Bearer {{adminToken}}
 X-Sclera-Property: {{vdms002}}
 Content-Type: application/json
 
-{ "name": "Boiler check — VDMS002", "definition": { "categories": [
-  { "name": "Monthly", "questions": [ { "text": "Pressure in range?", "type": "BOOLEAN" } ] } ] } }
+{ "name": "Boiler check — VDMS002", "definition": { "items": [
+  { "text": "Pressure in range?", "type": "YES_NO",
+    "options": [ { "label": "Yes", "result": "PASS" }, { "label": "No", "result": "FAIL" } ] } ] } }
 
 ### P3. Author one at organization level — no header, so shared by every property
 POST {{host}}/api/v1/procedure-templates
 Authorization: Bearer {{adminToken}}
 Content-Type: application/json
 
-{ "name": "Site induction — shared", "definition": { "categories": [
-  { "name": "Induction", "questions": [ { "text": "Briefing given?", "type": "BOOLEAN" } ] } ] } }
+{ "name": "Site induction — shared", "definition": { "items": [
+  { "text": "Briefing given?", "type": "YES_NO",
+    "options": [ { "label": "Yes", "result": "PASS" }, { "label": "No", "result": "FAIL" } ] } ] } }
 
 ### P4. Inside VDMS001 — expect the VDMS001 one and the shared one, not VDMS002's
 GET {{host}}/api/v1/procedure-templates
