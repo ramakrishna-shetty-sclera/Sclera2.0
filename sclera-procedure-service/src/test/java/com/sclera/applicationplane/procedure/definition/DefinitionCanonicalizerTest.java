@@ -2,7 +2,9 @@ package com.sclera.applicationplane.procedure.definition;
 
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Item;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Option;
+import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Threshold;
 import com.sclera.applicationplane.procedure.domain.QuestionType;
+import com.sclera.applicationplane.procedure.domain.Rollup;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -107,6 +109,83 @@ class DefinitionCanonicalizerTest {
                         "psi", 0, 300, false, null, null, null, null, null, null, List.of())));
 
         assertThat(canonical.json()).contains("\"min\":0");
+    }
+
+    @Test
+    void aZeroScoreIsKeptForTheSameReason() {
+        // Zero points is the normal way to spell "this is the wrong answer",
+        // and it is not the same as an answer that scores nothing at all. The
+        // drop-empties rule would eat it if it were ever written as "falsy".
+        var canonical = canonicalizer.canonicalize(doc(
+                question("q2", "Exit clear?", QuestionType.YES_NO, false).withOptions(List.of(
+                        new Option("o3", "Yes", "PASS", 10, false),
+                        new Option("o4", "No", "FAIL", 0, false)))));
+
+        assertThat(canonical.json()).contains("\"score\":0");
+    }
+
+    @Test
+    void anUnscoredDocumentWritesNoScoringFieldsAtAll() {
+        // What keeps CURRENT_SCHEMA at 2: a document authored before scoring
+        // existed canonicalises byte for byte as it did then, so its stored
+        // hash still matches.
+        var canonical = canonicalizer.canonicalize(
+                doc(question("q2", "Exit clear?", QuestionType.YES_NO, true)));
+
+        assertThat(canonical.json()).isEqualTo(
+                "{\"items\":[{\"key\":\"q2\",\"required\":true,\"text\":\"Exit clear?\",\"type\":\"YES_NO\"}],"
+                + "\"schema\":2}");
+    }
+
+    @Test
+    void scoringIsPartOfTheContent() {
+        Item unscored = question("q2", "Exit clear?", QuestionType.YES_NO, false).withOptions(List.of(
+                new Option("o3", "Yes", "PASS", null, false),
+                new Option("o4", "No", "FAIL", null, false)));
+        Item scored = unscored.withOptions(List.of(
+                new Option("o3", "Yes", "PASS", 10, false),
+                new Option("o4", "No", "FAIL", 0, false)));
+
+        assertThat(canonicalizer.canonicalize(doc(unscored)).hash())
+                .isNotEqualTo(canonicalizer.canonicalize(doc(scored)).hash());
+    }
+
+    @Test
+    void thresholdsArePartOfTheContent() {
+        // They hang off the document rather than any item, so it would be easy
+        // to drop them from the hash and never notice until two versions that
+        // score differently collided as "already published".
+        Item q = question("q2", "Exit clear?", QuestionType.YES_NO, false);
+        var bare = new DefinitionDocument(2, List.of(q), List.of());
+        var banded = new DefinitionDocument(2, List.of(q),
+                List.of(new Threshold(null, 0, 69, "FAIL"), new Threshold(null, 70, null, "PASS")));
+
+        assertThat(canonicalizer.canonicalize(bare).hash())
+                .isNotEqualTo(canonicalizer.canonicalize(banded).hash());
+        assertThat(canonicalizer.canonicalize(banded).json()).contains("\"thresholds\"");
+    }
+
+    @Test
+    void aScoredDocumentSurvivesTheRoundTrip() {
+        var first = canonicalizer.canonicalize(new DefinitionDocument(2,
+                List.of(new Item("s1", "Fire exits", null, QuestionType.SECTION, false, false, List.of(),
+                                null, null, null, false, null, 2, null, null, null, null, List.of()),
+                        new Item("q2", "Exit clear?", null, QuestionType.YES_NO, true, true,
+                                List.of(new Option("o3", "Yes", "PASS", 10, false),
+                                        new Option("o4", "No", "FAIL", 0, false),
+                                        new Option("o5", "N/A", null, null, true)),
+                                null, null, null, false, null, 3, null, null, null,
+                                Rollup.WORST,
+                                List.of(new Item("q6", "Why not?", null, QuestionType.TEXT, true, false,
+                                        List.of(), null, null, null, false, null, null, null, null,
+                                        "o4", null, List.of())))),
+                List.of(new Threshold(null, null, 69, "FAIL"),
+                        new Threshold(DefinitionDocument.Scope.SECTION, 70, null, "PASS"))));
+
+        var again = canonicalizer.canonicalize(canonicalizer.parse(first.json()));
+
+        assertThat(again.json()).isEqualTo(first.json());
+        assertThat(again.hash()).isEqualTo(first.hash());
     }
 
     @Test

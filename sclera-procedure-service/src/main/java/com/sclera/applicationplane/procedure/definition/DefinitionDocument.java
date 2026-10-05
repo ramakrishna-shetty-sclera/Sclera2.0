@@ -86,15 +86,24 @@ public record DefinitionDocument(
         }
     }
 
-    /** True when any scoring at all has been configured. Silence is a valid procedure. */
+    /**
+     * True when this procedure computes a number — points on an answer, a
+     * weight, or bands to read the total against. Silence is a valid procedure
+     * and must stay publishable.
+     *
+     * <p><b>{@code critical} and {@code followRollup} are deliberately not
+     * counted.</b> Both decide a <em>result</em> rather than a score: a critical
+     * question fails the inspection whatever the arithmetic says, and a rollup
+     * says which of several results wins. Either is perfectly sensible on a
+     * procedure that never scores anything, so counting them here would demand
+     * thresholds from an author who asked for none.
+     */
     public boolean hasScoring() {
         if (!thresholds.isEmpty()) {
             return true;
         }
         return flatten().stream().anyMatch(item ->
                 item.weight() != null
-                        || item.critical()
-                        || item.followRollup() != null
                         || item.options().stream().anyMatch(o -> o.score() != null));
     }
 
