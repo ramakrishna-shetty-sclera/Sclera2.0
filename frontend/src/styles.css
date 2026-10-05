@@ -73,6 +73,17 @@ h2 {
   color: #9ca3af;
 }
 
+/* The property dropdown sits on the dark top bar, not in a light form. */
+.property-switcher {
+  width: auto;
+  margin-top: 0;
+  padding: 4px 8px;
+  font-size: 13px;
+  background: #1f2937;
+  color: #f9fafb;
+  border-color: #374151;
+}
+
 .content {
   max-width: 960px;
   margin: 0 auto;
