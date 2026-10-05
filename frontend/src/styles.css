@@ -1425,3 +1425,19 @@ tr[draggable='true'] {
   border-top: none;
   padding-top: 0;
 }
+
+/* --- authoring a document ------------------------------------------------ */
+
+/* A section is a heading in the same list, so it is weighted, not indented. */
+.item-section > .form-grid .grow input {
+  font-weight: 600;
+}
+
+.question-editor .doc-follow {
+  margin-top: 10px;
+}
+
+.question-editor .doc-follow .question-editor {
+  border-top: none;
+  padding-bottom: 0;
+}

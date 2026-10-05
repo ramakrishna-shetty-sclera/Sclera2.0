@@ -2,43 +2,23 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { createProcedure, getDraft, getProcedure, saveDraft, updateProcedure } from '../api/templates'
 import { ApiError } from '../api/client'
-import type { DefinitionDocument, ItemType } from '../api/types'
-
-const ITEM_TYPES: ItemType[] = [
-  'SECTION',
-  'YES_NO',
-  'YES_NO_NA',
-  'RADIO',
-  'CHECKBOX',
-  'DROPDOWN',
-  'TEXT',
-  'INTEGER',
-  'IMAGE',
-  'MULTI_IMAGE',
-  'AUDIO',
-  'VIDEO',
-  'DOCUMENT',
-]
-
-/**
- * Editing state mirrors the document, with one addition: `key`.
- *
- * Keys are minted by the server and are what make a procedure's history
- * meaningful — a stored answer, a rule and a diff all refer to an item by key.
- * So an existing item carries its key through the edit and back, unchanged, and
- * a new one has none until the server assigns it. Dropping a key on the way
- * through would read as "that question was deleted and another one appeared",
- * silently orphaning everything pointing at it.
- */
-interface ItemDraft {
-  key?: string
-  text: string
-  help: string
-  type: ItemType
-  required: boolean
-}
-
-const emptyItem = (): ItemDraft => ({ text: '', help: '', type: 'TEXT', required: false })
+import type { ItemType } from '../api/types'
+import { ItemEditor } from '../components/ItemEditor'
+import {
+  addFollowIn,
+  findIn,
+  fromDocument,
+  moveIn,
+  newItem,
+  patchIn,
+  removeIn,
+  replaceIn,
+  retype,
+  retypeBlockedBy,
+  toDocument,
+  triggerOptions,
+  type ItemDraft,
+} from '../components/itemTree'
 
 /**
  * Authors the one editable thing a procedure has: its draft.
@@ -48,9 +28,9 @@ const emptyItem = (): ItemDraft => ({ text: '', help: '', type: 'TEXT', required
  * lock — name and description are identity rather than version content, so they
  * go through a separate call and only when they actually changed.
  *
- * One flat list, which is what the document is: a section is an item that
- * happens to be a heading, and the questions after it are its siblings.
- * Answers and follow-ups are not editable here yet.
+ * The document is one flat list: a section is an item that happens to be a
+ * heading, and the questions after it are its siblings. The one thing that
+ * nests is a follow-up, which hangs off the answer that shows it.
  */
 export function TemplateEditorPage() {
   const { id } = useParams<{ id: string }>()
@@ -59,13 +39,15 @@ export function TemplateEditorPage() {
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [items, setItems] = useState<ItemDraft[]>([emptyItem()])
+  const [items, setItems] = useState<ItemDraft[]>([newItem()])
   const [changeNote, setChangeNote] = useState('')
   const [schema, setSchema] = useState(2)
   const [rowVersion, setRowVersion] = useState<number | null>(null)
   /** Set separately from `error`: a conflict needs a reload, not a retry. */
   const [conflict, setConflict] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** Why an edit was refused before it reached the server. Cleared on the next one. */
+  const [refused, setRefused] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [loaded, setLoaded] = useState(!editing)
   /** What identity looked like when loaded, so an unchanged name costs no write. */
@@ -80,15 +62,8 @@ export function TemplateEditorPage() {
         setOriginal({ name: procedure.name, description: procedure.description ?? '' })
         setSchema(draft.definition.schema)
         setRowVersion(draft.rowVersion)
-        setItems(
-          draft.definition.items.map((item) => ({
-            key: item.key,
-            text: item.text,
-            help: item.help ?? '',
-            type: item.type,
-            required: item.required,
-          })),
-        )
+        const loadedItems = fromDocument(draft.definition)
+        setItems(loadedItems.length > 0 ? loadedItems : [newItem()])
         setLoaded(true)
       })
       .catch((e) =>
@@ -102,26 +77,44 @@ export function TemplateEditorPage() {
       )
   }, [id])
 
-  function patchItem(index: number, patch: Partial<ItemDraft>) {
-    setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)))
+  function onPatch(uid: string, patch: Partial<ItemDraft>) {
+    setItems((prev) => patchIn(prev, uid, patch))
   }
 
-  /** Keys ride through untouched; a blank one is simply absent, so the server mints it. */
-  function toDocument(): DefinitionDocument {
-    return {
-      schema,
-      items: items.map((item) => ({
-        key: item.key,
-        text: item.text.trim(),
-        help: item.help.trim() || undefined,
-        type: item.type,
-        // A section is never answered, so it is never required.
-        required: item.type === 'SECTION' ? false : item.required,
-        options: [],
-        workOrder: false,
-        follow: [],
-      })),
-    }
+  /**
+   * A type change can invalidate a follow-up, so it is refused rather than
+   * applied destructively — losing a question to a dropdown nobody meant to
+   * touch is worse than being told no.
+   */
+  function onRetype(uid: string, type: ItemType) {
+    const item = findIn(items, uid)
+    if (!item) return
+    const blocked = retypeBlockedBy(item, type)
+    setRefused(blocked)
+    if (blocked) return
+    setItems((prev) => replaceIn(prev, uid, (current) => retype(current, type)))
+  }
+
+  function onRemove(uid: string) {
+    setRefused(null)
+    setItems((prev) => {
+      const next = removeIn(prev, uid)
+      return next.length === 0 ? [newItem()] : next
+    })
+  }
+
+  function onMove(uid: string, delta: number) {
+    setItems((prev) => moveIn(prev, uid, delta))
+  }
+
+  /** A follow-up is born pointing at the parent's first answer, which is the usual intent. */
+  function onAddFollow(uid: string) {
+    setRefused(null)
+    const parent = findIn(items, uid)
+    const first = parent ? triggerOptions(parent)[0] : undefined
+    const when = first?.key
+    if (!when) return
+    setItems((prev) => addFollowIn(prev, uid, { ...newItem(), when }))
   }
 
   async function onSubmit(e: FormEvent) {
@@ -130,11 +123,13 @@ export function TemplateEditorPage() {
     setError(null)
     setConflict(false)
     try {
+      const definition = toDocument(schema, items)
+
       if (!editing) {
         const created = await createProcedure({
           name: name.trim(),
           description: description.trim() || undefined,
-          definition: toDocument(),
+          definition,
         })
         navigate(`/templates/${created.id}`)
         return
@@ -144,7 +139,7 @@ export function TemplateEditorPage() {
         await updateProcedure(id!, { name: name.trim(), description: description.trim() || undefined })
       }
       await saveDraft(id!, {
-        definition: toDocument(),
+        definition,
         rowVersion: rowVersion!,
         changeNote: changeNote.trim() || undefined,
       })
@@ -198,6 +193,8 @@ export function TemplateEditorPage() {
         error && <div className="alert alert-error">{error}</div>
       )}
 
+      {refused && <div className="alert alert-amber">{refused}</div>}
+
       <div className="card">
         <label>
           Name *
@@ -227,73 +224,36 @@ export function TemplateEditorPage() {
 
       <div className="card">
         {items.map((item, index) => (
-          <div className="question-editor" key={item.key ?? `new-${index}`}>
-            <div className="form-grid">
-              <label className="grow">
-                {item.type === 'SECTION' ? 'Section' : 'Question'} {index + 1} *
-                <input
-                  value={item.text}
-                  onChange={(e) => patchItem(index, { text: e.target.value })}
-                  required
-                  maxLength={1000}
-                />
-              </label>
-              <label>
-                Type
-                <select
-                  value={item.type}
-                  onChange={(e) => patchItem(index, { type: e.target.value as ItemType })}
-                >
-                  {ITEM_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div className="form-grid">
-              <label className="grow">
-                Help text
-                <input
-                  value={item.help}
-                  onChange={(e) => patchItem(index, { help: e.target.value })}
-                  maxLength={1000}
-                />
-              </label>
-              {item.type !== 'SECTION' && (
-                <label className="checkbox">
-                  <input
-                    type="checkbox"
-                    checked={item.required}
-                    onChange={(e) => patchItem(index, { required: e.target.checked })}
-                  />
-                  Required
-                </label>
-              )}
-            </div>
-            <div className="rt-actions">
-              {item.key && <span className="rt-key-inline">{item.key}</span>}
-              {items.length > 1 && (
-                <button
-                  type="button"
-                  className="btn btn-ghost small"
-                  onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))}
-                >
-                  Remove
-                </button>
-              )}
-            </div>
-          </div>
+          <ItemEditor
+            key={item.uid}
+            item={item}
+            parent={null}
+            index={index}
+            siblings={items.length}
+            onPatch={onPatch}
+            onRetype={onRetype}
+            onRemove={onRemove}
+            onMove={onMove}
+            onAddFollow={onAddFollow}
+          />
         ))}
 
-        <button type="button" className="btn" onClick={() => setItems((prev) => [...prev, emptyItem()])}>
-          + Add item
-        </button>
+        <div className="rt-actions">
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setItems((prev) => [...prev, newItem('SECTION')])}
+          >
+            + Add section
+          </button>
+          <button type="button" className="btn" onClick={() => setItems((prev) => [...prev, newItem()])}>
+            + Add question
+          </button>
+        </div>
       </div>
 
       <p className="muted small">
-        Answers, result mapping and follow-up questions are not editable here yet.
+        Answers and result mapping are not editable here yet — Yes/No questions come with theirs.
       </p>
     </form>
   )

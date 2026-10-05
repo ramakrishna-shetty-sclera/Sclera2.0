@@ -1,10 +1,5 @@
+import { typeLabel } from '../api/document'
 import type { DefinitionDocument, DefinitionItem, DefinitionOption } from '../api/types'
-
-/** 'MULTI_IMAGE' reads as 'Multi image'. The stored value stays what it is. */
-function label(value: string): string {
-  const words = value.toLowerCase().split('_').join(' ')
-  return words.charAt(0).toUpperCase() + words.slice(1)
-}
 
 /** What a follow-up hangs off, named by the answer rather than by its key. */
 function trigger(when: string | null | undefined, parentOptions: DefinitionOption[]): string | null {
@@ -46,14 +41,14 @@ function QuestionView({
       </div>
 
       <div className="doc-meta muted small">
-        <span className="badge badge-gray">{label(item.type)}</span>
+        <span className="badge badge-gray">{typeLabel(item.type)}</span>
         {when && <span>shown when answered “{when}”</span>}
         {range && <span>{range}</span>}
         {item.workOrder && (
           <span>raises a work order{item.alertProfile ? ` · ${item.alertProfile}` : ''}</span>
         )}
         {item.standard && <span>{item.standard}</span>}
-        {item.source && item.source !== 'MANUAL' && <span>from {label(item.source)}</span>}
+        {item.source && item.source !== 'MANUAL' && <span>from {typeLabel(item.source)}</span>}
       </div>
 
       {item.help && <div className="muted small">{item.help}</div>}
