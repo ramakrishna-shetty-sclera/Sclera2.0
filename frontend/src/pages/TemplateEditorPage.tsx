@@ -5,6 +5,7 @@ import { ApiError } from '../api/client'
 import type { ItemType, ResultType } from '../api/types'
 import { listResultTypes } from '../api/resultTypes'
 import { ItemEditor } from '../components/ItemEditor'
+import { Refusal } from '../components/Refusal'
 import {
   addFollowIn,
   addOptionIn,
@@ -54,6 +55,8 @@ export function TemplateEditorPage() {
   const [error, setError] = useState<string | null>(null)
   /** Why an edit was refused before it reached the server. Cleared on the next one. */
   const [refused, setRefused] = useState<string | null>(null)
+  /** What the server refused, kept whole: a refusal can name several things at once. */
+  const [refusal, setRefusal] = useState<unknown>(null)
   const [busy, setBusy] = useState(false)
   const [loaded, setLoaded] = useState(!editing)
   /** What identity looked like when loaded, so an unchanged name costs no write. */
@@ -158,6 +161,7 @@ export function TemplateEditorPage() {
     e.preventDefault()
     setBusy(true)
     setError(null)
+    setRefusal(null)
     setConflict(false)
     try {
       const definition = toDocument(schema, items)
@@ -185,10 +189,10 @@ export function TemplateEditorPage() {
       if (e instanceof ApiError && e.status === 409) {
         setConflict(true)
         setError('Someone else saved this draft while you were editing it.')
-      } else if (e instanceof ApiError && e.fieldErrors.length > 0) {
-        setError(e.fieldErrors.map((f) => `${f.field}: ${f.message}`).join(' · '))
       } else {
-        setError(e instanceof Error ? e.message : 'Could not save')
+        // The server names every structural problem at once; Refusal unpacks
+        // them, because an author fixing four things wants four lines.
+        setRefusal(e instanceof Error ? e : new Error('Could not save'))
       }
       setBusy(false)
     }
@@ -231,6 +235,7 @@ export function TemplateEditorPage() {
       )}
 
       {refused && <div className="alert alert-amber">{refused}</div>}
+      <Refusal error={refusal} />
 
       <div className="card">
         <label>

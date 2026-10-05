@@ -12,11 +12,11 @@ import {
   publishProcedure,
 } from '../api/templates'
 import { createInspection } from '../api/inspections'
-import { ApiError } from '../api/client'
 import type { ProcedureTemplate, TemplateVersion, TemplateVersionSummary } from '../api/types'
 import { StatusBadge } from '../components/StatusBadge'
 import { DefinitionView } from '../components/DefinitionView'
 import { VersionHistory } from '../components/VersionHistory'
+import { Refusal } from '../components/Refusal'
 
 /**
  * One procedure: what it is, what it can do next, and the content of whichever
@@ -34,7 +34,8 @@ export function TemplateDetailPage() {
   const [version, setVersion] = useState<TemplateVersion | null>(null)
   const [versions, setVersions] = useState<TemplateVersionSummary[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [blockers, setBlockers] = useState<string[]>([])
+  /** What the server refused, kept whole: a refusal can name several things at once. */
+  const [refusal, setRefusal] = useState<unknown>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -82,24 +83,20 @@ export function TemplateDetailPage() {
 
   /**
    * Runs an action, then reloads so the screen matches the server rather than
-   * what we guessed it would become. Publish can fail with a list of reasons
-   * rather than one message, so those are kept separate and shown together.
+   * what we guessed it would become. A refusal is kept whole rather than
+   * flattened to a string: publish names every reason it is not ready at once,
+   * and Refusal is what turns that back into a list.
    */
   async function run(action: () => Promise<unknown>) {
     setBusy(true)
     setError(null)
-    setBlockers([])
+    setRefusal(null)
     setNotice(null)
     try {
       await action()
       await reload()
     } catch (e) {
-      if (e instanceof ApiError && e.fieldErrors.length > 0) {
-        setBlockers(e.fieldErrors.map((f) => (f.field ? `${f.field}: ${f.message}` : f.message)))
-        setError(e.message)
-      } else {
-        setError(e instanceof Error ? e.message : 'Action failed')
-      }
+      setRefusal(e instanceof Error ? e : new Error('Action failed'))
     } finally {
       setBusy(false)
     }
@@ -226,16 +223,7 @@ export function TemplateDetailPage() {
 
       {notice && <div className="alert alert-ok">{notice}</div>}
       {error && <div className="alert alert-error">{error}</div>}
-      {blockers.length > 0 && (
-        <div className="alert alert-error">
-          <strong>This cannot be published yet:</strong>
-          <ul>
-            {blockers.map((b) => (
-              <li key={b}>{b}</li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <Refusal error={refusal} />
 
       {procedure.description && <p>{procedure.description}</p>}
 

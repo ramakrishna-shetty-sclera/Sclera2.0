@@ -29,6 +29,45 @@ export class ApiError extends Error {
   }
 }
 
+/** A refusal the author has to act on, as the lead-in and the list it was built from. */
+export interface Reasons {
+  lead: string | null
+  list: string[]
+}
+
+/**
+ * Unpacks a refusal that names more than one thing.
+ *
+ * The procedure service collects every structural problem and every publish
+ * blocker and joins them with '; ' into one message, deliberately — an author
+ * fixing four things should be told all four at once rather than one per
+ * attempt. One paragraph is not how you read four things, so this splits it
+ * back into the list it was built from.
+ *
+ * **A seam, and a temporary one.** It couples the SPA to a formatting choice in
+ * DefinitionValidator and ProcedureTemplateService. The right answer is a
+ * structured list in the response, and features 5 and 6 add the publish
+ * blockers that will make it worth doing. Until then this is the only way to
+ * show four reasons as four lines.
+ *
+ * The lead-in is only taken when the first part cannot itself be a reason:
+ * every reason names an item, so it starts with a quote, and only a lead-in
+ * like "This procedure cannot be published yet" does not.
+ */
+export function splitReasons(message: string): Reasons {
+  const parts = message
+    .split('; ')
+    .map((part) => part.trim())
+    .filter(Boolean)
+  if (parts.length < 2) return { lead: null, list: [] }
+
+  const colon = parts[0].indexOf(': ')
+  if (!parts[0].startsWith("'") && colon > 0) {
+    return { lead: parts[0].slice(0, colon), list: [parts[0].slice(colon + 2), ...parts.slice(1)] }
+  }
+  return { lead: null, list: parts }
+}
+
 interface Envelope<T> {
   success: boolean
   data: T

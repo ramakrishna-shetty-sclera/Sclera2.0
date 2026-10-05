@@ -1468,3 +1468,12 @@ tr[draggable='true'] {
 .field-stale {
   border-color: #d97706;
 }
+
+.refusal-list {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+
+.refusal-list li {
+  margin-bottom: 3px;
+}
