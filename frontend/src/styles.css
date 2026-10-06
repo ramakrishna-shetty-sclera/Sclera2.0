@@ -1459,15 +1459,41 @@ tr[draggable='true'] {
 
 .answer-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin-bottom: 6px;
 }
 
+/*
+ * The global `input, select, textarea { width: 100%; margin-top: 4px }` rule
+ * puts every control in this row at full width. `flex: 1` on the label input
+ * means flex-basis 0, so it only ever received LEFTOVER space — and the result
+ * picker, still asking for 100%, left none. The input collapsed to its padding
+ * (22px, at every window size) and could be focused but not typed in.
+ *
+ * So each end gets an explicit basis: the label takes the free space, the
+ * picker keeps its natural width.
+ */
+.answer-row input,
+.answer-row select {
+  margin-top: 0;
+}
+
 .answer-row input[type='text'],
 .answer-row input:not([type]) {
-  flex: 1;
+  /* A basis of its own rather than the global 100%: with wrapping on, a 100%
+     basis would push the picker onto a second line at every width. */
+  flex: 1 1 180px;
+  width: auto;
   min-width: 0;
+}
+
+.answer-row select {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 170px;
+  max-width: 40%;
 }
 
 .answer-row input[readonly] {
