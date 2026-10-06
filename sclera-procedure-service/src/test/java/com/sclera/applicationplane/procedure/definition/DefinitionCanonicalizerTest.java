@@ -3,7 +3,9 @@ package com.sclera.applicationplane.procedure.definition;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Item;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Option;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.RangeRule;
+import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Threshold;
 import com.sclera.applicationplane.procedure.domain.QuestionType;
+import com.sclera.applicationplane.procedure.domain.Rollup;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -16,12 +18,12 @@ class DefinitionCanonicalizerTest {
     private final DefinitionCanonicalizer canonicalizer = new DefinitionCanonicalizer();
 
     private static DefinitionDocument doc(Item... items) {
-        return new DefinitionDocument(1, List.of(items));
+        return new DefinitionDocument(1, List.of(items), List.of());
     }
 
     private static Item question(String key, String text, QuestionType type, boolean required) {
-        return new Item(key, text, null, type, required, List.of(), null, null, null,
-                false, null, null, null, null, List.of(), List.of());
+        return new Item(key, text, null, type, required, false, List.of(), null, null, null,
+                false, null, null, null, null, null, null, List.of(), List.of());
     }
 
     @Test
@@ -41,8 +43,8 @@ class DefinitionCanonicalizerTest {
         var tidy = canonicalizer.canonicalize(
                 doc(question("q2", "Exit clear?", QuestionType.YES_NO, false)));
         var messy = canonicalizer.canonicalize(doc(
-                new Item("q2", "  Exit clear?  ", "   ", QuestionType.YES_NO, false, List.of(),
-                        "  ", null, null, false, null, null, "  ", null, List.of(), List.of())));
+                new Item("q2", "  Exit clear?  ", "   ", QuestionType.YES_NO, false, false, List.of(),
+                        "  ", null, null, false, null, null, null, "  ", null, null, List.of(), List.of())));
 
         assertThat(messy.json()).isEqualTo(tidy.json())
                 .doesNotContain("required").doesNotContain("help").doesNotContain("unit");
@@ -51,7 +53,7 @@ class DefinitionCanonicalizerTest {
 
     @Test
     void ignoresTheSchemaNumberTheClientSent() {
-        var sent = new DefinitionDocument(99, List.of());
+        var sent = new DefinitionDocument(99, List.of(), List.of());
 
         assertThat(canonicalizer.canonicalize(sent).json()).isEqualTo("{\"schema\":2}");
     }
@@ -59,15 +61,17 @@ class DefinitionCanonicalizerTest {
     @Test
     void reCanonicalisingStoredBytesIsStable() {
         var first = canonicalizer.canonicalize(doc(
-                new Item("s1", "Condition", null, QuestionType.SECTION, false, List.of(), null, null, null,
-                        false, null, null, null, null, List.of(), List.of()),
-                new Item("q2", "Gauge in the green?", "Tap it first", QuestionType.YES_NO_NA, true,
-                        List.of(new Option("o3", "Yes", "PASS"),
-                                new Option("o4", "No", "FAIL"),
-                                new Option("o5", "N/A", null)),
-                        null, null, null, true, "ap-std", null, "NFPA 10", null,
-                        List.of(new Item("q6", "Record the reading", null, QuestionType.INTEGER, false,
-                                List.of(), "psi", 0, 300, false, null, null, null, "o4", List.of(), List.of())), List.of())));
+                new Item("s1", "Condition", null, QuestionType.SECTION, false, false, List.of(), null, null, null,
+                        false, null, null, null, null, null, null, List.of(), List.of()),
+                new Item("q2", "Gauge in the green?", "Tap it first", QuestionType.YES_NO_NA, true, false,
+                        List.of(new Option("o3", "Yes", "PASS", null, false),
+                                new Option("o4", "No", "FAIL", null, false),
+                                new Option("o5", "N/A", null, null, false)),
+                        null, null, null, true, "ap-std", null, null, "NFPA 10", null,
+                        null,
+                        List.of(new Item("q6", "Record the reading", null, QuestionType.INTEGER, false, false,
+                                List.of(), "psi", 0, 300, false, null, null, null, null, "o4", null,
+                                List.of(), List.of())), List.of())));
 
         var again = canonicalizer.canonicalize(canonicalizer.parse(first.json()));
 
@@ -77,9 +81,9 @@ class DefinitionCanonicalizerTest {
 
     @Test
     void aFollowUpIsPartOfTheContent() {
-        Item parent = new Item("q2", "Exit clear?", null, QuestionType.YES_NO, false,
-                List.of(new Option("o3", "Yes", "PASS"), new Option("o4", "No", "FAIL")),
-                null, null, null, false, null, null, null, null, List.of(), List.of());
+        Item parent = new Item("q2", "Exit clear?", null, QuestionType.YES_NO, false, false,
+                List.of(new Option("o3", "Yes", "PASS", null, false), new Option("o4", "No", "FAIL", null, false)),
+                null, null, null, false, null, null, null, null, null, null, List.of(), List.of());
         Item withFollow = parent.withFollow(List.of(
                 question("q5", "Describe the obstruction", QuestionType.TEXT, true)));
 
@@ -102,8 +106,8 @@ class DefinitionCanonicalizerTest {
         // nulls, blank strings and false — numbers are never dropped, and this
         // is the one that would be silently lost if that ever changed.
         var canonical = canonicalizer.canonicalize(doc(
-                new Item("q2", "Reading", null, QuestionType.INTEGER, false, List.of(),
-                        "psi", 0, 300, false, null, null, null, null, List.of(), List.of())));
+                new Item("q2", "Reading", null, QuestionType.INTEGER, false, false, List.of(),
+                        "psi", 0, 300, false, null, null, null, null, null, null, List.of(), List.of())));
 
         assertThat(canonical.json()).contains("\"min\":0");
     }
@@ -114,8 +118,8 @@ class DefinitionCanonicalizerTest {
         // dropped like any empty value, so those versions' bytes — and so their
         // hashes — are unchanged.
         var canonical = canonicalizer.canonicalize(doc(
-                new Item("q2", "Reading", null, QuestionType.INTEGER, false, List.of(),
-                        "psi", 0, 300, false, null, null, null, null, List.of(), List.of())));
+                new Item("q2", "Reading", null, QuestionType.INTEGER, false, false, List.of(),
+                        "psi", 0, 300, false, null, null, null, null, null, null, List.of(), List.of())));
 
         assertThat(canonical.json()).isEqualTo(
                 "{\"items\":[{\"key\":\"q2\",\"max\":300,\"min\":0,\"text\":\"Reading\","
@@ -125,8 +129,8 @@ class DefinitionCanonicalizerTest {
     @Test
     void bandsAreWrittenInOrderWithOpenEndsLeftOut() {
         var canonical = canonicalizer.canonicalize(doc(
-                new Item("q2", "Pressure", null, QuestionType.INTEGER, false, List.of(),
-                        null, null, null, false, null, null, null, null, List.of(),
+                new Item("q2", "Pressure", null, QuestionType.INTEGER, false, false, List.of(),
+                        null, null, null, false, null, null, null, null, null, null, List.of(),
                         List.of(new RangeRule(null, 0, "PASS"), new RangeRule(1, null, "FAIL")))));
 
         // An open end is a null, so it is absent; a 0 edge is a real one and stays.
@@ -140,5 +144,109 @@ class DefinitionCanonicalizerTest {
     void rejectsStoredBytesWithUnknownFields() {
         assertThatThrownBy(() -> canonicalizer.parse("{\"schema\":2,\"surprise\":true}"))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void aZeroScoreIsKeptForTheSameReason() {
+        // Zero points is the normal way to spell "this is the wrong answer",
+        // and it is not the same as an answer that scores nothing at all. The
+        // drop-empties rule would eat it if it were ever written as "falsy".
+        var canonical = canonicalizer.canonicalize(doc(
+                question("q2", "Exit clear?", QuestionType.YES_NO, false).withOptions(List.of(
+                        new Option("o3", "Yes", "PASS", 10, false),
+                        new Option("o4", "No", "FAIL", 0, false)))));
+
+        assertThat(canonical.json()).contains("\"score\":0");
+    }
+
+    @Test
+    void anUnscoredDocumentWritesNoScoringFieldsAtAll() {
+        // What keeps CURRENT_SCHEMA at 2: a document authored before scoring
+        // existed canonicalises byte for byte as it did then, so its stored
+        // hash still matches.
+        var canonical = canonicalizer.canonicalize(
+                doc(question("q2", "Exit clear?", QuestionType.YES_NO, true)));
+
+        assertThat(canonical.json()).isEqualTo(
+                "{\"items\":[{\"key\":\"q2\",\"required\":true,\"text\":\"Exit clear?\",\"type\":\"YES_NO\"}],"
+                + "\"schema\":2}");
+    }
+
+    @Test
+    void scoringIsPartOfTheContent() {
+        Item unscored = question("q2", "Exit clear?", QuestionType.YES_NO, false).withOptions(List.of(
+                new Option("o3", "Yes", "PASS", null, false),
+                new Option("o4", "No", "FAIL", null, false)));
+        Item scored = unscored.withOptions(List.of(
+                new Option("o3", "Yes", "PASS", 10, false),
+                new Option("o4", "No", "FAIL", 0, false)));
+
+        assertThat(canonicalizer.canonicalize(doc(unscored)).hash())
+                .isNotEqualTo(canonicalizer.canonicalize(doc(scored)).hash());
+    }
+
+    @Test
+    void thresholdsArePartOfTheContent() {
+        // They hang off the document rather than any item, so it would be easy
+        // to drop them from the hash and never notice until two versions that
+        // score differently collided as "already published".
+        Item q = question("q2", "Exit clear?", QuestionType.YES_NO, false);
+        var bare = new DefinitionDocument(2, List.of(q), List.of());
+        var banded = new DefinitionDocument(2, List.of(q),
+                List.of(new Threshold(null, 0, 69, "FAIL"), new Threshold(null, 70, null, "PASS")));
+
+        assertThat(canonicalizer.canonicalize(bare).hash())
+                .isNotEqualTo(canonicalizer.canonicalize(banded).hash());
+        assertThat(canonicalizer.canonicalize(banded).json()).contains("\"thresholds\"");
+    }
+
+    @Test
+    void aScoredDocumentSurvivesTheRoundTrip() {
+        var first = canonicalizer.canonicalize(new DefinitionDocument(2,
+                List.of(new Item("s1", "Fire exits", null, QuestionType.SECTION, false, false, List.of(),
+                                null, null, null, false, null, 2, null, null, null, null, List.of(), List.of()),
+                        new Item("q2", "Exit clear?", null, QuestionType.YES_NO, true, true,
+                                List.of(new Option("o3", "Yes", "PASS", 10, false),
+                                        new Option("o4", "No", "FAIL", 0, false),
+                                        new Option("o5", "N/A", null, null, true)),
+                                null, null, null, false, null, 3, null, null, null,
+                                Rollup.WORST,
+                                List.of(new Item("q6", "Why not?", null, QuestionType.TEXT, true, false,
+                                        List.of(), null, null, null, false, null, null, null, null,
+                                        "o4", null, List.of(), List.of())),
+                                List.of())),
+                List.of(new Threshold(null, null, 69, "FAIL"),
+                        new Threshold(DefinitionDocument.Scope.SECTION, 70, null, "PASS"))));
+
+        var again = canonicalizer.canonicalize(canonicalizer.parse(first.json()));
+
+        assertThat(again.json()).isEqualTo(first.json());
+        assertThat(again.hash()).isEqualTo(first.hash());
+    }
+
+    /** Canonical bytes exactly as a version published before scoring existed holds them. */
+    private static final String STORED_BEFORE_SCORING =
+            "{\"items\":[{\"key\":\"s1\",\"text\":\"Fire exits\",\"type\":\"SECTION\"},"
+            + "{\"alertProfile\":\"ap-fire\","
+            + "\"follow\":[{\"key\":\"q5\",\"required\":true,\"text\":\"Why not?\","
+            + "\"type\":\"TEXT\",\"when\":\"o4\"}],"
+            + "\"key\":\"q2\",\"options\":["
+            + "{\"key\":\"o3\",\"label\":\"Yes\",\"result\":\"PASS\"},"
+            + "{\"key\":\"o4\",\"label\":\"No\",\"result\":\"FAIL\"}],"
+            + "\"required\":true,\"text\":\"Exit clear?\",\"type\":\"YES_NO\",\"workOrder\":true}],"
+            + "\"schema\":2}";
+
+    @Test
+    void aVersionStoredBeforeScoringExistedKeepsItsBytesAndItsHash() {
+        // The guarantee the whole feature rests on, and the one no test written
+        // against freshly built objects can make: a published version is
+        // content-addressed and immutable, so if adding scoring changed what
+        // these bytes canonicalise to, every version already published would
+        // stop matching its own hash.
+        var again = canonicalizer.canonicalize(canonicalizer.parse(STORED_BEFORE_SCORING));
+
+        assertThat(again.json()).isEqualTo(STORED_BEFORE_SCORING);
+        assertThat(again.hash()).isEqualTo(DefinitionCanonicalizer.sha256Hex(STORED_BEFORE_SCORING));
+        assertThat(again.document().hasScoring()).isFalse();
     }
 }

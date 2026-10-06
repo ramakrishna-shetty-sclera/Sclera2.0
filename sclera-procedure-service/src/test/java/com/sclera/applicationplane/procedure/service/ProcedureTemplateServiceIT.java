@@ -288,15 +288,15 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
         void publishNamesEveryReasonAndChecksTheOrganizationsOwnResultTypes() {
             actAsNewOrg();
             // PASS and FAIL are seeded for a new organization; AMBER is not.
-            Item mappedToAmber = new Item(null, "Is the gauge in range?", null, QuestionType.YES_NO, false,
-                    List.of(new Option(null, "Yes", "PASS"), new Option(null, "Partly", "AMBER")),
-                    null, null, null, false, null, null, null, null, List.of(), List.of());
-            Item onlyOneAnswer = new Item(null, "Is the seal intact?", null, QuestionType.DROPDOWN, false,
-                    List.of(new Option(null, "Yes", "PASS")),
-                    null, null, null, false, null, null, null, null, List.of(), List.of());
+            Item mappedToAmber = new Item(null, "Is the gauge in range?", null, QuestionType.YES_NO, false, false,
+                    List.of(new Option(null, "Yes", "PASS", null, false), new Option(null, "Partly", "AMBER", null, false)),
+                    null, null, null, false, null, null, null, null, null, null, List.of(), List.of());
+            Item onlyOneAnswer = new Item(null, "Is the seal intact?", null, QuestionType.DROPDOWN, false, false,
+                    List.of(new Option(null, "Yes", "PASS", null, false)),
+                    null, null, null, false, null, null, null, null, null, null, List.of(), List.of());
             UUID id = service.create(new CreateTemplateRequest("Blockers", null, null,
                     new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
-                            List.of(mappedToAmber, onlyOneAnswer)))).id();
+                            List.of(mappedToAmber, onlyOneAnswer), List.of()))).id();
 
             // Both problems in one refusal: an author fixing a checklist should
             // not have to publish once per mistake to find them all.
@@ -489,18 +489,18 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
     @SafeVarargs
     private static DefinitionDocument doc(List<Item>... groups) {
         return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
-                Stream.of(groups).flatMap(List::stream).toList());
+                Stream.of(groups).flatMap(List::stream).toList(), List.of());
     }
 
     private static List<Item> section(String key, String title, Item... questions) {
-        Item heading = new Item(key, title, null, QuestionType.SECTION, false, List.of(),
-                null, null, null, false, null, null, null, null, List.of(), List.of());
+        Item heading = new Item(key, title, null, QuestionType.SECTION, false, false, List.of(),
+                null, null, null, false, null, null, null, null, null, null, List.of(), List.of());
         return Stream.concat(Stream.of(heading), Stream.of(questions)).toList();
     }
 
     private static Item question(String key, String text) {
-        return new Item(key, text, null, QuestionType.TEXT, false, List.of(),
-                null, null, null, false, null, null, null, null, List.of(), List.of());
+        return new Item(key, text, null, QuestionType.TEXT, false, false, List.of(),
+                null, null, null, false, null, null, null, null, null, null, List.of(), List.of());
     }
 
     /** Every key in document order, follow-ups included. */

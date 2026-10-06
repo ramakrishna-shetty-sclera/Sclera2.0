@@ -24,18 +24,30 @@ import java.util.Set;
  * Reordering is reported without noise. Only a change in the relative order of
  * items present in both versions counts, so inserting one at the top does not
  * mark everything below it as moved.
+ *
+ * @param thresholdsChanged scoring bands are version-wide rather than attached
+ *                          to any item, so a change to them belongs to the
+ *                          document and not to a row in the list. It is
+ *                          reported separately for the same reason
+ *                          {@code identical} has to account for it: two
+ *                          versions whose items match exactly are still
+ *                          different versions if one of them scores 90 as a
+ *                          Pass and the other does not, and the hash already
+ *                          knows that.
  */
 public record DefinitionDiff(
         boolean identical,
         boolean orderChanged,
+        boolean thresholdsChanged,
         List<ItemChange> items
 ) {
     public enum Kind { ADDED, REMOVED, MODIFIED }
 
     /**
-     * @param changedFields any of: text, help, type, required, options, unit,
-     *                      min, max, rules, workOrder, alertProfile, standard,
-     *                      when, parent
+     * @param changedFields any of: text, help, type, required, critical,
+     *                      options, unit, min, max, rules, workOrder,
+     *                      alertProfile, weight, followRollup, standard, when,
+     *                      parent
      */
     public record ItemChange(
             String key,
@@ -68,10 +80,12 @@ public record DefinitionDiff(
 
         boolean orderChanged = relativeOrderChanged(
                 List.copyOf(before.keySet()), List.copyOf(after.keySet()));
+        boolean thresholdsChanged = !from.thresholds().equals(to.thresholds());
 
         return new DefinitionDiff(
-                changes.isEmpty() && !orderChanged,
+                changes.isEmpty() && !orderChanged && !thresholdsChanged,
                 orderChanged,
+                thresholdsChanged,
                 List.copyOf(changes));
     }
 
@@ -91,6 +105,7 @@ public record DefinitionDiff(
         if (!Objects.equals(b.help(), a.help())) fields.add("help");
         if (b.type() != a.type()) fields.add("type");
         if (b.required() != a.required()) fields.add("required");
+        if (b.critical() != a.critical()) fields.add("critical");
         if (!sameOptions(b.options(), a.options())) fields.add("options");
         if (!Objects.equals(b.unit(), a.unit())) fields.add("unit");
         if (!Objects.equals(b.min(), a.min())) fields.add("min");
@@ -98,6 +113,8 @@ public record DefinitionDiff(
         if (!b.rules().equals(a.rules())) fields.add("rules");
         if (b.workOrder() != a.workOrder()) fields.add("workOrder");
         if (!Objects.equals(b.alertProfile(), a.alertProfile())) fields.add("alertProfile");
+        if (!Objects.equals(b.weight(), a.weight())) fields.add("weight");
+        if (b.followRollup() != a.followRollup()) fields.add("followRollup");
         if (!Objects.equals(b.standard(), a.standard())) fields.add("standard");
         if (!Objects.equals(b.when(), a.when())) fields.add("when");
         if (!Objects.equals(before.parentKey(), after.parentKey())) fields.add("parent");
@@ -105,9 +122,10 @@ public record DefinitionDiff(
     }
 
     /**
-     * Options compare by key, label and result together. Reporting which option
-     * changed would need a diff of its own; "the answers changed" is enough to
-     * send a reader to look, and the keys make it obvious once they do.
+     * Options compare by key, label, result and scoring together. Reporting
+     * which option changed would need a diff of its own; "the answers changed"
+     * is enough to send a reader to look, and the keys make it obvious once
+     * they do.
      */
     private static boolean sameOptions(List<Option> before, List<Option> after) {
         if (before.size() != after.size()) {
@@ -118,7 +136,9 @@ public record DefinitionDiff(
             Option a = after.get(i);
             if (!Objects.equals(b.key(), a.key())
                     || !Objects.equals(b.label(), a.label())
-                    || !Objects.equals(b.result(), a.result())) {
+                    || !Objects.equals(b.result(), a.result())
+                    || !Objects.equals(b.score(), a.score())
+                    || b.excludeFromScoring() != a.excludeFromScoring()) {
                 return false;
             }
         }

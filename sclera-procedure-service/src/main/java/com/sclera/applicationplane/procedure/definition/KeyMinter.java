@@ -52,7 +52,8 @@ public final class KeyMinter {
      */
     public static DefinitionDocument assignKeys(DefinitionDocument document, int highestMinted, IntSupplier next) {
         validateSuppliedKeys(document, highestMinted);
-        return new DefinitionDocument(document.schema(), assignToAll(document.items(), next));
+        return new DefinitionDocument(
+                document.schema(), assignToAll(document.items(), next), document.thresholds());
     }
 
     private static List<Item> assignToAll(List<Item> items, IntSupplier next) {
@@ -70,8 +71,8 @@ public final class KeyMinter {
         List<Option> options = new ArrayList<>();
         for (Option option : keyed.options()) {
             options.add(isBlank(option.key())
-                    ? new Option(OPTION_PREFIX + next.getAsInt(), option.label(), option.result())
-                    : new Option(option.key().strip(), option.label(), option.result()));
+                    ? option.withKey(OPTION_PREFIX + next.getAsInt())
+                    : option.withKey(option.key().strip()));
         }
 
         return keyed.withOptions(options).withFollow(assignToAll(keyed.follow(), next));

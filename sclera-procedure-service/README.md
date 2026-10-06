@@ -255,6 +255,35 @@ One flat list. Shown pretty-printed; the stored bytes are one line.
 }
 ```
 
+The same document once scoring is configured — every scoring field is optional, so this is the
+one above with more on it, not a different shape:
+
+```json
+{
+  "schema": 2,
+  "items": [
+    { "key": "s1", "text": "Location and access", "type": "SECTION", "weight": 2 },
+
+    { "key": "q2", "text": "Is the fire exit clear?", "type": "YES_NO",
+      "required": true, "critical": true, "weight": 3, "followRollup": "WORST",
+      "options": [
+        { "key": "o3", "label": "Yes", "result": "PASS", "score": 10 },
+        { "key": "o4", "label": "No",  "result": "FAIL", "score": 0 },
+        { "key": "o9", "label": "Not applicable", "excludeFromScoring": true }
+      ],
+      "follow": [
+        { "key": "q5", "text": "Describe the obstruction", "type": "TEXT",
+          "required": true, "when": "o4" }
+      ] }
+  ],
+  "thresholds": [
+    {                      "max": 69,  "result": "FAIL"  },
+    { "min": 70,           "max": 89,  "result": "AMBER" },
+    { "min": 90,                       "result": "PASS"  }
+  ]
+}
+```
+
 **A section is an item, not a level.** `s1` is a heading; the questions after it are its siblings.
 There is no wrapper, so a document is one list and moving a question between sections is a move
 within that list rather than a change of parent.
@@ -307,6 +336,47 @@ the work order belongs to the facilities layer, not here.
 **`source`** says where a question came from: typed by an author, generated from an uploaded
 standard, copied from a Sclera template, or taken from a suggestion. Cheap to record now and
 impossible to reconstruct later, once a procedure has been edited a few times.
+
+### Scoring — declared here, computed elsewhere
+
+Nothing in the document does arithmetic. It records what an organization decided; the evaluation
+endpoint is a pure function over a published version and is the only thing that reads these and
+works out a number.
+
+**`score` on an answer** is the points it is worth. Zero is a real score — the normal way to spell
+"this is the wrong answer" — and is kept in the canonical form for that reason. An answer with no
+score at all is different from one scoring zero.
+
+**`excludeFromScoring`** is the not-applicable answer: no points, and it does not count towards the
+total either, so choosing it cannot drag a score down. It replaced a per-question `naAllowed` flag,
+and is better than one for the same reason the result key is: as an answer it records that the
+inspector chose N/A, which a flag could not tell apart from nobody answering.
+
+**`weight`** says how much something counts against its siblings. On a section it weights the whole
+group; on a question it weights that question. Absent means 1, so an unweighted procedure scores
+everything equally. A weight below 1 is refused — leaving a question out of the score is something
+to say by not asking it.
+
+**`critical`** fails the whole inspection on a single failure, whatever the score says. Never on a
+section: a heading is never answered, so it can never fail.
+
+**`followRollup`** is how a question's follow-ups contribute — `WORST` (one failed follow-up fails
+the parent), `AVERAGE`, or `INDEPENDENT`, which is the default and means they score on their own.
+It matters because a follow-up is conditional: counting it like an ordinary question would make a
+procedure score differently depending on answers nobody controls.
+
+**`thresholds`** turn a final score back into a result type, in the organization's own vocabulary.
+Open-ended at both ends — no `min` is "anything up to `max`", no `max` is "anything from `min`" — so
+three bands cover every score without boundary arithmetic. A band's `scope` is the whole inspection
+unless it says `SECTION`, which is accepted and stored now because results roll up through sections,
+but which nothing evaluates yet.
+
+**Scoring is opt-in, and silence publishes.** A procedure that configures none of this is complete,
+not unfinished, and that is the rule every other scoring rule is written around. Once an author
+starts — any score, any weight, any band — the set has to be finished: bands must tile 0 to 100 with
+no gap and no overlap, every band must name an active result type, and a question cannot score half
+its answers. `critical` and `followRollup` are not scoring by this test; both decide a result rather
+than a number, and either is sensible on a procedure that never scores anything.
 
 **What is checked, and when.** Structure is enforced on every write and refused, because storing a
 follow-up that points at a missing answer is storing corruption. Readiness — nothing authored yet, a
@@ -491,7 +561,7 @@ locally* section has both commands.
 Scoring lives here, in one place, rather than being reimplemented by every consumer.
 
 The evaluation endpoint takes a version id and a set of answers and returns the result and score for
-every question, every category and the version as a whole. It accepts **partial** answers and returns
+every question, every section and the version as a whole. It accepts **partial** answers and returns
 a provisional result, so an inspector can see a running score while filling a checklist in.
 
 How a result is reached:
@@ -501,11 +571,13 @@ How a result is reached:
    guarantees there is exactly one, so band order never matters. An option marked
    `excludeFromScoring` produces its result but contributes nothing to the score, and its weight is
    removed from the denominator so a not-applicable question cannot drag a percentage down.
-2. **Sub-questions** contribute to their parent according to `subquestionRollup`.
-3. **Per category** — question scores are weighted by the question's `weight`, then the category's own
+2. **Follow-ups** contribute to their parent according to `followRollup`.
+3. **Per section** — question scores are weighted by the question's `weight`, then the section's own
    `weight` applies when it rolls up.
 4. **Overall** — the total score is matched against `thresholds`, expressed in the organization's own
-   result types, so an inspection can end as Pass, Amber, Fail or anything else defined.
+   result types, so an inspection can end as Pass, Amber, Fail or anything else defined. A band
+   scoped to `SECTION` reads a single section's own score; feature 7 may ignore it at first, since
+   nothing authored today sets one.
 5. **Critical questions** short-circuit all of it: one failure fails the whole result regardless of
    score.
 

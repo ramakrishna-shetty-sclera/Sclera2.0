@@ -51,7 +51,7 @@ public class DefinitionCanonicalizer {
 
     public Canonical canonicalize(DefinitionDocument document) {
         DefinitionDocument withSchema = new DefinitionDocument(
-                DefinitionDocument.CURRENT_SCHEMA, document.items());
+                DefinitionDocument.CURRENT_SCHEMA, document.items(), document.thresholds());
         JsonNode tree = normalize(mapper.valueToTree(withSchema));
         String json = write(tree == null ? JsonNodeFactory.instance.objectNode() : tree);
         return new Canonical(json, sha256Hex(json), parse(json));

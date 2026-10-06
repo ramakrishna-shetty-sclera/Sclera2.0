@@ -15,22 +15,22 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class KeyMinterTest {
 
     private static Item q(String key, String text) {
-        return new Item(key, text, null, QuestionType.TEXT, false, List.of(), null, null, null,
-                false, null, null, null, null, List.of(), List.of());
+        return new Item(key, text, null, QuestionType.TEXT, false, false, List.of(), null, null, null,
+                false, null, null, null, null, null, null, List.of(), List.of());
     }
 
     private static Item section(String key, String title) {
-        return new Item(key, title, null, QuestionType.SECTION, false, List.of(), null, null, null,
-                false, null, null, null, null, List.of(), List.of());
+        return new Item(key, title, null, QuestionType.SECTION, false, false, List.of(), null, null, null,
+                false, null, null, null, null, null, null, List.of(), List.of());
     }
 
     private static Item choice(String key, String text, Option... options) {
-        return new Item(key, text, null, QuestionType.YES_NO, false, List.of(options), null, null, null,
-                false, null, null, null, null, List.of(), List.of());
+        return new Item(key, text, null, QuestionType.YES_NO, false, false, List.of(options), null, null, null,
+                false, null, null, null, null, null, null, List.of(), List.of());
     }
 
     private static DefinitionDocument doc(Item... items) {
-        return new DefinitionDocument(2, List.of(items));
+        return new DefinitionDocument(2, List.of(items), List.of());
     }
 
     @Test
@@ -40,8 +40,8 @@ class KeyMinterTest {
         DefinitionDocument result = KeyMinter.assignKeys(
                 doc(section(null, "Fire safety"),
                     choice(null, "Exit clear?",
-                            new Option(null, "Yes", "PASS"),
-                            new Option("", "No", "FAIL"))),
+                            new Option(null, "Yes", "PASS", null, false),
+                            new Option("", "No", "FAIL", null, false))),
                 0, seq::incrementAndGet);
 
         assertThat(result.items()).extracting(Item::key).containsExactly("s1", "q2");
@@ -82,7 +82,7 @@ class KeyMinterTest {
         AtomicInteger seq = new AtomicInteger(4);
 
         DefinitionDocument result = KeyMinter.assignKeys(
-                doc(choice("q2", "Clear?", new Option("o3", "No — blocked", "FAIL"))),
+                doc(choice("q2", "Clear?", new Option("o3", "No — blocked", "FAIL", null, false))),
                 4, seq::incrementAndGet);
 
         assertThat(result.items().get(0).options()).extracting(Option::key).containsExactly("o3");
@@ -104,7 +104,7 @@ class KeyMinterTest {
                 .hasMessageContaining("'q1' cannot be used on a section");
 
         assertThatThrownBy(() -> KeyMinter.assignKeys(
-                doc(choice("q2", "X", new Option("q3", "Yes", "PASS"))), 5, () -> 6))
+                doc(choice("q2", "X", new Option("q3", "Yes", "PASS", null, false))), 5, () -> 6))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("'q3' cannot be used on an answer");
     }
