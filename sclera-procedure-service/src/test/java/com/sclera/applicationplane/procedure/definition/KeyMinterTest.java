@@ -16,17 +16,17 @@ class KeyMinterTest {
 
     private static Item q(String key, String text) {
         return new Item(key, text, null, QuestionType.TEXT, false, List.of(), null, null, null,
-                false, null, null, null, null, List.of());
+                false, null, null, null, null, List.of(), List.of());
     }
 
     private static Item section(String key, String title) {
         return new Item(key, title, null, QuestionType.SECTION, false, List.of(), null, null, null,
-                false, null, null, null, null, List.of());
+                false, null, null, null, null, List.of(), List.of());
     }
 
     private static Item choice(String key, String text, Option... options) {
         return new Item(key, text, null, QuestionType.YES_NO, false, List.of(options), null, null, null,
-                false, null, null, null, null, List.of());
+                false, null, null, null, null, List.of(), List.of());
     }
 
     private static DefinitionDocument doc(Item... items) {

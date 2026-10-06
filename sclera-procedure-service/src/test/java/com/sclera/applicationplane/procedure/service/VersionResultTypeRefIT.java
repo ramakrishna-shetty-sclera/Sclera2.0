@@ -104,7 +104,7 @@ class VersionResultTypeRefIT extends PostgresIntegrationTest {
 
         Item followUp = new Item(null, "What is needed?", null, QuestionType.DROPDOWN, false,
                 List.of(new Option(null, "Replace it", "REQUIRED"), new Option(null, "Nothing yet", "PASS")),
-                null, null, null, false, null, null, null, noKey, List.of());
+                null, null, null, false, null, null, null, noKey, List.of(), List.of());
         service.saveDraft(id, new SaveDraftRequest(
                 doc(List.of(parent.withFollow(List.of(followUp)))), draft.rowVersion(), null));
 
@@ -131,6 +131,6 @@ class VersionResultTypeRefIT extends PostgresIntegrationTest {
     private static Item passFail(String text) {
         return new Item(null, text, null, QuestionType.YES_NO, true,
                 List.of(new Option(null, "Yes", "PASS"), new Option(null, "No", "FAIL")),
-                null, null, null, false, null, null, null, null, List.of());
+                null, null, null, false, null, null, null, null, List.of(), List.of());
     }
 }

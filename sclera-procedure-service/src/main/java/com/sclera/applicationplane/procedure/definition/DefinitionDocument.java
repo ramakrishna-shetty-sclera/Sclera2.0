@@ -61,19 +61,28 @@ public record DefinitionDocument(int schema, List<@Valid Item> items) {
 
     /**
      * Every result-type key the document names, once each and in sorted order —
-     * what publishing records in {@code version_result_type_ref}. An answer that
-     * decides nothing names no key and contributes nothing.
+     * what publishing records in {@code version_result_type_ref}. Answers and
+     * bands both count: a type only a number question's band uses is as much
+     * in use as one an answer names. Whatever decides nothing names no key and
+     * contributes nothing.
      */
     public SortedSet<String> resultTypeKeys() {
         SortedSet<String> keys = new TreeSet<>();
         for (Item item : flatten()) {
             for (Option option : item.options()) {
-                if (option.result() != null && !option.result().isBlank()) {
-                    keys.add(option.result());
-                }
+                addIfNamed(keys, option.result());
+            }
+            for (RangeRule band : item.rules()) {
+                addIfNamed(keys, band.result());
             }
         }
         return keys;
+    }
+
+    private static void addIfNamed(SortedSet<String> keys, String result) {
+        if (result != null && !result.isBlank()) {
+            keys.add(result);
+        }
     }
 
     /** Every item, parents before their follow-ups, in display order. */
@@ -94,7 +103,7 @@ public record DefinitionDocument(int schema, List<@Valid Item> items) {
      * One entry in the list: a section, a question, or a follow-up question.
      *
      * Most fields apply to some types and not others — {@code options} only to
-     * choice types, {@code unit}/{@code min}/{@code max} only to INTEGER, and a
+     * choice types, {@code unit}/{@code min}/{@code max}/{@code rules} only to INTEGER, and a
      * SECTION uses almost none of them. The document does not try to express
      * that in its shape; the validator enforces it, which keeps one record
      * readable instead of six that mostly repeat each other.
@@ -146,27 +155,58 @@ public record DefinitionDocument(int schema, List<@Valid Item> items) {
             @Size(max = 20) String when,
 
             /** Questions shown only when this one is answered a particular way. */
-            List<@Valid Item> follow) {
+            List<@Valid Item> follow,
+
+            /**
+             * INTEGER only. What a reading means — bands, each mapping a range
+             * to a result type, so 9 can be Pass, 13 Amber and 20 Required.
+             * Empty means the reading is recorded and decides nothing, which is
+             * a legitimate thing for a meter reading to do.
+             *
+             * {@code min}/{@code max} above are different: they bound what the
+             * inspector may type. These say what the typed value means.
+             */
+            List<@Valid RangeRule> rules) {
 
         public Item {
             options = options == null ? List.of() : List.copyOf(options);
             follow = follow == null ? List.of() : List.copyOf(follow);
+            rules = rules == null ? List.of() : List.copyOf(rules);
         }
 
         public Item withKey(String newKey) {
             return new Item(newKey, text, help, type, required, options, unit, min, max,
-                    workOrder, alertProfile, source, standard, when, follow);
+                    workOrder, alertProfile, source, standard, when, follow, rules);
         }
 
         public Item withOptions(List<Option> newOptions) {
             return new Item(key, text, help, type, required, newOptions, unit, min, max,
-                    workOrder, alertProfile, source, standard, when, follow);
+                    workOrder, alertProfile, source, standard, when, follow, rules);
         }
 
         public Item withFollow(List<Item> newFollow) {
             return new Item(key, text, help, type, required, options, unit, min, max,
-                    workOrder, alertProfile, source, standard, when, newFollow);
+                    workOrder, alertProfile, source, standard, when, newFollow, rules);
         }
+    }
+
+    /**
+     * A band of readings mapping to a result type — "12 to 15 is Amber".
+     *
+     * Open-ended at both ends: a null {@code min} is "anything up to
+     * {@code max}", a null {@code max} is "anything from {@code min}", so three
+     * bands cover every reading without the author doing boundary arithmetic.
+     * Both bounds are inclusive and bands share no number: after a band ending at
+     * 11 the next starts at 12. The same convention as the score bands that turn
+     * a percentage into a result, so the two read the same way round.
+     *
+     * @param result a result-type key, the same vocabulary an option's
+     *               {@code result} uses.
+     */
+    public record RangeRule(
+            Integer min,
+            Integer max,
+            @Size(max = 50) String result) {
     }
 
     /**

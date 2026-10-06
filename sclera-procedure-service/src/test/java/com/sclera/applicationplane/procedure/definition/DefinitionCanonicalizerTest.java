@@ -2,6 +2,7 @@ package com.sclera.applicationplane.procedure.definition;
 
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Item;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Option;
+import com.sclera.applicationplane.procedure.definition.DefinitionDocument.RangeRule;
 import com.sclera.applicationplane.procedure.domain.QuestionType;
 import org.junit.jupiter.api.Test;
 
@@ -20,7 +21,7 @@ class DefinitionCanonicalizerTest {
 
     private static Item question(String key, String text, QuestionType type, boolean required) {
         return new Item(key, text, null, type, required, List.of(), null, null, null,
-                false, null, null, null, null, List.of());
+                false, null, null, null, null, List.of(), List.of());
     }
 
     @Test
@@ -41,7 +42,7 @@ class DefinitionCanonicalizerTest {
                 doc(question("q2", "Exit clear?", QuestionType.YES_NO, false)));
         var messy = canonicalizer.canonicalize(doc(
                 new Item("q2", "  Exit clear?  ", "   ", QuestionType.YES_NO, false, List.of(),
-                        "  ", null, null, false, null, null, "  ", null, List.of())));
+                        "  ", null, null, false, null, null, "  ", null, List.of(), List.of())));
 
         assertThat(messy.json()).isEqualTo(tidy.json())
                 .doesNotContain("required").doesNotContain("help").doesNotContain("unit");
@@ -59,14 +60,14 @@ class DefinitionCanonicalizerTest {
     void reCanonicalisingStoredBytesIsStable() {
         var first = canonicalizer.canonicalize(doc(
                 new Item("s1", "Condition", null, QuestionType.SECTION, false, List.of(), null, null, null,
-                        false, null, null, null, null, List.of()),
+                        false, null, null, null, null, List.of(), List.of()),
                 new Item("q2", "Gauge in the green?", "Tap it first", QuestionType.YES_NO_NA, true,
                         List.of(new Option("o3", "Yes", "PASS"),
                                 new Option("o4", "No", "FAIL"),
                                 new Option("o5", "N/A", null)),
                         null, null, null, true, "ap-std", null, "NFPA 10", null,
                         List.of(new Item("q6", "Record the reading", null, QuestionType.INTEGER, false,
-                                List.of(), "psi", 0, 300, false, null, null, null, "o4", List.of())))));
+                                List.of(), "psi", 0, 300, false, null, null, null, "o4", List.of(), List.of())), List.of())));
 
         var again = canonicalizer.canonicalize(canonicalizer.parse(first.json()));
 
@@ -78,7 +79,7 @@ class DefinitionCanonicalizerTest {
     void aFollowUpIsPartOfTheContent() {
         Item parent = new Item("q2", "Exit clear?", null, QuestionType.YES_NO, false,
                 List.of(new Option("o3", "Yes", "PASS"), new Option("o4", "No", "FAIL")),
-                null, null, null, false, null, null, null, null, List.of());
+                null, null, null, false, null, null, null, null, List.of(), List.of());
         Item withFollow = parent.withFollow(List.of(
                 question("q5", "Describe the obstruction", QuestionType.TEXT, true)));
 
@@ -102,9 +103,37 @@ class DefinitionCanonicalizerTest {
         // is the one that would be silently lost if that ever changed.
         var canonical = canonicalizer.canonicalize(doc(
                 new Item("q2", "Reading", null, QuestionType.INTEGER, false, List.of(),
-                        "psi", 0, 300, false, null, null, null, null, List.of())));
+                        "psi", 0, 300, false, null, null, null, null, List.of(), List.of())));
 
         assertThat(canonical.json()).contains("\"min\":0");
+    }
+
+    @Test
+    void aQuestionWithoutBandsIsWrittenExactlyAsBefore() {
+        // Bands arrived after versions had been published. An empty list is
+        // dropped like any empty value, so those versions' bytes — and so their
+        // hashes — are unchanged.
+        var canonical = canonicalizer.canonicalize(doc(
+                new Item("q2", "Reading", null, QuestionType.INTEGER, false, List.of(),
+                        "psi", 0, 300, false, null, null, null, null, List.of(), List.of())));
+
+        assertThat(canonical.json()).isEqualTo(
+                "{\"items\":[{\"key\":\"q2\",\"max\":300,\"min\":0,\"text\":\"Reading\","
+                + "\"type\":\"INTEGER\",\"unit\":\"psi\"}],\"schema\":2}");
+    }
+
+    @Test
+    void bandsAreWrittenInOrderWithOpenEndsLeftOut() {
+        var canonical = canonicalizer.canonicalize(doc(
+                new Item("q2", "Pressure", null, QuestionType.INTEGER, false, List.of(),
+                        null, null, null, false, null, null, null, null, List.of(),
+                        List.of(new RangeRule(null, 0, "PASS"), new RangeRule(1, null, "FAIL")))));
+
+        // An open end is a null, so it is absent; a 0 edge is a real one and stays.
+        assertThat(canonical.json()).contains(
+                "\"rules\":[{\"max\":0,\"result\":\"PASS\"},{\"min\":1,\"result\":\"FAIL\"}]");
+        assertThat(canonicalizer.canonicalize(canonicalizer.parse(canonical.json())).json())
+                .isEqualTo(canonical.json());
     }
 
     @Test

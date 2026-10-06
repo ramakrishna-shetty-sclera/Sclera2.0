@@ -290,10 +290,10 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
             // PASS and FAIL are seeded for a new organization; AMBER is not.
             Item mappedToAmber = new Item(null, "Is the gauge in range?", null, QuestionType.YES_NO, false,
                     List.of(new Option(null, "Yes", "PASS"), new Option(null, "Partly", "AMBER")),
-                    null, null, null, false, null, null, null, null, List.of());
+                    null, null, null, false, null, null, null, null, List.of(), List.of());
             Item onlyOneAnswer = new Item(null, "Is the seal intact?", null, QuestionType.DROPDOWN, false,
                     List.of(new Option(null, "Yes", "PASS")),
-                    null, null, null, false, null, null, null, null, List.of());
+                    null, null, null, false, null, null, null, null, List.of(), List.of());
             UUID id = service.create(new CreateTemplateRequest("Blockers", null, null,
                     new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
                             List.of(mappedToAmber, onlyOneAnswer)))).id();
@@ -494,13 +494,13 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
 
     private static List<Item> section(String key, String title, Item... questions) {
         Item heading = new Item(key, title, null, QuestionType.SECTION, false, List.of(),
-                null, null, null, false, null, null, null, null, List.of());
+                null, null, null, false, null, null, null, null, List.of(), List.of());
         return Stream.concat(Stream.of(heading), Stream.of(questions)).toList();
     }
 
     private static Item question(String key, String text) {
         return new Item(key, text, null, QuestionType.TEXT, false, List.of(),
-                null, null, null, false, null, null, null, null, List.of());
+                null, null, null, false, null, null, null, null, List.of(), List.of());
     }
 
     /** Every key in document order, follow-ups included. */

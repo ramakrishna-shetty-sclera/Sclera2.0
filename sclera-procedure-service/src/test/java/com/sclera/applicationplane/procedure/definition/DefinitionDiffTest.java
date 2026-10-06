@@ -4,6 +4,7 @@ import com.sclera.applicationplane.procedure.definition.DefinitionDiff.ItemChang
 import com.sclera.applicationplane.procedure.definition.DefinitionDiff.Kind;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Item;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Option;
+import com.sclera.applicationplane.procedure.definition.DefinitionDocument.RangeRule;
 import com.sclera.applicationplane.procedure.domain.QuestionType;
 import org.junit.jupiter.api.Test;
 
@@ -16,12 +17,12 @@ class DefinitionDiffTest {
 
     private static Item q(String key, String text) {
         return new Item(key, text, null, QuestionType.TEXT, false, List.of(), null, null, null,
-                false, null, null, null, null, List.of());
+                false, null, null, null, null, List.of(), List.of());
     }
 
     private static Item section(String key, String title) {
         return new Item(key, title, null, QuestionType.SECTION, false, List.of(), null, null, null,
-                false, null, null, null, null, List.of());
+                false, null, null, null, null, List.of(), List.of());
     }
 
     private static DefinitionDocument doc(Item... items) {
@@ -43,7 +44,7 @@ class DefinitionDiffTest {
         DefinitionDocument v1 = doc(q("q2", "Exit clear?"), q("q3", "Old"));
         DefinitionDocument v2 = doc(
                 new Item("q2", "Is the exit clear?", null, QuestionType.YES_NO, true, List.of(),
-                        null, null, null, false, null, null, null, null, List.of()),
+                        null, null, null, false, null, null, null, null, List.of(), List.of()),
                 q("q4", "Brand new"));
 
         DefinitionDiff diff = DefinitionDiff.between(v1, v2);
@@ -104,7 +105,7 @@ class DefinitionDiffTest {
         Item v1Parent = new Item("q2", "Clear?", null, QuestionType.YES_NO, false,
                 List.of(new Option("o3", "Yes", "PASS"), new Option("o4", "No", "FAIL")),
                 null, null, null, false, null, null, null, null,
-                List.of(q("q5", "Describe it").withKey("q5")));
+                List.of(q("q5", "Describe it").withKey("q5")), List.of());
         Item v2Parent = v1Parent.withOptions(
                 List.of(new Option("o3", "Yes", "PASS"), new Option("o4", "No — blocked", "FAIL")));
 
@@ -120,7 +121,7 @@ class DefinitionDiffTest {
     void aFollowUpIsComparedLikeAnyOtherItem() {
         Item parent = new Item("q2", "Clear?", null, QuestionType.YES_NO, false,
                 List.of(new Option("o3", "No", "FAIL")), null, null, null,
-                false, null, null, null, null, List.of());
+                false, null, null, null, null, List.of(), List.of());
         DefinitionDocument v1 = doc(parent.withFollow(List.of(q("q4", "Why?"))));
         DefinitionDocument v2 = doc(parent.withFollow(List.of(q("q4", "Why not?"))));
 
@@ -130,6 +131,25 @@ class DefinitionDiffTest {
             assertThat(i.key()).isEqualTo("q4");
             assertThat(i.parentKey()).isEqualTo("q2");
             assertThat(i.changedFields()).containsExactly("text");
+        });
+    }
+
+    @Test
+    void movingABandsEdgeIsReportedAsRules() {
+        Item v1 = new Item("q2", "Pressure", null, QuestionType.INTEGER, true, List.of(),
+                "psi", null, null, false, null, null, null, null, List.of(),
+                List.of(new RangeRule(null, 11, "PASS"), new RangeRule(12, null, "FAIL")));
+        Item v2 = new Item("q2", "Pressure", null, QuestionType.INTEGER, true, List.of(),
+                "psi", null, null, false, null, null, null, null, List.of(),
+                List.of(new RangeRule(null, 13, "PASS"), new RangeRule(14, null, "FAIL")));
+
+        DefinitionDiff diff = DefinitionDiff.between(doc(v1), doc(v2));
+
+        // What a reading of 12 means has changed — the one edit a compare
+        // must not miss, and min/max are untouched.
+        assertThat(diff.items()).singleElement().satisfies(i -> {
+            assertThat(i.key()).isEqualTo("q2");
+            assertThat(i.changedFields()).containsExactly("rules");
         });
     }
 }

@@ -215,7 +215,7 @@ export interface DefinitionOption {
  * unchanged when editing one.
  *
  * Most fields apply to some types and not others — `options` only to choice
- * types, `unit`/`min`/`max` only to INTEGER, and a SECTION uses almost none of
+ * types, `unit`/`min`/`max`/`rules` only to INTEGER, and a SECTION uses almost none of
  * them. The shape does not express that; the server's validator enforces it.
  */
 export interface DefinitionItem {
@@ -248,6 +248,24 @@ export interface DefinitionItem {
   when?: string | null
   /** Questions shown only when this one is answered a particular way. Nests to any depth. */
   follow: DefinitionItem[]
+  /**
+   * INTEGER only. What a reading means: bands mapping a range to a result type.
+   * Absent means the reading is recorded and decides nothing. `min`/`max` above
+   * bound what may be typed; these say what the typed value means.
+   */
+  rules?: RangeRule[]
+}
+
+/**
+ * A band of readings — "12 to 15 is Amber". A missing `min` is "anything up
+ * to `max`", a missing `max` "anything from `min`". Both ends are inclusive
+ * and bands share no number: after one ending at 11 the next starts at 12.
+ */
+export interface RangeRule {
+  min?: number | null
+  max?: number | null
+  /** A result-type key, the same vocabulary an option's `result` uses. */
+  result?: string | null
 }
 
 /**
