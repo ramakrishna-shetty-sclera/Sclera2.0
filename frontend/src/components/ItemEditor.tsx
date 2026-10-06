@@ -168,13 +168,13 @@ export function ItemEditor(props: ItemEditorProps) {
       {choice && (
         <div className="answers">
           <div className="field-label">Answers</div>
-          {item.options.map((option) => (
+          {item.options.map((option, optionIndex) => (
             <div className="answer-row" key={option.uid}>
               <input
                 value={option.label}
                 onChange={(e) => onPatchOption(item.uid, option.uid, { label: e.target.value })}
                 maxLength={200}
-                placeholder="Yes"
+                placeholder={`Option ${optionIndex + 1}`}
                 readOnly={fixed}
                 title={fixed ? `${typeLabel(item.type)} comes with its answers` : undefined}
               />

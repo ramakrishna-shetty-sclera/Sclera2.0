@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { createProcedure, getDraft, getProcedure, saveDraft, updateProcedure } from '../api/templates'
 import { ApiError } from '../api/client'
@@ -10,9 +10,13 @@ import { Refusal } from '../components/Refusal'
 import {
   addFollowIn,
   addOptionIn,
+  applyKeys,
   atPath,
+  autosaveBlockedBy,
+  autosaveSkipReason,
   findIn,
   fromDocument,
+  keysFromSaved,
   moveIn,
   newItem,
   optionRemovalBlockedBy,
@@ -29,6 +33,13 @@ import {
   type ItemDraft,
   type OptionDraft,
 } from '../components/itemTree'
+
+/** How often a changed draft is saved without being asked. */
+const AUTOSAVE_MS = 30_000
+
+/** The document as it would be sent — what "has this changed since the last save" compares. */
+const snapshotOf = (schema: number, items: ItemDraft[]): string =>
+  JSON.stringify(toDocument(schema, items))
 
 /**
  * Carried through the navigation that creating a procedure forces.
@@ -79,7 +90,27 @@ export function TemplateEditorPage() {
   const [items, setItems] = useState<ItemDraft[]>([newItem()])
   const [changeNote, setChangeNote] = useState('')
   const [schema, setSchema] = useState(2)
-  const [rowVersion, setRowVersion] = useState<number | null>(null)
+  /**
+   * The draft's optimistic lock. A ref, not state: autosave runs from a timer
+   * and must always send the value the previous save returned, and a closure
+   * over state would hand it a stale one — which then 409s against the author's
+   * own autosave. Null means no draft has loaded, so nothing may be saved.
+   */
+  const rowVersionRef = useRef<number | null>(null)
+  /**
+   * Every save goes through here, one at a time. An autosave and a manual save
+   * that overlapped would both send the same rowVersion, and the second would
+   * conflict with the first.
+   */
+  const saveQueue = useRef<Promise<unknown>>(Promise.resolve())
+  /** What the server holds, as a snapshot — the thing "unsaved changes" is measured against. */
+  const [savedSnapshot, setSavedSnapshot] = useState(() => snapshotOf(2, [newItem()]))
+  /** The snapshot an autosave was refused on, so a deterministic refusal is not retried every tick. */
+  const failedSnapshot = useRef<string | null>(null)
+  const [autosave, setAutosave] = useState<{ phase: 'idle' | 'saving' | 'failed'; at: Date | null }>({
+    phase: 'idle',
+    at: null,
+  })
   /** Set separately from `error`: a conflict needs a reload, not a retry. */
   const [conflict, setConflict] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -108,16 +139,31 @@ export function TemplateEditorPage() {
 
   useEffect(() => {
     if (!id) return
+    // Until this draft has loaded there is nothing to save to. Clearing it
+    // matters when creating a procedure hands over to its edit route without
+    // remounting, so the previous screen's state is briefly still on show.
+    rowVersionRef.current = null
+    // StrictMode runs this effect twice in development, and both loads resolve.
+    // Without this the later response overwrote whatever had been typed since the
+    // first one landed — items, rowVersion and the saved-snapshot baseline all —
+    // so a draft could appear to lose its edits, or to have none. Only the
+    // effect that is still current may apply its result.
+    let cancelled = false
     const pending = (location.state as PendingFollow | null)?.addFollowAt
     Promise.all([getProcedure(id), getDraft(id)])
       .then(([procedure, draft]) => {
+        if (cancelled) return
         setName(procedure.name)
         setDescription(procedure.description ?? '')
         setOriginal({ name: procedure.name, description: procedure.description ?? '' })
         setSchema(draft.definition.schema)
-        setRowVersion(draft.rowVersion)
+        rowVersionRef.current = draft.rowVersion
         let loadedItems = fromDocument(draft.definition)
         if (loadedItems.length === 0) loadedItems = [newItem()]
+        // What the server holds, taken BEFORE any pending follow-up is added:
+        // that follow-up is not saved yet, so it should read as a change.
+        setSavedSnapshot(snapshotOf(draft.definition.schema, loadedItems))
+        failedSnapshot.current = null
         // Finishes a "+ Follow-up" that had to create the procedure first. The
         // answers now carry the keys the server minted, so the follow-up has
         // something to point at.
@@ -129,16 +175,132 @@ export function TemplateEditorPage() {
         setItems(loadedItems)
         setLoaded(true)
       })
-      .catch((e) =>
+      .catch((e) => {
+        if (cancelled) return
         setError(
           e instanceof ApiError && e.status === 404
             ? 'This procedure has no open draft. Start one from its detail screen.'
             : e instanceof Error
               ? e.message
               : 'Could not load the draft',
-        ),
-      )
+        )
+      })
+    return () => {
+      cancelled = true
+    }
   }, [id])
+
+  // --- autosave -------------------------------------------------------------
+  //
+  // Authoring makes no requests, so a session that expires mid-edit is only
+  // discovered by the Save click that matters, and the whole draft lived in
+  // React state. Saving while dirty protects the work, and as a side effect
+  // every save is an authenticated request, which slides the session's idle
+  // timeout — a person who is working is not idle.
+  //
+  // Edit mode only. Creating has no draft to save to, and making a procedure
+  // the author has not asked for out of half a typed name is worse than the
+  // problem it solves.
+
+  /** Runs a save after every save already queued, so no two share a rowVersion. */
+  function enqueue<T>(job: () => Promise<T>): Promise<T> {
+    const run = saveQueue.current.then(job)
+    saveQueue.current = run.catch(() => undefined)
+    return run
+  }
+
+  /**
+   * The timer fires with whatever the closure that started it saw, so it reads
+   * the current values from here instead.
+   */
+  const latest = useRef({ id, editing, items, schema, changeNote, conflict, busy, savingFor, savedSnapshot })
+  latest.current = { id, editing, items, schema, changeNote, conflict, busy, savingFor, savedSnapshot }
+
+  async function autosaveNow() {
+    const s = latest.current
+    const snapshot = snapshotOf(s.schema, s.items)
+    const skip = autosaveSkipReason({
+      ready: s.editing && rowVersionRef.current !== null,
+      conflict: s.conflict,
+      busy: s.busy || s.savingFor !== null,
+      snapshot,
+      savedSnapshot: s.savedSnapshot,
+      failedSnapshot: failedSnapshot.current,
+      items: s.items,
+    })
+    if (skip) return
+
+    // Exactly what is sent, kept so the keys the server mints can be matched
+    // back to it even if the author keeps typing while the request is out.
+    const sent = s.items
+    setAutosave((a) => ({ ...a, phase: 'saving' }))
+    try {
+      const saved = await enqueue(() =>
+        saveDraft(s.id!, {
+          definition: toDocument(s.schema, sent),
+          rowVersion: rowVersionRef.current!,
+          changeNote: s.changeNote.trim() || undefined,
+        }),
+      )
+      rowVersionRef.current = saved.rowVersion
+
+      // The editor does not otherwise learn the keys a save minted, and the
+      // server mints a fresh one for anything unkeyed — so without this every
+      // autosave would re-key every new question and answer.
+      const minted = keysFromSaved(sent, saved.definition.items)
+      setItems((prev) => applyKeys(prev, minted))
+      setSavedSnapshot(snapshotOf(s.schema, applyKeys(sent, minted)))
+      failedSnapshot.current = null
+      setAutosave({ phase: 'idle', at: new Date() })
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        setConflict(true)
+        setError('Someone else saved this draft while you were editing it.')
+        setAutosave((a) => ({ ...a, phase: 'idle' }))
+      } else if (e instanceof ApiError && e.status === 401) {
+        // The session has ended and the app is already heading to the sign-in
+        // screen. Say nothing more here.
+        setAutosave((a) => ({ ...a, phase: 'idle' }))
+      } else {
+        // Not shown as a refusal: this was never asked for, and the author may
+        // be mid-thought. Remembered, so the same document is not retried every
+        // tick, and the manual Save will say why in full.
+        failedSnapshot.current = snapshot
+        setAutosave((a) => ({ ...a, phase: 'failed' }))
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (!editing) return
+    const timer = window.setInterval(() => {
+      void autosaveNow()
+    }, AUTOSAVE_MS)
+    return () => window.clearInterval(timer)
+  }, [editing, id])
+
+  const docDirty = useMemo(
+    () => snapshotOf(schema, items) !== savedSnapshot,
+    [schema, items, savedSnapshot],
+  )
+  const identityDirty = editing
+    ? name.trim() !== original.name || description.trim() !== original.description
+    : name.trim() !== '' || description.trim() !== ''
+  const dirty = docDirty || identityDirty
+
+  // Closing the tab or refreshing is the one way left to lose a draft that is
+  // not yet saved — notably the name and description, which autosave does not
+  // touch, and everything while creating. Only ever asks when there is
+  // something to lose.
+  useEffect(() => {
+    if (!dirty) return
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty])
 
   function onPatch(uid: string, patch: Partial<ItemDraft>) {
     setItems((prev) => patchIn(prev, uid, patch))
@@ -193,6 +355,15 @@ export function TemplateEditorPage() {
       return
     }
 
+    // Nothing written yet, so the save below would drop every blank row, mint
+    // no key, and leave the follow-up with nothing to point at — a save that
+    // changes nothing and a click that appears to do nothing. Say so instead.
+    // Matters more now that Radio, Checkbox and Dropdown start with blank rows.
+    if (!parent.options.some((o) => o.label.trim() !== '')) {
+      setRefused('Write at least one answer first — a follow-up is shown when one of them is picked.')
+      return
+    }
+
     const path = pathTo(items, uid)
     if (!path) return
 
@@ -211,13 +382,21 @@ export function TemplateEditorPage() {
         return
       }
 
-      const saved = await saveDraft(id!, {
-        definition: toDocument(schema, items),
-        rowVersion: rowVersion!,
-        changeNote: changeNote.trim() || undefined,
-      })
-      setRowVersion(saved.rowVersion)
-      setItems(withFollowAt(fromDocument(saved.definition), path))
+      const definition = toDocument(schema, items)
+      const saved = await enqueue(() =>
+        saveDraft(id!, {
+          definition,
+          rowVersion: rowVersionRef.current!,
+          changeNote: changeNote.trim() || undefined,
+        }),
+      )
+      rowVersionRef.current = saved.rowVersion
+      // The follow-up added below is not saved yet, so the snapshot is taken
+      // from what came back and not from what is about to be shown.
+      const reloaded = fromDocument(saved.definition)
+      setSavedSnapshot(snapshotOf(schema, reloaded))
+      failedSnapshot.current = null
+      setItems(withFollowAt(reloaded, path))
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         setConflict(true)
@@ -271,11 +450,15 @@ export function TemplateEditorPage() {
       if (name.trim() !== original.name || description.trim() !== original.description) {
         await updateProcedure(id!, { name: name.trim(), description: description.trim() || undefined })
       }
-      await saveDraft(id!, {
-        definition,
-        rowVersion: rowVersion!,
-        changeNote: changeNote.trim() || undefined,
-      })
+      // Through the queue, so an autosave already in flight finishes first and
+      // this sends the rowVersion it returned rather than conflicting with it.
+      await enqueue(() =>
+        saveDraft(id!, {
+          definition,
+          rowVersion: rowVersionRef.current!,
+          changeNote: changeNote.trim() || undefined,
+        }),
+      )
       navigate(`/templates/${id}`)
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
@@ -294,6 +477,29 @@ export function TemplateEditorPage() {
   // and a follow-up reads as 2.1 rather than as another question 1.
   const numbers = numberItems(items)
 
+  const waitingOn = docDirty ? autosaveBlockedBy(items) : null
+  let saveStatus: string
+  if (!editing) {
+    saveStatus = 'Not saved yet — nothing is kept until you save.'
+  } else if (conflict) {
+    // Autosave stops for good on a conflict, so "saving shortly" would be false.
+    saveStatus = 'Not saved — someone else saved this draft first. Reload to see their version.'
+  } else if (autosave.phase === 'saving') {
+    saveStatus = 'Saving…'
+  } else if (autosave.phase === 'failed' && docDirty) {
+    saveStatus = 'Could not save automatically — use Save draft to see why.'
+  } else if (waitingOn) {
+    // Said out loud, because "Unsaved changes" with no end in sight reads as
+    // broken when it is only waiting for a half-written question to finish.
+    saveStatus = `Not saved yet — ${waitingOn}.`
+  } else if (docDirty) {
+    saveStatus = 'Unsaved changes — saving shortly.'
+  } else if (autosave.at) {
+    saveStatus = `Saved ${autosave.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
+  } else {
+    saveStatus = 'No unsaved changes.'
+  }
+
   if (!loaded) {
     return error ? <div className="alert alert-error">{error}</div> : <p className="muted">Loading…</p>
   }
@@ -305,8 +511,11 @@ export function TemplateEditorPage() {
           <h1>{editing ? 'Edit draft' : 'New procedure'}</h1>
           <p className="muted small">
             {editing
-              ? 'Saving replaces the whole draft. Publishing it from the detail screen is what freezes it.'
+              ? 'The draft saves itself as you work. Publishing it from the detail screen is what freezes it.'
               : 'This creates the procedure and opens draft v1. Nothing is published until you say so.'}
+          </p>
+          <p className="muted small" role="status" aria-live="polite">
+            {saveStatus}
           </p>
         </div>
         <div className="page-actions">
