@@ -10,6 +10,7 @@ import com.sclera.applicationplane.procedure.definition.KeyMinter;
 import com.sclera.applicationplane.procedure.domain.ProcedureTemplate;
 import com.sclera.applicationplane.procedure.domain.ProcedureTemplateVersion;
 import com.sclera.applicationplane.procedure.domain.TemplateStatus;
+import com.sclera.applicationplane.procedure.domain.VersionResultTypeRef;
 import com.sclera.applicationplane.procedure.domain.VersionState;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.CloneRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.CreateTemplateRequest;
@@ -28,6 +29,7 @@ import com.sclera.applicationplane.procedure.mapper.ProcedureTemplateMapper;
 import com.sclera.applicationplane.procedure.repository.ProcedureTemplateRepository;
 import com.sclera.applicationplane.procedure.repository.ProcedureTemplateVersionRepository;
 import com.sclera.applicationplane.procedure.repository.ResultTypeRepository;
+import com.sclera.applicationplane.procedure.repository.VersionResultTypeRefRepository;
 import com.sclera.applicationplane.procedure.tenancy.PropertyContext;
 import com.sclera.controlplane.common.exception.BusinessRuleException;
 import com.sclera.controlplane.common.exception.ConflictException;
@@ -73,6 +75,7 @@ public class ProcedureTemplateService {
     private final TemplateEventPublisher events;
     private final FgaAuthorizationService fga;
     private final ResultTypeRepository resultTypes;
+    private final VersionResultTypeRefRepository resultTypeRefs;
 
     public ProcedureTemplateService(ProcedureTemplateRepository templates,
                                     ProcedureTemplateVersionRepository versions,
@@ -80,7 +83,8 @@ public class ProcedureTemplateService {
                                     ProcedureTemplateMapper mapper,
                                     TemplateEventPublisher events,
                                     FgaAuthorizationService fga,
-                                    ResultTypeRepository resultTypes) {
+                                    ResultTypeRepository resultTypes,
+                                    VersionResultTypeRefRepository resultTypeRefs) {
         this.templates = templates;
         this.versions = versions;
         this.canonicalizer = canonicalizer;
@@ -88,6 +92,7 @@ public class ProcedureTemplateService {
         this.events = events;
         this.fga = fga;
         this.resultTypes = resultTypes;
+        this.resultTypeRefs = resultTypeRefs;
     }
 
     // --- template identity --------------------------------------------------
@@ -287,8 +292,8 @@ public class ProcedureTemplateService {
         // Every reason at once. An author fixing a checklist wants the whole
         // list, not one refusal per attempt — and the screens that show it are
         // built for a list.
-        List<String> blockers = DefinitionValidator.publishBlockers(
-                canonicalizer.parse(draft.getDefinitionJson()), activeResultKeys(template.getOrgId()));
+        DefinitionDocument document = canonicalizer.parse(draft.getDefinitionJson());
+        List<String> blockers = DefinitionValidator.publishBlockers(document, activeResultKeys(template.getOrgId()));
         if (!blockers.isEmpty()) {
             throw new BusinessRuleException("This procedure cannot be published yet: "
                     + String.join("; ", blockers));
@@ -309,6 +314,13 @@ public class ProcedureTemplateService {
 
         draft.markPublished(OrgContext.getUserId(), OffsetDateTime.now());
         versions.saveAndFlush(draft);
+        // Only here, on a version frozen for the first time. The path above
+        // republishes a version that already has its rows, and a draft never
+        // gets any: until now nothing was committed to, so every result type
+        // it names stays deletable.
+        resultTypeRefs.saveAll(document.resultTypeKeys().stream()
+                .map(key -> new VersionResultTypeRef(draft.getId(), key))
+                .toList());
         template.setCurrentPublishedVersionId(draft.getId());
         templates.flush();
         events.publish(template, draft, ProcedureTemplateEvent.EventType.PUBLISHED);

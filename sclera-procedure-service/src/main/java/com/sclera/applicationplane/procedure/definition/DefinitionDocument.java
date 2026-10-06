@@ -9,6 +9,8 @@ import jakarta.validation.constraints.Size;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.SortedSet;
+import java.util.TreeSet;
 
 /**
  * The whole content of one procedure version: what it asks, in what order, and
@@ -55,6 +57,23 @@ public record DefinitionDocument(int schema, List<@Valid Item> items) {
     /** Questions at every depth, sections excluded — what "12 questions" means on screen. */
     public int questionCount() {
         return (int) flatten().stream().filter(i -> i.type() != QuestionType.SECTION).count();
+    }
+
+    /**
+     * Every result-type key the document names, once each and in sorted order —
+     * what publishing records in {@code version_result_type_ref}. An answer that
+     * decides nothing names no key and contributes nothing.
+     */
+    public SortedSet<String> resultTypeKeys() {
+        SortedSet<String> keys = new TreeSet<>();
+        for (Item item : flatten()) {
+            for (Option option : item.options()) {
+                if (option.result() != null && !option.result().isBlank()) {
+                    keys.add(option.result());
+                }
+            }
+        }
+        return keys;
     }
 
     /** Every item, parents before their follow-ups, in display order. */
