@@ -141,6 +141,20 @@ parts.
 | Never referenced by a published version | hard delete allowed, with confirmation |
 | Referenced by any published version | delete refused; deactivate instead |
 
+The refusal names the cost and the way out — *"Amber is used by 2 published versions, so it cannot
+be deleted; deactivate it instead"*. What counts as a reference:
+
+- **Any published version**, old ones and those of archived procedures included. They are the record
+  of what past inspections decided, and deleting the type they name would leave that record pointing
+  at nothing.
+- **Answers and bands alike** — an option's `result` and a number question's band `result`.
+- **Every property's versions**, counted from organization level too, so an admin is never told a type
+  is unused because the version using it belongs to a property.
+- **Not drafts.** A draft commits to nothing, so a type only a draft names still deletes.
+
+Deactivate is deliberately not guarded: it is the way out the refusal points to. No new version can
+use a deactivated type, and every version that already names it keeps rendering.
+
 **Name and colour are resolved live, never copied.** Renaming or recolouring a result type changes it
 everywhere, including completed inspections and historical reports — that consistency is the point.
 What never changes is the **meaning**, which is `result_type_key`, and that is immutable on every
@@ -151,7 +165,12 @@ never used for display.
 ### `version_result_type_ref` and `version_target_type` — derived indexes
 
 `version_result_type_ref(version_id, result_type_key)` answers *"is this result type still in use?"*
-— the query that decides whether a delete is allowed or must become a deactivate.
+— the query that decides whether a delete is allowed or must become a deactivate. Built: one row per
+distinct key per version, written in the same transaction as the publish and only when a publish
+creates a new version, so republishing unchanged content adds nothing. It has no row-level security
+on purpose — the delete guard must see every property's versions — and no foreign key to
+`result_type`, since the guard is what stops a referenced type disappearing. There is no backfill:
+versions published before the table existed held test data only and are not counted.
 
 `version_target_type(version_id, kind, key)` answers *"which published procedures apply to target
 type Y?"*, with `kind ∈ HIERARCHY_LEVEL, LOCATION_TYPE, ASSET_CLASS, ASSET_TAG`. Keys are validated
@@ -226,7 +245,12 @@ One flat list. Shown pretty-printed; the stored bytes are one line.
 
     { "key": "q8", "text": "Record the gauge reading", "type": "INTEGER",
       "unit": "psi", "min": 100, "max": 175,
-      "help": "Tap the gauge lightly before reading it." }
+      "help": "Tap the gauge lightly before reading it.",
+      "rules": [
+        { "max": 149, "result": "PASS" },
+        { "min": 150, "max": 160, "result": "AMBER" },
+        { "min": 161, "result": "FAIL" }
+      ] }
   ]
 }
 ```
@@ -245,6 +269,20 @@ Amber maps an answer to `AMBER` with no change here. An option with no result de
 is how "Not applicable" works — it records that the inspector chose it, which a per-question flag
 could not, because that leaves N/A indistinguishable from unanswered.
 
+**A number question's bands carry its meaning.** `rules` on an `INTEGER` maps ranges of readings to
+result types: in `q8`, up to 149 passes, 150 to 160 is Amber, 161 and above fails. A missing `min` is
+"anything up to `max`", a missing `max` "anything from `min`". Both ends are inclusive and bands
+share no number — after a band ending at 149 the next starts at 150 — the same convention as the
+score thresholds that turn a percentage into a result. `min`/`max` on the question are something
+else: they bound what the inspector may type, and the bands say what the typed value means.
+
+At publish, every reading that can be typed must land in exactly one band. What can be typed is the
+question's own `min`/`max`, or every whole number where it sets none, so an unbounded question's
+first band must be open below and its last open above. Gaps and overlaps are reported as spans —
+*"no band covers readings from 12 to 15"*, *"more than one band covers a reading of 11"* — so an
+author fixes the edge rather than hunting for it. No bands at all is legitimate: the reading is
+recorded and decides nothing, which is what a meter reading often should do.
+
 **Keys are stable across versions and never reused.** `q2` means the same question in v1 and v7,
 which is what lets reporting and amendments refer to one question over time. Minted from
 `procedure_template.key_seq`: `s` for sections, `q` for questions, `o` for options, one counter
@@ -254,14 +292,15 @@ behind all three, so a key's prefix alone says what it names.
 claim the same position.
 
 **Types.** Choice — `YES_NO`, `YES_NO_NA`, `RADIO`, `CHECKBOX`, `DROPDOWN`, whose options carry the
-result. Input — `TEXT`, `INTEGER`, the latter taking `unit`, `min` and `max`. Media — `IMAGE`,
+result. Input — `TEXT`, `INTEGER`, the latter taking `unit`, `min`, `max` and `rules`. Media — `IMAGE`,
 `MULTI_IMAGE`, `AUDIO`, `VIDEO`, `DOCUMENT`. Plus `SECTION` for a heading.
 
 No date and no signature type. The prototype dropped date; signature is still R&D. Neither is ruled
 out, both are simply outside what the product has committed to.
 
 **`workOrder` and `alertProfile`** record that a failed answer should raise work. Only a choice
-question can carry them, since only its answers produce a result. The profile is a reference the
+question can carry them. A number question's bands produce a result too, but raising work from a
+reading has not been decided, so it is still refused rather than half-supported. The profile is a reference the
 procedure service stores and does not resolve — alert profiles are a later feature, and executing
 the work order belongs to the facilities layer, not here.
 
@@ -271,8 +310,8 @@ impossible to reconstruct later, once a procedure has been edited a few times.
 
 **What is checked, and when.** Structure is enforced on every write and refused, because storing a
 follow-up that points at a missing answer is storing corruption. Readiness — nothing authored yet, a
-choice with one answer, an answer mapped to a result type the organization does not have — is
-checked at publish and returned as a list, so an author sees every reason at once instead of one per
+choice with one answer, an answer or band mapped to a result type the organization does not have,
+bands that leave a reading uncovered or cover it twice — is checked at publish and returned as a list, so an author sees every reason at once instead of one per
 attempt. The split is what lets a half-finished draft be saved, which is the normal way of working.
 
 **Schema 2.** Schema 1 was `categories[] → questions[]` and is not readable. Nothing was carrying it
@@ -350,7 +389,8 @@ publicly.
 | Usage | record and query which consumers use which version |
 
 **Publish does not return a boolean.** It returns the list of reasons a version cannot be published —
-answer options not yet mapped to a result type, thresholds unset while scoring is configured, a
+answer options not yet mapped to a result type, number bands with a gap or an overlap, thresholds
+unset while scoring is configured, a
 document pointing at a question key that no longer exists. An author needs to see everything blocking
 them at once, not discover the problems one refused publish at a time.
 
@@ -456,8 +496,9 @@ a provisional result, so an inspector can see a running score while filling a ch
 
 How a result is reached:
 
-1. **Per question** — a choice answer takes the `result` on the option that was picked; a numeric,
-   date or text answer is matched against the question's `rules` in order. An option marked
+1. **Per question** — a choice answer takes the `result` on the option that was picked; a number
+   answer takes the `result` of the one band in the question's `rules` it falls in — publishing
+   guarantees there is exactly one, so band order never matters. An option marked
    `excludeFromScoring` produces its result but contributes nothing to the score, and its weight is
    removed from the denominator so a not-applicable question cannot drag a percentage down.
 2. **Sub-questions** contribute to their parent according to `subquestionRollup`.

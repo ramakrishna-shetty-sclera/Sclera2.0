@@ -97,7 +97,7 @@ Authorization: Bearer {{access_token}}
 POST {{host}}/api/v1/result-types/{{amber_id}}/activate
 Authorization: Bearer {{access_token}}
 
-### Delete a custom type — 204, and the remaining ranks close the gap
+### Delete a custom type — 204, since no published version uses it; the remaining ranks close the gap
 DELETE {{host}}/api/v1/result-types/{{amber_id}}
 Authorization: Bearer {{access_token}}
 
@@ -148,6 +148,61 @@ Authorization: Bearer {{access_token}}
 Content-Type: application/json
 
 { "orderedIds": ["REPLACE_WITH_FAIL_ID"] }
+
+
+###############################################################################
+# In use — a type a published version names is deactivated, not deleted
+#
+# Published versions are the record of what past inspections decided, so the
+# type they name must outlive them. Drafts do not count: a draft commits to
+# nothing. Bands on a number question count as much as answers do, which is
+# what this sequence uses.
+#
+# The key is random so the sequence can be run again; U1 captures it.
+###############################################################################
+
+### U1. Create a type to use
+POST {{host}}/api/v1/result-types
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{ "key": "SERVICE_DUE_{{$random.integer(1000, 9999)}}", "name": "Service due", "color": "#e67e22" }
+
+> {%
+    client.global.set("due_id", response.body.data.id);
+    client.global.set("due_key", response.body.data.key);
+%}
+
+### U2. A procedure whose gauge reading maps to it — 175 to 189 psi is "Service due"
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{ "name": "Gauge check {{$random.integer(1000, 9999)}}", "definition": { "items": [
+  { "text": "Record the gauge reading", "type": "INTEGER", "unit": "psi", "required": true,
+    "rules": [
+      { "max": 174, "result": "PASS" },
+      { "min": 175, "max": 189, "result": "{{due_key}}" },
+      { "min": 190, "result": "FAIL" }
+    ] } ] } }
+
+> {% client.global.set("gauge_id", response.body.data.id); %}
+
+### U3. Publish — v1 now names the type. Until this point a delete would still be a 204.
+POST {{host}}/api/v1/procedure-templates/{{gauge_id}}/publish
+Authorization: Bearer {{access_token}}
+
+### U4. Delete → 400, "Service due is used by 1 published version, so it cannot be deleted; deactivate it instead"
+DELETE {{host}}/api/v1/result-types/{{due_id}}
+Authorization: Bearer {{access_token}}
+
+### U5. Deactivate — the way out the refusal points to. 200, active=false
+POST {{host}}/api/v1/result-types/{{due_id}}/deactivate
+Authorization: Bearer {{access_token}}
+
+### U6. v1 still opens, and its band still names the type
+GET {{host}}/api/v1/procedure-templates/{{gauge_id}}/versions/1
+Authorization: Bearer {{access_token}}
 
 
 ###############################################################################

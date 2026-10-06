@@ -195,6 +195,85 @@ GET {{host}}/api/v1/procedure-templates/{{id}}
 Authorization: Bearer {{token2}}
 
 ###############################################################################
+# Bands — what a number reading means
+#
+# min/max bound what the inspector may type; rules say what the typed value
+# means. A missing min is "anything up to max", a missing max "anything from
+# min"; both ends are inclusive and bands share no number. At publish every
+# reading that can be typed must land in exactly one band. A gap still saves —
+# an unfinished draft is normal — it just does not publish.
+###############################################################################
+
+### B1. A gauge reading, 100 to 175 psi, with bands that leave 150–160 uncovered
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Extinguisher gauge {{$random.integer(1000, 9999)}}", "definition": { "items": [
+  { "text": "Record the gauge reading", "type": "INTEGER", "unit": "psi", "min": 100, "max": 175,
+    "required": true,
+    "rules": [
+      { "max": 149, "result": "PASS" },
+      { "min": 161, "result": "FAIL" }
+    ] } ] } }
+
+> {% client.global.set("gaugeId", response.body.data.id); %}
+
+### B2. Publish → 400, "This procedure cannot be published yet: 'Record the gauge reading': no band covers readings from 150 to 160"
+POST {{host}}/api/v1/procedure-templates/{{gaugeId}}/publish
+Authorization: Bearer {{token}}
+
+### B3. Read the draft — the question's key and rowVersion
+GET {{host}}/api/v1/procedure-templates/{{gaugeId}}/draft
+Authorization: Bearer {{token}}
+
+> {%
+    client.global.set("rowVersion", response.body.data.rowVersion);
+    client.global.set("gaugeKey", response.body.data.definition.items[0].key);
+%}
+
+### B4. Fill the gap — 150 to 160 fails too. With an AMBER type defined, map it to that instead
+PUT {{host}}/api/v1/procedure-templates/{{gaugeId}}/draft
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "rowVersion": {{rowVersion}},
+  "changeNote": "Covered 150 to 160",
+  "definition": { "items": [
+    { "key": "{{gaugeKey}}", "text": "Record the gauge reading", "type": "INTEGER",
+      "unit": "psi", "min": 100, "max": 175, "required": true,
+      "rules": [
+        { "max": 149, "result": "PASS" },
+        { "min": 150, "max": 160, "result": "FAIL" },
+        { "min": 161, "result": "FAIL" }
+      ] } ] }
+}
+
+### B5. Publish — v1, and PASS and FAIL are now recorded as in use by it
+POST {{host}}/api/v1/procedure-templates/{{gaugeId}}/publish
+Authorization: Bearer {{token}}
+
+### B6. Bands on a yes/no question → 400, "is not a number question, so it cannot have bands"
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Misplaced bands", "definition": { "items": [
+  { "text": "Is it in place?", "type": "YES_NO",
+    "options": [ { "label": "Yes", "result": "PASS" }, { "label": "No", "result": "FAIL" } ],
+    "rules": [ { "max": 5, "result": "PASS" } ] } ] } }
+
+### B7. A band that runs backwards → 400, "has a band that starts above where it ends (160 to 150)"
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Backwards band", "definition": { "items": [
+  { "text": "Record the gauge reading", "type": "INTEGER",
+    "rules": [ { "min": 160, "max": 150, "result": "PASS" } ] } ] } }
+
+###############################################################################
 # Property isolation (VDMS)
 #
 # X-Sclera-Property says which property you are looking at. Omit it and you are
