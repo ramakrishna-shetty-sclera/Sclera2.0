@@ -2,6 +2,7 @@ package com.sclera.applicationplane.procedure.definition;
 
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Item;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Option;
+import com.sclera.applicationplane.procedure.definition.DefinitionDocument.RangeRule;
 import com.sclera.applicationplane.procedure.domain.QuestionType;
 import com.sclera.controlplane.common.exception.ValidationException;
 import org.junit.jupiter.api.Test;
@@ -19,7 +20,7 @@ class DefinitionValidatorTest {
 
     private static Item item(String key, String text, QuestionType type) {
         return new Item(key, text, null, type, false, List.of(), null, null, null,
-                false, null, null, null, null, List.of());
+                false, null, null, null, null, List.of(), List.of());
     }
 
     private static Item yesNo(String key, String text) {
@@ -40,14 +41,14 @@ class DefinitionValidatorTest {
                 item("s1", "Fire exits", QuestionType.SECTION),
                 yesNo("q2", "Exit clear?").withFollow(List.of(
                         new Item(follow.key(), follow.text(), null, follow.type(), false, List.of(),
-                                null, null, null, false, null, null, null, "o91", List.of()))))))
+                                null, null, null, false, null, null, null, "o91", List.of(), List.of()))))))
                 .doesNotThrowAnyException();
     }
 
     @Test
     void aFollowUpMustNameAnAnswerOfItsOwnParent() {
         Item stray = new Item("q3", "Why?", null, QuestionType.TEXT, false, List.of(),
-                null, null, null, false, null, null, null, "o77", List.of());
+                null, null, null, false, null, null, null, "o77", List.of(), List.of());
 
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(
                 doc(yesNo("q2", "Exit clear?").withFollow(List.of(stray)))))
@@ -66,7 +67,7 @@ class DefinitionValidatorTest {
     @Test
     void aTopLevelQuestionCannotBeConditional() {
         Item conditional = new Item("q2", "Why?", null, QuestionType.TEXT, false, List.of(),
-                null, null, null, false, null, null, null, "o90", List.of());
+                null, null, null, false, null, null, null, "o90", List.of(), List.of());
 
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(doc(conditional)))
                 .isInstanceOf(ValidationException.class)
@@ -76,7 +77,7 @@ class DefinitionValidatorTest {
     @Test
     void aFollowUpCannotHangOffAQuestionWithNoAnswers() {
         Item follow = new Item("q3", "Why?", null, QuestionType.TEXT, false, List.of(),
-                null, null, null, false, null, null, null, "o90", List.of());
+                null, null, null, false, null, null, null, "o90", List.of(), List.of());
 
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(
                 doc(item("q2", "Remarks", QuestionType.TEXT).withFollow(List.of(follow)))))
@@ -96,7 +97,7 @@ class DefinitionValidatorTest {
     @Test
     void onlyNumberQuestionsMayHaveAUnitOrRange() {
         Item texty = new Item("q2", "Remarks", null, QuestionType.TEXT, false, List.of(),
-                "psi", null, null, false, null, null, null, null, List.of());
+                "psi", null, null, false, null, null, null, null, List.of(), List.of());
 
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(doc(texty)))
                 .isInstanceOf(ValidationException.class)
@@ -106,7 +107,7 @@ class DefinitionValidatorTest {
     @Test
     void aRangeCannotRunBackwards() {
         Item backwards = new Item("q2", "Reading", null, QuestionType.INTEGER, false, List.of(),
-                "psi", 300, 10, false, null, null, null, null, List.of());
+                "psi", 300, 10, false, null, null, null, null, List.of(), List.of());
 
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(doc(backwards)))
                 .isInstanceOf(ValidationException.class)
@@ -116,7 +117,7 @@ class DefinitionValidatorTest {
     @Test
     void onlyChoiceQuestionsMayRaiseAWorkOrder() {
         Item texty = new Item("q2", "Remarks", null, QuestionType.TEXT, false, List.of(),
-                null, null, null, true, "ap-std", null, null, null, List.of());
+                null, null, null, true, "ap-std", null, null, null, List.of(), List.of());
 
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(doc(texty)))
                 .isInstanceOf(ValidationException.class)
@@ -136,7 +137,7 @@ class DefinitionValidatorTest {
     @Test
     void oneSaveReportsEveryStructuralProblem() {
         Item backwards = new Item("q2", "Reading", null, QuestionType.INTEGER, false, List.of(),
-                null, 300, 10, false, null, null, null, null, List.of());
+                null, 300, 10, false, null, null, null, null, List.of(), List.of());
         Item withAnswers = item("q3", "Remarks", QuestionType.TEXT)
                 .withOptions(List.of(new Option("o4", "Yes", "PASS")));
 
@@ -186,7 +187,7 @@ class DefinitionValidatorTest {
     void aFollowUpIsCheckedLikeAnyOtherQuestion() {
         Item follow = new Item("q3", "Which one?", null, QuestionType.DROPDOWN, false,
                 List.of(new Option("o4", "Only answer", "PASS")),
-                null, null, null, false, null, null, null, "o91", List.of());
+                null, null, null, false, null, null, null, "o91", List.of(), List.of());
 
         assertThat(DefinitionValidator.publishBlockers(
                 doc(yesNo("q2", "Exit clear?").withFollow(List.of(follow))), PASS_FAIL))
@@ -198,5 +199,161 @@ class DefinitionValidatorTest {
         assertThat(DefinitionValidator.publishBlockers(
                 doc(item("s1", "Fire exits", QuestionType.SECTION), yesNo("q2", "Exit clear?")), PASS_FAIL))
                 .isEmpty();
+    }
+
+    // --- bands on a number question ------------------------------------------
+
+    private static final Set<String> WITH_AMBER = Set.of("PASS", "FAIL", "AMBER");
+
+    private static RangeRule band(Integer min, Integer max, String result) {
+        return new RangeRule(min, max, result);
+    }
+
+    /** A "Pressure" reading, bounded by {@code min}/{@code max} where set. */
+    private static Item pressure(Integer min, Integer max, RangeRule... bands) {
+        return new Item("q2", "Pressure", null, QuestionType.INTEGER, true, List.of(),
+                "psi", min, max, false, null, null, null, null, List.of(), List.of(bands));
+    }
+
+    private static List<String> blockers(Item item) {
+        return DefinitionValidator.publishBlockers(doc(item), WITH_AMBER);
+    }
+
+    @Test
+    void onlyNumberQuestionsMayHaveBands() {
+        Item texty = new Item("q2", "Remarks", null, QuestionType.TEXT, false, List.of(),
+                null, null, null, false, null, null, null, null, List.of(), List.of(band(null, 5, "PASS")));
+
+        assertThatThrownBy(() -> DefinitionValidator.validateStructure(doc(texty)))
+                .isInstanceOf(ValidationException.class)
+                .hasMessage("'Remarks' is not a number question, so it cannot have bands");
+    }
+
+    @Test
+    void aSectionCannotHaveBands() {
+        Item section = new Item("s1", "Fire exits", null, QuestionType.SECTION, false, List.of(),
+                null, null, null, false, null, null, null, null, List.of(), List.of(band(null, 5, "PASS")));
+
+        assertThatThrownBy(() -> DefinitionValidator.validateStructure(doc(section)))
+                .isInstanceOf(ValidationException.class)
+                .hasMessage("'Fire exits' is a section and cannot have bands");
+    }
+
+    @Test
+    void aBandCannotRunBackwards() {
+        assertThatThrownBy(() -> DefinitionValidator.validateStructure(
+                doc(pressure(null, null, band(null, 9, "PASS"), band(20, 10, "FAIL")))))
+                .isInstanceOf(ValidationException.class)
+                .hasMessage("'Pressure' has a band that starts above where it ends (20 to 10)");
+    }
+
+    @Test
+    void aBandWithAGapCanStillBeSaved() {
+        // Coverage is readiness, not structure: a half-finished set of bands is
+        // a draft, and an author must be able to save one.
+        assertThatCode(() -> DefinitionValidator.validateStructure(
+                doc(pressure(null, null, band(null, 11, "PASS")))))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void aNumberQuestionWithoutBandsIsReady() {
+        // Recorded and deciding nothing — a meter reading is allowed to do that.
+        assertThat(blockers(pressure(0, 300))).isEmpty();
+    }
+
+    @Test
+    void threeOpenEndedBandsCoverEveryReading() {
+        assertThat(blockers(pressure(null, null,
+                band(null, 11, "PASS"), band(12, 15, "AMBER"), band(16, null, "FAIL"))))
+                .isEmpty();
+    }
+
+    @Test
+    void theOrderBandsAreWrittenInDoesNotMatter() {
+        assertThat(blockers(pressure(null, null,
+                band(16, null, "FAIL"), band(null, 11, "PASS"), band(12, 15, "AMBER"))))
+                .isEmpty();
+    }
+
+    @Test
+    void withinTheQuestionsRangeBandsNeedNotBeOpen() {
+        // 0 to 300 is all that can be typed, so bands that cover exactly that
+        // cover everything — and open ones covering more are fine too.
+        assertThat(blockers(pressure(0, 300, band(0, 100, "PASS"), band(101, 300, "FAIL")))).isEmpty();
+        assertThat(blockers(pressure(0, 300, band(null, 100, "PASS"), band(101, null, "FAIL")))).isEmpty();
+    }
+
+    @Test
+    void aGapBetweenBandsIsReported() {
+        assertThat(blockers(pressure(null, null, band(null, 11, "PASS"), band(16, null, "FAIL"))))
+                .containsExactly("'Pressure': no band covers readings from 12 to 15");
+    }
+
+    @Test
+    void aSingleMissingReadingIsNamed() {
+        assertThat(blockers(pressure(null, null, band(null, 11, "PASS"), band(13, null, "FAIL"))))
+                .containsExactly("'Pressure': no band covers a reading of 12");
+    }
+
+    @Test
+    void bandsSharingAnEdgeOverlap() {
+        // Inclusive at both ends, so "up to 11" and "from 11" both claim 11.
+        assertThat(blockers(pressure(null, null, band(null, 11, "PASS"), band(11, null, "FAIL"))))
+                .containsExactly("'Pressure': more than one band covers a reading of 11");
+    }
+
+    @Test
+    void withNoRangeTheBandsMustBeOpenAtBothEnds() {
+        assertThat(blockers(pressure(null, null, band(5, 10, "PASS"), band(11, 20, "FAIL"))))
+                .containsExactly(
+                        "'Pressure': no band covers readings below 5",
+                        "'Pressure': no band covers readings above 20");
+    }
+
+    @Test
+    void withARangeTheBandsMustReachBothOfItsEnds() {
+        assertThat(blockers(pressure(0, 300, band(10, 100, "PASS"), band(101, 299, "FAIL"))))
+                .containsExactly(
+                        "'Pressure': no band covers readings from 0 to 9",
+                        "'Pressure': no band covers a reading of 300");
+    }
+
+    @Test
+    void threeBandsSharingOneReadingAreReportedOnce() {
+        assertThat(blockers(pressure(null, null,
+                band(null, 12, "PASS"), band(12, 12, "AMBER"), band(12, null, "FAIL"))))
+                .containsExactly("'Pressure': more than one band covers a reading of 12");
+    }
+
+    @Test
+    void twoBandsOpenAtTheTopOverlapFromWhereTheSecondStarts() {
+        assertThat(blockers(pressure(null, null,
+                band(null, 9, "PASS"), band(10, null, "AMBER"), band(15, null, "FAIL"))))
+                .containsExactly("'Pressure': more than one band covers readings above 14");
+    }
+
+    @Test
+    void aBandOutsideTheQuestionsRangeIsReported() {
+        assertThat(blockers(pressure(0, 100, band(0, 100, "PASS"), band(200, null, "FAIL"))))
+                .containsExactly("'Pressure': the band from 200 is outside the question's range, 0 to 100");
+    }
+
+    @Test
+    void everyBandNeedsAnActiveResult() {
+        assertThat(blockers(pressure(null, null, band(null, 11, null), band(12, null, "GONE"))))
+                .containsExactly(
+                        "'Pressure': the band up to 11 has no result",
+                        "'Pressure': the band from 12 is mapped to GONE, which is not an active result type");
+    }
+
+    @Test
+    void aBandOnAFollowUpIsCheckedLikeAnyOther() {
+        Item reading = new Item("q3", "Reading", null, QuestionType.INTEGER, false, List.of(),
+                null, null, null, false, null, null, null, "o91", List.of(), List.of(band(null, 11, "PASS")));
+
+        assertThat(DefinitionValidator.publishBlockers(
+                doc(yesNo("q2", "Gauge fitted?").withFollow(List.of(reading))), WITH_AMBER))
+                .containsExactly("'Reading': no band covers readings above 11");
     }
 }

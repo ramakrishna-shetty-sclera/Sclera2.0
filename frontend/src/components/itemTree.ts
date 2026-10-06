@@ -1,5 +1,5 @@
 import { hasFixedOptions, isChoice, seededLabels, seededResults } from '../api/document'
-import type { DefinitionDocument, DefinitionItem, ItemSource, ItemType } from '../api/types'
+import type { DefinitionDocument, DefinitionItem, ItemSource, ItemType, RangeRule } from '../api/types'
 
 /**
  * The editing shape of a document, and the operations on it.
@@ -46,6 +46,8 @@ export interface ItemDraft {
   /** The parent option key that shows this item. Empty on a top-level item. */
   when: string
   follow: ItemDraft[]
+  /** A number question's bands. No screen edits them yet; they ride through. */
+  rules: RangeRule[]
 }
 
 let seq = 0
@@ -68,6 +70,7 @@ export function newItem(type: ItemType = 'TEXT'): ItemDraft {
       standard: '',
       when: '',
       follow: [],
+      rules: [],
     },
     type,
   )
@@ -109,6 +112,7 @@ function toDraft(item: DefinitionItem): ItemDraft {
     standard: item.standard ?? '',
     when: item.when ?? '',
     follow: item.follow.map(toDraft),
+    rules: item.rules ?? [],
   }
 }
 
@@ -158,6 +162,7 @@ function toItem(draft: ItemDraft): DefinitionItem {
     standard: draft.standard.trim() || undefined,
     when: draft.when || undefined,
     follow: draft.follow.map(toItem),
+    rules: draft.rules.length > 0 ? draft.rules : undefined,
   }
 }
 
@@ -423,7 +428,7 @@ export function retype(item: ItemDraft, type: ItemType): ItemDraft {
     // A section is a heading: never answered, so never required, never
     // conditional, and nothing hangs off it.
     return { ...next, required: false, options: [], follow: [], when: '', workOrder: false,
-      alertProfile: '', unit: '', min: '', max: '' }
+      alertProfile: '', unit: '', min: '', max: '', rules: [] }
   }
 
   if (!isChoice(type)) {
@@ -453,6 +458,7 @@ export function retype(item: ItemDraft, type: ItemType): ItemDraft {
     next.unit = ''
     next.min = ''
     next.max = ''
+    next.rules = []
   }
 
   return next

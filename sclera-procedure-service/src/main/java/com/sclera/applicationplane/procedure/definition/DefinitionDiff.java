@@ -34,8 +34,8 @@ public record DefinitionDiff(
 
     /**
      * @param changedFields any of: text, help, type, required, options, unit,
-     *                      min, max, workOrder, alertProfile, standard, when,
-     *                      parent
+     *                      min, max, rules, workOrder, alertProfile, standard,
+     *                      when, parent
      */
     public record ItemChange(
             String key,
@@ -95,6 +95,7 @@ public record DefinitionDiff(
         if (!Objects.equals(b.unit(), a.unit())) fields.add("unit");
         if (!Objects.equals(b.min(), a.min())) fields.add("min");
         if (!Objects.equals(b.max(), a.max())) fields.add("max");
+        if (!b.rules().equals(a.rules())) fields.add("rules");
         if (b.workOrder() != a.workOrder()) fields.add("workOrder");
         if (!Objects.equals(b.alertProfile(), a.alertProfile())) fields.add("alertProfile");
         if (!Objects.equals(b.standard(), a.standard())) fields.add("standard");

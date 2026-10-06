@@ -6,6 +6,7 @@ import com.sclera.applicationplane.procedure.dto.ResultTypeResponse;
 import com.sclera.applicationplane.procedure.dto.ResultTypeUpdateRequest;
 import com.sclera.applicationplane.procedure.mapper.ResultTypeMapper;
 import com.sclera.applicationplane.procedure.repository.ResultTypeRepository;
+import com.sclera.applicationplane.procedure.repository.VersionResultTypeRefRepository;
 import com.sclera.controlplane.common.exception.BusinessRuleException;
 import com.sclera.controlplane.common.exception.ConflictException;
 import com.sclera.controlplane.common.exception.ResourceNotFoundException;
@@ -21,9 +22,10 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * Manages the organization's vocabulary of outcomes. Nothing consumes result
- * types yet — answer-to-result mapping arrives with the versioned procedure
- * model — so this service owns the whole lifecycle on its own.
+ * Manages the organization's vocabulary of outcomes. Procedure versions map
+ * answers to these by key, and a published version is permanent, so a type a
+ * published version names can be deactivated but no longer deleted — see
+ * {@link #delete}.
  */
 @Service
 @Transactional
@@ -31,10 +33,13 @@ public class ResultTypeService {
 
     private final ResultTypeRepository repository;
     private final ResultTypeMapper mapper;
+    private final VersionResultTypeRefRepository refs;
 
-    public ResultTypeService(ResultTypeRepository repository, ResultTypeMapper mapper) {
+    public ResultTypeService(ResultTypeRepository repository, ResultTypeMapper mapper,
+                             VersionResultTypeRefRepository refs) {
         this.repository = repository;
         this.mapper = mapper;
+        this.refs = refs;
     }
 
     public ResultTypeResponse create(ResultTypeRequest request) {
@@ -118,15 +123,27 @@ public class ResultTypeService {
     }
 
     /**
-     * Hard delete. Only system types are protected today, because nothing can
-     * reference a result type yet. Once published versions exist, a type named
-     * by any of them must be refused here and deactivated instead — the record
-     * of what a past inspection decided has to stay readable.
+     * Hard delete, refused in two cases. Pass and Fail belong to the system and
+     * never go. A type that any published version names is refused as well:
+     * those versions are the record of what past inspections decided, and
+     * deleting the type they point at would leave that record unreadable.
+     *
+     * Deactivating is the way out, and the refusal says so. It stops new
+     * versions using the type while every version that already names it keeps
+     * rendering — which is why only delete is guarded and deactivate is not.
      */
     public void delete(UUID id) {
         ResultType resultType = getOwned(id);
         if (resultType.isSystem()) {
             throw new BusinessRuleException("Pass and Fail cannot be deleted");
+        }
+        // Counts every published version in the organization, whatever
+        // property it belongs to: the index carries no row-level security.
+        long usedBy = refs.countByResultTypeKey(resultType.getKey());
+        if (usedBy > 0) {
+            throw new BusinessRuleException(resultType.getName() + " is used by " + usedBy
+                    + (usedBy == 1 ? " published version" : " published versions")
+                    + ", so it cannot be deleted; deactivate it instead");
         }
         UUID orgId = resultType.getOrgId();
         repository.delete(resultType);

@@ -76,12 +76,12 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
                     "SELECT policyname FROM pg_policies WHERE schemaname = ? AND tablename = 'procedure_template'",
                     String.class, schema);
 
-            assertThat(tables).contains("procedure_template", "procedure_template_version")
+            assertThat(tables).contains("procedure_template", "procedure_template_version", "version_result_type_ref")
                     .doesNotContain("question_template", "template_section", "question");
             // Bump this when a tenant migration is added. Pinning it is the
             // point: it makes anyone adding one notice that every existing
             // tenant schema has to be migrated too, not just new ones.
-            assertThat(migratedTo).isEqualTo("4");
+            assertThat(migratedTo).isEqualTo("5");
             // A property-scoped table with no policy is wide open, and the
             // failure is silent — so provisioning asserts the policy arrived,
             // not merely that the migration ran.
@@ -290,10 +290,10 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
             // PASS and FAIL are seeded for a new organization; AMBER is not.
             Item mappedToAmber = new Item(null, "Is the gauge in range?", null, QuestionType.YES_NO, false,
                     List.of(new Option(null, "Yes", "PASS"), new Option(null, "Partly", "AMBER")),
-                    null, null, null, false, null, null, null, null, List.of());
+                    null, null, null, false, null, null, null, null, List.of(), List.of());
             Item onlyOneAnswer = new Item(null, "Is the seal intact?", null, QuestionType.DROPDOWN, false,
                     List.of(new Option(null, "Yes", "PASS")),
-                    null, null, null, false, null, null, null, null, List.of());
+                    null, null, null, false, null, null, null, null, List.of(), List.of());
             UUID id = service.create(new CreateTemplateRequest("Blockers", null, null,
                     new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
                             List.of(mappedToAmber, onlyOneAnswer)))).id();
@@ -494,13 +494,13 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
 
     private static List<Item> section(String key, String title, Item... questions) {
         Item heading = new Item(key, title, null, QuestionType.SECTION, false, List.of(),
-                null, null, null, false, null, null, null, null, List.of());
+                null, null, null, false, null, null, null, null, List.of(), List.of());
         return Stream.concat(Stream.of(heading), Stream.of(questions)).toList();
     }
 
     private static Item question(String key, String text) {
         return new Item(key, text, null, QuestionType.TEXT, false, List.of(),
-                null, null, null, false, null, null, null, null, List.of());
+                null, null, null, false, null, null, null, null, List.of(), List.of());
     }
 
     /** Every key in document order, follow-ups included. */
