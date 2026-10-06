@@ -43,6 +43,45 @@ function Invoke-Kc($method, $path, $body) {
 try { Invoke-Kc GET "/realms/$realm" | Out-Null; "realm '$realm' already exists" }
 catch { Invoke-Kc POST "/realms" @{ realm = $realm; enabled = $true }; "realm '$realm' created" }
 
+# Token and session lifetimes for LOCAL development.
+#
+# The SPA signs in with the password grant and hands the gateway only the access
+# token (src/api/client.ts devLogin -> /api/auth/test-exchange). That session is
+# stored with no refresh token - the gateway says so itself in
+# TestAuthExchangeController - so when the access token expires there is nothing
+# to renew it with, every call 401s, and the SPA drops to the login screen.
+# Keycloak's default access token lifetime is 5 minutes, which is how someone
+# writing a procedure loses it on the next Save.
+#
+# So the access token has to outlive a working session. The gateway's own idle
+# timeout (30m, sliding) then becomes the real limit, as intended.
+#
+# Dev realm only. Production signs in through the OIDC code flow, which does
+# receive a refresh token, so none of this applies there.
+#
+# Runs on EVERY invocation, not only when the realm is created: the realm already
+# exists on every machine that has run this before.
+#
+# Only the changed fields are sent. A realm PUT is partial in Keycloak, and a full
+# GET-modify-PUT would round-trip the whole representation through Invoke-Kc's
+# -Depth 10, which can truncate nested parts and write the truncation back.
+$lifetimes = @{
+    accessTokenLifespan   = 28800   # 8h: a working day
+    ssoSessionIdleTimeout = 28800   # must not be shorter than the token it backs
+    ssoSessionMaxLifespan = 36000   # 10h, unchanged: the absolute cap
+}
+$current = Invoke-Kc GET "/realms/$realm"
+$stale = @{}
+foreach ($name in $lifetimes.Keys) {
+    if ($current.$name -ne $lifetimes[$name]) { $stale[$name] = $lifetimes[$name] }
+}
+if ($stale.Count -gt 0) {
+    Invoke-Kc PUT "/realms/$realm" $stale
+    "token lifetimes set: " + (($stale.GetEnumerator() | Sort-Object Name | ForEach-Object { "$($_.Name)=$($_.Value)s" }) -join ', ')
+} else {
+    "token lifetimes already set"
+}
+
 # Keycloak 24+ drops attributes not declared in the user profile unless unmanaged
 # attributes are enabled — without this, org_id/org_type are silently discarded.
 $profile = Invoke-Kc GET "/realms/$realm/users/profile"
