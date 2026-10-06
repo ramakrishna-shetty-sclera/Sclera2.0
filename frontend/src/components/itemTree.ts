@@ -1,4 +1,4 @@
-import { hasFixedOptions, isChoice, seededLabels } from '../api/document'
+import { hasFixedOptions, isChoice, seededLabels, seededResults } from '../api/document'
 import type { DefinitionDocument, DefinitionItem, ItemSource, ItemType } from '../api/types'
 
 /**
@@ -465,9 +465,13 @@ export function retype(item: ItemDraft, type: ItemType): ItemDraft {
  * not orphan a follow-up hanging off "No".
  */
 function seed(type: ItemType, existing: OptionDraft[]): OptionDraft[] {
+  const results = seededResults(type)
   return seededLabels(type).map((label, index) => {
     const kept = existing[index]
-    return kept ? { ...kept, label } : newOption(label)
+    // A row that already exists keeps whatever the author mapped it to. The
+    // default applies only to a row this seeding creates: overwriting a mapping
+    // the author chose, just because they changed type and back, would be wrong.
+    return kept ? { ...kept, label } : { ...newOption(label), result: results[index] ?? '' }
   })
 }
 

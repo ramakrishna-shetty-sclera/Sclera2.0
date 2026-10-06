@@ -33,6 +33,26 @@ export function seededLabels(type: ItemType): string[] {
   return []
 }
 
+/**
+ * What each seeded answer means to begin with, in step with `seededLabels`:
+ * Yes passes, No fails, and N/A decides nothing. Empty means "decides nothing".
+ *
+ * The v3 prototype seeds exactly this, and it matters: a choice question whose
+ * answers map to no result cannot be published, so without it every Yes/No
+ * question needs two manual selections before it is usable. N/A stays unmapped
+ * because choosing it should neither pass nor fail an inspection.
+ *
+ * These are result-type *keys*, not literals, like everything else here. PASS
+ * and FAIL are the two system result types: seeded for every organization and
+ * neither deletable nor deactivatable, so they are always there to map to. It is
+ * a starting point, not a rule: the author can map Yes to Amber, or to nothing.
+ */
+export function seededResults(type: ItemType): string[] {
+  if (type === 'YES_NO') return ['PASS', 'FAIL']
+  if (type === 'YES_NO_NA') return ['PASS', 'FAIL', '']
+  return []
+}
+
 export const ITEM_TYPES: ItemType[] = [
   'SECTION',
   'YES_NO',
