@@ -73,6 +73,9 @@ export function newItem(type: ItemType = 'TEXT'): ItemDraft {
   )
 }
 
+/** How many empty answer rows a Radio, Checkbox or Dropdown starts with. */
+export const STARTER_ANSWERS = 2
+
 export function newOption(label = ''): OptionDraft {
   return { uid: uid(), label, result: '' }
 }
@@ -305,6 +308,21 @@ export function retype(item: ItemDraft, type: ItemType): ItemDraft {
     next.alertProfile = ''
   } else if (hasFixedOptions(type)) {
     next.options = seed(type, item.options)
+  } else if (item.options.length === 0) {
+    // Radio, Checkbox and Dropdown have no fixed answers, so the author writes
+    // them — but an Answers heading with nothing under it and a button nothing
+    // points at reads as "this cannot be typed into". The prototype starts these
+    // with two; so do we.
+    //
+    // Blank rather than "Option 1": a seeded label would save as a real answer
+    // the author may never rename. A row that is never filled in and has no key
+    // is dropped by toItem, so two blank starters cannot make a draft
+    // unsaveable — and a Dropdown left empty is caught at publish, which says
+    // it needs at least two answers.
+    //
+    // Only when there are none: switching Yes/No to Dropdown keeps the answers
+    // it already had, keys and result mappings included.
+    next.options = Array.from({ length: STARTER_ANSWERS }, () => newOption())
   }
 
   if (type !== 'INTEGER') {

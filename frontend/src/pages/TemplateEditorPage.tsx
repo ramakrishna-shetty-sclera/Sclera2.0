@@ -193,6 +193,15 @@ export function TemplateEditorPage() {
       return
     }
 
+    // Nothing written yet, so the save below would drop every blank row, mint
+    // no key, and leave the follow-up with nothing to point at — a save that
+    // changes nothing and a click that appears to do nothing. Say so instead.
+    // Matters more now that Radio, Checkbox and Dropdown start with blank rows.
+    if (!parent.options.some((o) => o.label.trim() !== '')) {
+      setRefused('Write at least one answer first — a follow-up is shown when one of them is picked.')
+      return
+    }
+
     const path = pathTo(items, uid)
     if (!path) return
 
