@@ -76,10 +76,17 @@ public record DefinitionDocument(
 
     /**
      * Every result-type key the document names, once each and in sorted order —
-     * what publishing records in {@code version_result_type_ref}. Answers and
-     * bands both count: a type only a number question's band uses is as much
-     * in use as one an answer names. Whatever decides nothing names no key and
+     * what publishing records in {@code version_result_type_ref}. Answers,
+     * reading bands and score thresholds all count: a type only a number
+     * question's band uses, or only the score scale uses, is as much in use as
+     * one an answer names. Whatever decides nothing names no key and
      * contributes nothing.
+     *
+     * <p>Missing one of the three is not a cosmetic slip. This set is the whole
+     * input to the guard that refuses deleting a result type a published
+     * version depends on, so a key left out here is a key that can be deleted
+     * out from under a frozen version — the unreadable record the guard exists
+     * to prevent.
      */
     public SortedSet<String> resultTypeKeys() {
         SortedSet<String> keys = new TreeSet<>();
@@ -90,6 +97,9 @@ public record DefinitionDocument(
             for (RangeRule band : item.rules()) {
                 addIfNamed(keys, band.result());
             }
+        }
+        for (Threshold band : thresholds) {
+            addIfNamed(keys, band.result());
         }
         return keys;
     }

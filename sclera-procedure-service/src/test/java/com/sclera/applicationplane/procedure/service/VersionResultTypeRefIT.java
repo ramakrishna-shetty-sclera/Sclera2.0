@@ -3,6 +3,7 @@ package com.sclera.applicationplane.procedure.service;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Item;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Option;
+import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Threshold;
 import com.sclera.applicationplane.procedure.domain.QuestionType;
 import com.sclera.applicationplane.procedure.domain.VersionResultTypeRef;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.CreateTemplateRequest;
@@ -21,6 +22,7 @@ import java.util.UUID;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 /**
@@ -117,6 +119,38 @@ class VersionResultTypeRefIT extends PostgresIntegrationTest {
         assertThat(published.newVersion()).isTrue();
     }
 
+    @Test
+    void aResultTypeNamedOnlyByAScoreThresholdIsStillRecorded() {
+        // The gap the feature 5 / feature 6 merge opened. resultTypeKeys() was
+        // written when answers and reading bands were the only places a result
+        // key could appear, and thresholds arrived from the other branch without
+        // it. A type only the score scale named therefore got no row, the delete
+        // guard counted none, and it could be deleted out from under a published
+        // version that still pointed at it.
+        actAsNewOrg();
+        resultTypes.create(new ResultTypeRequest("AMBER", "Amber", "#f59e0b", null, null));
+
+        UUID id = service.create(new CreateTemplateRequest("Scored walk", null, null,
+                new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
+                        List.of(scored(passFail("Exit clear?"), 10, 0)),
+                        List.of(new Threshold(null, null, 69, "FAIL"),
+                                new Threshold(null, 70, 89, "AMBER"),
+                                new Threshold(null, 90, null, "PASS"))))).id();
+        PublishResponse published = service.publish(id, null);
+
+        assertThat(refs.findAll())
+                .extracting(VersionResultTypeRef::getResultTypeKey)
+                .containsExactlyInAnyOrder("PASS", "FAIL", "AMBER");
+
+        // And the guard that depends on it now refuses the delete.
+        UUID amber = resultTypes.list(null).stream()
+                .filter(r -> r.key().equals("AMBER")).findFirst().orElseThrow().id();
+        assertThatThrownBy(() -> resultTypes.delete(amber))
+                .hasMessageContaining("cannot be deleted")
+                .hasMessageContaining("deactivate it instead");
+        assertThat(published.version().versionNo()).isEqualTo(1);
+    }
+
     // --- builders -----------------------------------------------------------
 
     private static CreateTemplateRequest create(String name, List<Item> items) {
@@ -125,6 +159,13 @@ class VersionResultTypeRefIT extends PostgresIntegrationTest {
 
     private static DefinitionDocument doc(List<Item> items) {
         return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, items, List.of());
+    }
+
+    /** The same question with points on its answers, so the document scores. */
+    private static Item scored(Item question, Integer yes, Integer no) {
+        return question.withOptions(List.of(
+                new Option(null, "Yes", "PASS", yes, false),
+                new Option(null, "No", "FAIL", no, false)));
     }
 
     /** A Yes/No question mapped the usual way: Yes passes, No fails. */
