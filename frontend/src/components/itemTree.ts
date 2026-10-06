@@ -117,6 +117,21 @@ export function toDocument(schema: number, items: ItemDraft[]): DefinitionDocume
   return { schema, items: items.map(toItem) }
 }
 
+/**
+ * Whether an answer row goes to the server.
+ *
+ * A row that was added and never filled in carries nothing, so it is dropped
+ * rather than refused. A *keyed* one with a blank label is a real mistake —
+ * something may already point at it — so it goes and is refused there.
+ *
+ * One definition, because two places must agree on it exactly: `toItem`, which
+ * decides what is sent, and `keysFromSaved`, which has to walk the sent answers
+ * and the saved ones in step.
+ */
+function isSentOption(option: OptionDraft): boolean {
+  return Boolean(option.key) || option.label.trim() !== ''
+}
+
 function toItem(draft: ItemDraft): DefinitionItem {
   const number = (text: string): number | undefined =>
     text.trim() === '' ? undefined : Number(text)
@@ -127,12 +142,8 @@ function toItem(draft: ItemDraft): DefinitionItem {
     help: draft.help.trim() || undefined,
     type: draft.type,
     required: draft.type === 'SECTION' ? false : draft.required,
-    // An answer row that was added and never filled in carries nothing, so it
-    // is dropped rather than refused. A *keyed* one with a blank label is a
-    // real mistake — something may already point at it — so it goes to the
-    // server and is refused there.
     options: draft.options
-      .filter((o) => o.key || o.label.trim() !== '')
+      .filter(isSentOption)
       .map((o) => ({
         key: o.key,
         label: o.label.trim(),
@@ -148,6 +159,119 @@ function toItem(draft: ItemDraft): DefinitionItem {
     when: draft.when || undefined,
     follow: draft.follow.map(toItem),
   }
+}
+
+// --- autosave ----------------------------------------------------------------
+
+/**
+ * Why the document is not worth autosaving yet, or null when it is.
+ *
+ * Autosave runs while the author is mid-sentence, and the server refuses a
+ * question with no text, a follow-up with no trigger, a keyed answer with no
+ * label and a range running backwards. Each is a normal intermediate state, so
+ * it should wait quietly for the author to finish rather than answer every
+ * keystroke with a refusal. The manual Save still sends it and shows the
+ * server's reasons, which is where an author expects to see them.
+ *
+ * Deliberately only what the server would refuse on structure — not publish
+ * readiness, which a draft is allowed to fail.
+ */
+export function autosaveBlockedBy(items: ItemDraft[], followUps = false): string | null {
+  for (const item of items) {
+    if (item.text.trim() === '') return 'a question has no text yet'
+    if (followUps && !item.when) return 'a follow-up has no answer picked'
+    if (item.options.some((o) => o.key && o.label.trim() === '')) return 'an answer has no label'
+    if (
+      item.type === 'INTEGER' &&
+      item.min.trim() !== '' &&
+      item.max.trim() !== '' &&
+      Number(item.min) > Number(item.max)
+    ) {
+      return 'a minimum is above its maximum'
+    }
+    const below = autosaveBlockedBy(item.follow, true)
+    if (below) return below
+  }
+  return null
+}
+
+/** Everything the autosave tick has to look at, gathered so the decision can be tested. */
+export interface AutosaveState {
+  /** An existing draft that has finished loading — creating has nothing to save to yet. */
+  ready: boolean
+  /** Someone else saved first. Autosaving over them is exactly what the lock exists to stop. */
+  conflict: boolean
+  /** A manual save or a "+ Follow-up" save is already running. */
+  busy: boolean
+  snapshot: string
+  savedSnapshot: string
+  /** The document that last failed to autosave, so a deterministic refusal is not retried forever. */
+  failedSnapshot: string | null
+  items: ItemDraft[]
+}
+
+/** Why this tick should not save, or null when it should. */
+export function autosaveSkipReason(s: AutosaveState): string | null {
+  if (!s.ready) return 'not an open draft'
+  if (s.conflict) return 'conflict'
+  if (s.busy) return 'busy'
+  if (s.snapshot === s.savedSnapshot) return 'unchanged'
+  if (s.snapshot === s.failedSnapshot) return 'already refused'
+  return autosaveBlockedBy(s.items)
+}
+
+/** The keys a save minted, by the uid of the draft they belong to. */
+export interface MintedKeys {
+  items: Map<string, string>
+  options: Map<string, string>
+}
+
+/**
+ * Reads the keys the server assigned out of a saved document.
+ *
+ * Needed because a save does not hand the editor its keys, and an editor that
+ * stays open — which autosave means — would send the same unkeyed items again.
+ * The server mints a fresh key for anything without one: re-saving one dropdown
+ * with two answers turned q1, o2, o3 into q4, o5, o6. Left alone, autosave would
+ * churn every key in the document every thirty seconds, burn the counter, and
+ * break the one guarantee keys exist for — that q2 in v1 is q2 in v7.
+ *
+ * Matched by *uid* rather than position because the author may have kept typing,
+ * inserted or reordered while the request was in flight. The saved document
+ * mirrors what was sent in shape and order, so `sent` and `saved` are walked in
+ * step; `sent` must be the exact list the saved document was built from.
+ */
+export function keysFromSaved(sent: ItemDraft[], saved: DefinitionItem[]): MintedKeys {
+  const minted: MintedKeys = { items: new Map(), options: new Map() }
+  collectKeys(sent, saved, minted)
+  return minted
+}
+
+function collectKeys(sent: ItemDraft[], saved: DefinitionItem[], out: MintedKeys): void {
+  sent.forEach((draft, index) => {
+    const item = saved[index]
+    if (!item) return
+    if (item.key) out.items.set(draft.uid, item.key)
+    draft.options.filter(isSentOption).forEach((option, i) => {
+      const key = item.options[i]?.key
+      if (key) out.options.set(option.uid, key)
+    })
+    collectKeys(draft.follow, item.follow, out)
+  })
+}
+
+/**
+ * Gives the editor's items the keys a save minted, leaving every other edit
+ * alone. Only fills a key that is missing: one the editor already holds is the
+ * server's own and never changes.
+ */
+export function applyKeys(items: ItemDraft[], minted: MintedKeys): ItemDraft[] {
+  return items.map((item) => ({
+    ...item,
+    key: item.key ?? minted.items.get(item.uid),
+    options: item.options.map((o) => ({ ...o, key: o.key ?? minted.options.get(o.uid) })),
+    follow: applyKeys(item.follow, minted),
+  }))
 }
 
 // --- tree operations, all by uid and all pure -----------------------------
