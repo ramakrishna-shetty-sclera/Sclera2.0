@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { createProcedure, getDraft, getProcedure, saveDraft, updateProcedure } from '../api/templates'
 import { ApiError } from '../api/client'
 import { numberItems } from '../api/document'
-import type { ItemType, ResultType, Threshold } from '../api/types'
+import type { ItemType, ResultType, TargetType, Threshold } from '../api/types'
 import { listResultTypes } from '../api/resultTypes'
 import { useAuth } from '../auth/AuthContext'
 import { ItemEditor } from '../components/ItemEditor'
@@ -101,6 +101,13 @@ export function TemplateEditorPage() {
    * silently dropped.
    */
   const [thresholds, setThresholds] = useState<Threshold[]>([])
+  /**
+   * What the procedure applies to, document-level like the thresholds. No screen
+   * edits it yet, so it is held in a ref rather than state: it only has to
+   * survive a load-and-save round trip instead of being dropped, and nothing
+   * renders from it. Replaced from every response the server sends back.
+   */
+  const targetTypesRef = useRef<TargetType[]>([])
   const [changeNote, setChangeNote] = useState('')
   const [schema, setSchema] = useState(2)
   /**
@@ -180,6 +187,7 @@ export function TemplateEditorPage() {
         setDraftVersionNo(draft.versionNo)
         const loadedThresholds = draft.definition.thresholds ?? []
         setThresholds(loadedThresholds)
+        targetTypesRef.current = draft.definition.targetTypes ?? []
         rowVersionRef.current = draft.rowVersion
         let loadedItems = fromDocument(draft.definition)
         if (loadedItems.length === 0) loadedItems = [newItem()]
@@ -265,7 +273,7 @@ export function TemplateEditorPage() {
     try {
       const saved = await enqueue(() =>
         saveDraft(s.id!, {
-          definition: toDocument(s.schema, sent, s.thresholds),
+          definition: toDocument(s.schema, sent, s.thresholds, targetTypesRef.current),
           rowVersion: rowVersionRef.current!,
           changeNote: s.changeNote.trim() || undefined,
         }),
@@ -278,6 +286,7 @@ export function TemplateEditorPage() {
       const minted = keysFromSaved(sent, saved.definition.items)
       setItems((prev) => applyKeys(prev, minted))
       setThresholds(saved.definition.thresholds ?? [])
+      targetTypesRef.current = saved.definition.targetTypes ?? []
       setSavedSnapshot(snapshotOf(s.schema, applyKeys(sent, minted), saved.definition.thresholds ?? []))
       failedSnapshot.current = null
       setAutosave({ phase: 'idle', at: new Date() })
@@ -409,13 +418,13 @@ export function TemplateEditorPage() {
         const created = await createProcedure({
           name: name.trim(),
           description: description.trim() || undefined,
-          definition: toDocument(schema, items, thresholds),
+          definition: toDocument(schema, items, thresholds, targetTypesRef.current),
         })
         navigate(`/templates/${created.id}/edit`, { state: { addFollowAt: path } })
         return
       }
 
-      const definition = toDocument(schema, items, thresholds)
+      const definition = toDocument(schema, items, thresholds, targetTypesRef.current)
       const saved = await enqueue(() =>
         saveDraft(id!, {
           definition,
@@ -429,6 +438,7 @@ export function TemplateEditorPage() {
       const reloaded = fromDocument(saved.definition)
       const reloadedThresholds = saved.definition.thresholds ?? []
       setThresholds(reloadedThresholds)
+      targetTypesRef.current = saved.definition.targetTypes ?? []
       setSavedSnapshot(snapshotOf(schema, reloaded, reloadedThresholds))
       failedSnapshot.current = null
       setItems(withFollowAt(reloaded, path))
@@ -470,7 +480,7 @@ export function TemplateEditorPage() {
     setRefusal(null)
     setConflict(false)
     try {
-      const definition = toDocument(schema, items, thresholds)
+      const definition = toDocument(schema, items, thresholds, targetTypesRef.current)
 
       if (!editing) {
         const created = await createProcedure({

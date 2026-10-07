@@ -336,7 +336,21 @@ export interface DefinitionDocument {
   items: DefinitionItem[]
   /** Score bands that turn a final percentage into a result type. Empty means scoring is not configured. */
   thresholds: Threshold[]
+  /**
+   * What the procedure applies to. Absent or empty means anything — every
+   * version written before this existed. No screen edits it yet; the editor
+   * carries it through a save untouched so it is not silently dropped.
+   */
+  targetTypes?: TargetType[]
 }
+
+/** One key from one of the property-vocabulary lists the procedure applies to. */
+export interface TargetType {
+  kind: TargetKind
+  key: string
+}
+
+export type TargetKind = 'HIERARCHY_LEVEL' | 'LOCATION_TYPE' | 'ASSET_CLASS' | 'ASSET_TAG'
 
 /**
  * **Every optional field below arrives absent, not null.**
@@ -426,6 +440,8 @@ export interface ItemChange {
 export interface DefinitionDiff {
   identical: boolean
   orderChanged: boolean
+  /** What the procedure applies to differs between the two versions. */
+  targetTypesChanged?: boolean
   items: ItemChange[]
 }
 

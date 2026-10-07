@@ -53,7 +53,8 @@ public final class KeyMinter {
     public static DefinitionDocument assignKeys(DefinitionDocument document, int highestMinted, IntSupplier next) {
         validateSuppliedKeys(document, highestMinted);
         return new DefinitionDocument(
-                document.schema(), assignToAll(document.items(), next), document.thresholds());
+                document.schema(), assignToAll(document.items(), next), document.thresholds(),
+                   document.targetTypes());
     }
 
     private static List<Item> assignToAll(List<Item> items, IntSupplier next) {

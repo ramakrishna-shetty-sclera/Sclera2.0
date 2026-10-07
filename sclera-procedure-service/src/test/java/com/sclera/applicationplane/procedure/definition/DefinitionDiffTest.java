@@ -7,6 +7,8 @@ import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Optio
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.RangeRule;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Threshold;
 import com.sclera.applicationplane.procedure.domain.QuestionType;
+import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetType;
+import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetKind;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -28,7 +30,7 @@ class DefinitionDiffTest {
     }
 
     private static DefinitionDocument doc(Item... items) {
-        return new DefinitionDocument(2, List.of(items), List.of());
+        return new DefinitionDocument(2, List.of(items), List.of(), List.of());
     }
 
     @Test
@@ -49,9 +51,9 @@ class DefinitionDiffTest {
         // these identical while their hashes differ.
         Item q = q("q2", "Exit clear?");
         DefinitionDocument v1 = new DefinitionDocument(2, List.of(q),
-                List.of(new Threshold(null, null, 69, "FAIL"), new Threshold(null, 70, null, "PASS")));
+                List.of(new Threshold(null, null, 69, "FAIL"), new Threshold(null, 70, null, "PASS")), List.of());
         DefinitionDocument v2 = new DefinitionDocument(2, List.of(q),
-                List.of(new Threshold(null, null, 49, "FAIL"), new Threshold(null, 50, null, "PASS")));
+                List.of(new Threshold(null, null, 49, "FAIL"), new Threshold(null, 50, null, "PASS")), List.of());
 
         DefinitionDiff diff = DefinitionDiff.between(v1, v2);
 
@@ -187,5 +189,31 @@ class DefinitionDiffTest {
             assertThat(i.key()).isEqualTo("q2");
             assertThat(i.changedFields()).containsExactly("rules");
         });
+    }
+
+    @Test
+    void widenningWhatAProcedureAppliesToIsADocumentLevelChange() {
+        DefinitionDocument v1 = new DefinitionDocument(2, List.of(q("q1", "Present?")), List.of(),
+                List.of(new TargetType(TargetKind.ASSET_CLASS, "EXTINGUISHER")));
+        DefinitionDocument v2 = new DefinitionDocument(2, List.of(q("q1", "Present?")), List.of(),
+                List.of(new TargetType(TargetKind.ASSET_CLASS, "EXTINGUISHER"), new TargetType(TargetKind.ASSET_CLASS, "HOSE_REEL")));
+
+        DefinitionDiff diff = DefinitionDiff.between(v1, v2);
+
+        // Not a single question changed, yet the versions differ.
+        assertThat(diff.targetTypesChanged()).isTrue();
+        assertThat(diff.items()).isEmpty();
+        assertThat(diff.identical()).isFalse();
+    }
+
+    @Test
+    void sameTargetTypesIsNotAChange() {
+        DefinitionDocument v1 = new DefinitionDocument(2, List.of(q("q1", "Present?")), List.of(),
+                List.of(new TargetType(TargetKind.ASSET_CLASS, "EXTINGUISHER")));
+
+        DefinitionDiff diff = DefinitionDiff.between(v1, v1);
+
+        assertThat(diff.targetTypesChanged()).isFalse();
+        assertThat(diff.identical()).isTrue();
     }
 }

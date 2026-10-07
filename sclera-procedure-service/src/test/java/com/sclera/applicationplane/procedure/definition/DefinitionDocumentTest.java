@@ -30,7 +30,7 @@ class DefinitionDocumentTest {
     }
 
     private static DefinitionDocument doc(Item... items) {
-        return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(items), List.of());
+        return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(items), List.of(), List.of());
     }
 
     /** Each group as (section key or null, its question keys) — enough to see the shape at a glance. */

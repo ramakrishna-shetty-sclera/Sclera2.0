@@ -104,7 +104,7 @@ class EvaluatorTest {
         for (Object item : items) {
             built.add(item instanceof Q question ? question.build() : (Item) item);
         }
-        return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, built, thresholds);
+        return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, built, thresholds, List.of());
     }
 
     private static Verdict evaluate(DefinitionDocument document, Object... keyValuePairs) {

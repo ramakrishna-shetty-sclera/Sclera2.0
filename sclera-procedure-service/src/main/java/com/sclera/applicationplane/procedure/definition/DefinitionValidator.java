@@ -4,12 +4,15 @@ import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Item;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Option;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.RangeRule;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Scope;
+import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetKind;
+import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetType;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Threshold;
 import com.sclera.applicationplane.procedure.domain.QuestionType;
 import com.sclera.controlplane.common.exception.ValidationException;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -54,6 +57,7 @@ public final class DefinitionValidator {
         List<String> problems = new ArrayList<>();
         checkItems(document.items(), null, problems);
         checkThresholdShape(document, problems);
+        checkTargetTypeShape(document, problems);
         if (!problems.isEmpty()) {
             throw new ValidationException(String.join("; ", problems));
         }
@@ -84,6 +88,23 @@ public final class DefinitionValidator {
             if (scopeOf(band) == Scope.SECTION && !hasSections) {
                 problems.add("The band " + describe(band)
                         + " scores a section, but this procedure has none");
+            }
+        }
+    }
+
+    /**
+     * What is nonsense about a target type rather than unfinished: no key, or
+     * the same one listed twice. Whether the key exists in the vocabulary is a
+     * readiness question — a draft naming a key that has not been created yet
+     * is a normal thing to save.
+     */
+    private static void checkTargetTypeShape(DefinitionDocument document, List<String> problems) {
+        Set<TargetType> seen = new HashSet<>();
+        for (TargetType target : document.targetTypes()) {
+            if (target.kind() == null || target.key() == null || target.key().isBlank()) {
+                problems.add("A target type needs both a kind and a key");
+            } else if (!seen.add(new TargetType(target.kind(), target.key().strip()))) {
+                problems.add("The target type " + describe(target) + " is listed more than once");
             }
         }
     }
@@ -229,6 +250,26 @@ public final class DefinitionValidator {
      * @param activeResultKeys the organization's usable result-type keys
      */
     public static List<String> publishBlockers(DefinitionDocument document, Set<String> activeResultKeys) {
+        return publishBlockers(document, activeResultKeys, List.of());
+    }
+
+    /**
+     * As above, and every target type the organization's vocabulary does not
+     * have is a reason too.
+     *
+     * <p>The validator stays pure: it cannot ask the vocabulary service, and a
+     * remote call does not belong in a rule check. The caller reads the
+     * vocabulary and passes in only the target types it did not find, which is
+     * all this needs to word the message. A vocabulary that could not be read at
+     * all is not something to pass here: that is a different problem, and
+     * reporting it as "key not found" would send an author to fix a procedure
+     * that is fine.
+     *
+     * @param unknownTargetTypes the document's target types missing from the
+     *                           vocabulary, empty when all are present
+     */
+    public static List<String> publishBlockers(DefinitionDocument document, Set<String> activeResultKeys,
+                                               List<TargetType> unknownTargetTypes) {
         List<String> blockers = new ArrayList<>();
 
         if (document.questionCount() == 0) {
@@ -265,7 +306,27 @@ public final class DefinitionValidator {
         }
 
         checkScoringReadiness(document, activeResultKeys, blockers);
+        for (TargetType unknown : unknownTargetTypes) {
+            blockers.add("The target type " + describe(unknown) + " is not one of this organization's "
+                    + listName(unknown.kind()));
+        }
         return blockers;
+    }
+
+    /** "ASSET_CLASS" as the author sees the list: "asset classes". */
+    private static String listName(TargetKind kind) {
+        return switch (kind) {
+            case HIERARCHY_LEVEL -> "hierarchy levels";
+            case LOCATION_TYPE -> "location types";
+            case ASSET_CLASS -> "asset classes";
+            case ASSET_TAG -> "asset tags";
+        };
+    }
+
+    /** 'EXTINGUISHER' (asset class) — the key, and which list it was meant for. */
+    private static String describe(TargetType target) {
+        String kind = target.kind() == null ? "no kind" : target.kind().name().toLowerCase().replace('_', ' ');
+        return "'" + target.key() + "' (" + kind + ")";
     }
 
     /** Stands in for an open end. Readings are ints, so neither is ever typed. */

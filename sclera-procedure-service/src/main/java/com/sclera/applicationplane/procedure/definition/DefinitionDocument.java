@@ -38,6 +38,14 @@ import java.util.TreeSet;
  * endpoint is a pure function over a published version, and it is the only
  * thing that reads these and decides anything.
  *
+ * <p><b>What it applies to.</b> {@code targetTypes} names the kinds of place and
+ * thing the procedure is for — an asset class, a hierarchy level, a location
+ * type, a tag — each a key from the property vocabulary. Empty means it applies
+ * to anything, which is what every version written before this field existed
+ * means and must keep meaning. It belongs to the document and not the template:
+ * a procedure can legitimately widen what it applies to between versions, and
+ * that is a change to the version's content, so it is part of the hash.
+ *
  * <p>Stored as the canonical JSON that {@code definition_hash} is taken over,
  * so <b>every field in this record is part of a version's identity</b>. Adding
  * one changes the bytes of anything that uses it; the canonical form omits
@@ -46,7 +54,8 @@ import java.util.TreeSet;
 public record DefinitionDocument(
         int schema,
         List<@Valid Item> items,
-        List<@Valid Threshold> thresholds) {
+        List<@Valid Threshold> thresholds,
+        List<@Valid TargetType> targetTypes) {
 
     /**
      * 2 — the flat item list. Schema 1 was {@code categories[] -> questions[]}
@@ -63,10 +72,11 @@ public record DefinitionDocument(
     public DefinitionDocument {
         items = items == null ? List.of() : List.copyOf(items);
         thresholds = thresholds == null ? List.of() : List.copyOf(thresholds);
+        targetTypes = targetTypes == null ? List.of() : List.copyOf(targetTypes);
     }
 
     public static DefinitionDocument empty() {
-        return new DefinitionDocument(CURRENT_SCHEMA, List.of(), List.of());
+        return new DefinitionDocument(CURRENT_SCHEMA, List.of(), List.of(), List.of());
     }
 
     /** Questions at every depth, sections excluded — what "12 questions" means on screen. */
@@ -383,6 +393,29 @@ public record DefinitionDocument(
             Integer min,
             Integer max,
             @Size(max = 50) String result) {
+    }
+
+    /**
+     * One kind of target the procedure applies to: a key from one of the four
+     * property-vocabulary lists. Only the shape is checked on save; whether the
+     * key exists is a publish question, because a draft naming a key that has
+     * not been created yet is a normal thing to save.
+     */
+    public record TargetType(
+            @NotNull TargetKind kind,
+            @NotBlank @Size(max = 50) String key) {
+    }
+
+    /**
+     * Which vocabulary list a {@link TargetType} key belongs to. The names match
+     * the vocabulary service's and are stored on every published version that
+     * names one, so none is ever renamed.
+     */
+    public enum TargetKind {
+        HIERARCHY_LEVEL,
+        LOCATION_TYPE,
+        ASSET_CLASS,
+        ASSET_TAG
     }
 
     /** What a {@link Threshold} is measured against. */

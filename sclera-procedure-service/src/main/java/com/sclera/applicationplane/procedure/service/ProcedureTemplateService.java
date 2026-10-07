@@ -4,7 +4,12 @@ import com.sclera.applicationplane.procedure.authz.FgaAuthorizationService;
 import com.sclera.applicationplane.procedure.definition.DefinitionCanonicalizer;
 import com.sclera.applicationplane.procedure.definition.DefinitionCanonicalizer.Canonical;
 import com.sclera.applicationplane.procedure.definition.DefinitionDiff;
+import com.sclera.applicationplane.procedure.client.vocabulary.CachedVocabulary;
+import com.sclera.applicationplane.procedure.client.vocabulary.Vocabulary;
+import com.sclera.applicationplane.procedure.client.vocabulary.VocabularyKind;
+import com.sclera.applicationplane.procedure.client.vocabulary.VocabularyUnavailableException;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument;
+import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetType;
 import com.sclera.applicationplane.procedure.definition.DefinitionValidator;
 import com.sclera.applicationplane.procedure.definition.KeyMinter;
 import com.sclera.applicationplane.procedure.domain.ProcedureTemplate;
@@ -83,6 +88,7 @@ public class ProcedureTemplateService {
     private final FgaAuthorizationService fga;
     private final ResultTypeRepository resultTypes;
     private final VersionResultTypeRefRepository resultTypeRefs;
+    private final CachedVocabulary vocabulary;
 
     public ProcedureTemplateService(ProcedureTemplateRepository templates,
                                     ProcedureTemplateVersionRepository versions,
@@ -91,7 +97,8 @@ public class ProcedureTemplateService {
                                     TemplateEventPublisher events,
                                     FgaAuthorizationService fga,
                                     ResultTypeRepository resultTypes,
-                                    VersionResultTypeRefRepository resultTypeRefs) {
+                                    VersionResultTypeRefRepository resultTypeRefs,
+                                    CachedVocabulary vocabulary) {
         this.templates = templates;
         this.versions = versions;
         this.canonicalizer = canonicalizer;
@@ -100,6 +107,7 @@ public class ProcedureTemplateService {
         this.fga = fga;
         this.resultTypes = resultTypes;
         this.resultTypeRefs = resultTypeRefs;
+        this.vocabulary = vocabulary;
     }
 
     // --- template identity --------------------------------------------------
@@ -300,7 +308,8 @@ public class ProcedureTemplateService {
         // list, not one refusal per attempt — and the screens that show it are
         // built for a list.
         DefinitionDocument document = canonicalizer.parse(draft.getDefinitionJson());
-        List<String> blockers = DefinitionValidator.publishBlockers(document, activeResultKeys(template.getOrgId()));
+        List<String> blockers = DefinitionValidator.publishBlockers(document, activeResultKeys(template.getOrgId()),
+                unknownTargetTypes(document, template.getOrgId()));
         if (!blockers.isEmpty()) {
             throw new BusinessRuleException("This procedure cannot be published yet: "
                     + String.join("; ", blockers));
@@ -428,6 +437,43 @@ public class ProcedureTemplateService {
     }
 
     // --- helpers ------------------------------------------------------------
+
+    /**
+     * The document's target types that the organization's vocabulary does not
+     * have, for the publish check.
+     *
+     * <p><b>Only asked when the version declares any.</b> A procedure that
+     * applies to anything never touches the vocabulary service, so every
+     * existing procedure publishes exactly as before and does not start
+     * depending on the helper being up.
+     *
+     * <p><b>Fails closed, and says which problem it is.</b> If the vocabulary
+     * cannot be read, nothing can be said about whether a key exists, so the
+     * publish is refused — but with a message about the vocabulary, not about the
+     * key. "EXTINGUISHER is not an asset class" would send an author to fix a
+     * procedure that is fine. It is a business-rule refusal rather than the
+     * shared external-service error because that one answers with a fixed
+     * generic sentence and would throw this wording away.
+     *
+     * <p>A key that exists but has been retired counts as present: refusing it
+     * would block an unrelated edit to a procedure that already names it.
+     */
+    private List<TargetType> unknownTargetTypes(DefinitionDocument document, UUID orgId) {
+        if (document.targetTypes().isEmpty()) {
+            return List.of();
+        }
+        Vocabulary known;
+        try {
+            known = vocabulary.forOrg(orgId);
+        } catch (VocabularyUnavailableException e) {
+            throw new BusinessRuleException("This procedure cannot be published right now: it names target "
+                    + "types, and the property vocabulary they are checked against could not be read. "
+                    + "Nothing is wrong with the procedure; try again shortly");
+        }
+        return document.targetTypes().stream()
+                .filter(target -> !known.contains(VocabularyKind.valueOf(target.kind().name()), target.key().strip()))
+                .toList();
+    }
 
     /**
      * The result-type keys an author may map an answer to. Inactive ones are
