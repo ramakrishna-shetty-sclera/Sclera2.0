@@ -16,6 +16,7 @@ import com.sclera.applicationplane.procedure.domain.ProcedureTemplate;
 import com.sclera.applicationplane.procedure.domain.ProcedureTemplateVersion;
 import com.sclera.applicationplane.procedure.domain.TemplateStatus;
 import com.sclera.applicationplane.procedure.domain.VersionResultTypeRef;
+import com.sclera.applicationplane.procedure.domain.VersionTargetType;
 import com.sclera.applicationplane.procedure.domain.VersionState;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.CloneRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.CreateTemplateRequest;
@@ -42,6 +43,7 @@ import com.sclera.applicationplane.procedure.repository.ProcedureTemplateReposit
 import com.sclera.applicationplane.procedure.repository.ProcedureTemplateVersionRepository;
 import com.sclera.applicationplane.procedure.repository.ResultTypeRepository;
 import com.sclera.applicationplane.procedure.repository.VersionResultTypeRefRepository;
+import com.sclera.applicationplane.procedure.repository.VersionTargetTypeRepository;
 import com.sclera.applicationplane.procedure.tenancy.PropertyContext;
 import com.sclera.controlplane.common.exception.BusinessRuleException;
 import com.sclera.controlplane.common.exception.ConflictException;
@@ -88,6 +90,7 @@ public class ProcedureTemplateService {
     private final FgaAuthorizationService fga;
     private final ResultTypeRepository resultTypes;
     private final VersionResultTypeRefRepository resultTypeRefs;
+    private final VersionTargetTypeRepository targetTypeRefs;
     private final CachedVocabulary vocabulary;
 
     public ProcedureTemplateService(ProcedureTemplateRepository templates,
@@ -98,6 +101,7 @@ public class ProcedureTemplateService {
                                     FgaAuthorizationService fga,
                                     ResultTypeRepository resultTypes,
                                     VersionResultTypeRefRepository resultTypeRefs,
+                                    VersionTargetTypeRepository targetTypeRefs,
                                     CachedVocabulary vocabulary) {
         this.templates = templates;
         this.versions = versions;
@@ -107,6 +111,7 @@ public class ProcedureTemplateService {
         this.fga = fga;
         this.resultTypes = resultTypes;
         this.resultTypeRefs = resultTypeRefs;
+        this.targetTypeRefs = targetTypeRefs;
         this.vocabulary = vocabulary;
     }
 
@@ -336,6 +341,12 @@ public class ProcedureTemplateService {
         // it names stays deletable.
         resultTypeRefs.saveAll(document.resultTypeKeys().stream()
                 .map(key -> new VersionResultTypeRef(draft.getId(), key))
+                .toList());
+        // The same rule for what the version applies to: first freeze only, never
+        // a draft. A version that names no target types writes nothing, because
+        // that means it applies to anything, not to nothing.
+        targetTypeRefs.saveAll(document.targetTypeKeys().stream()
+                .map(target -> new VersionTargetType(draft.getId(), target.kind(), target.key()))
                 .toList());
         template.setCurrentPublishedVersionId(draft.getId());
         templates.flush();

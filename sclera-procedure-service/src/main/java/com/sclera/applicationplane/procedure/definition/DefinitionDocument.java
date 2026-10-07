@@ -9,7 +9,9 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
@@ -112,6 +114,24 @@ public record DefinitionDocument(
             addIfNamed(keys, band.result());
         }
         return keys;
+    }
+
+    /**
+     * Every target type the document names, once each and trimmed, in the order
+     * the author wrote them — what publishing records in
+     * {@code version_target_type}. An empty list means the procedure applies to
+     * anything and records nothing, which is not the same as applying to nothing.
+     * A target type with no kind or no key is left out: it is refused on save,
+     * so none reaches a publish.
+     */
+    public Set<TargetType> targetTypeKeys() {
+        Set<TargetType> distinct = new LinkedHashSet<>();
+        for (TargetType target : targetTypes) {
+            if (target.kind() != null && target.key() != null && !target.key().isBlank()) {
+                distinct.add(new TargetType(target.kind(), target.key().strip()));
+            }
+        }
+        return distinct;
     }
 
     private static void addIfNamed(SortedSet<String> keys, String result) {
