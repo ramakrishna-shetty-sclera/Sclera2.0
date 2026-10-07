@@ -23,6 +23,13 @@ import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.TemplateR
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.UpdateTemplateRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.VersionResponse;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.VersionSummary;
+import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluateRequest;
+import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluationResponse;
+import com.sclera.applicationplane.procedure.dto.EvaluationDtos.VersionRef;
+import com.sclera.applicationplane.procedure.evaluation.Answers;
+import com.sclera.applicationplane.procedure.evaluation.Evaluator;
+import com.sclera.applicationplane.procedure.evaluation.ResultRanks;
+import com.sclera.applicationplane.procedure.evaluation.Verdict;
 import com.sclera.applicationplane.procedure.event.ProcedureTemplateEvent;
 import com.sclera.applicationplane.procedure.event.TemplateEventPublisher;
 import com.sclera.applicationplane.procedure.mapper.ProcedureTemplateMapper;
@@ -349,6 +356,75 @@ public class ProcedureTemplateService {
         DefinitionDocument from = canonicalizer.parse(requireVersion(template, fromVersionNo).getDefinitionJson());
         DefinitionDocument to = canonicalizer.parse(requireVersion(template, toVersionNo).getDefinitionJson());
         return new DiffResponse(fromVersionNo, toVersionNo, DefinitionDiff.between(from, to));
+    }
+
+    // --- evaluation ---------------------------------------------------------
+
+    /**
+     * What a set of answers means against one version — a draft as well as a
+     * published one, because the author's running-score preview evaluates the
+     * draft being written. A draft has not been through the publish checks, so
+     * the evaluator degrades on it rather than failing: a score or a reading in
+     * no band gives no result.
+     *
+     * <p>Reads only. The result-type ranks are loaded on every call and never
+     * cached with the verdict: an admin reordering result types changes which
+     * of two results is more severe.
+     */
+    @Transactional(readOnly = true)
+    public EvaluationResponse evaluate(UUID id, int versionNo, EvaluateRequest request) {
+        ProcedureTemplate template = getOwned(id);
+        return evaluate(requireVersion(template, versionNo), template.getOrgId(), request);
+    }
+
+    /**
+     * The inspection service's evaluation, over Dapr: a published version, by
+     * its id, for an organization named in the call. The caller must already
+     * be inside that organization's schema ({@code TenantContext.runAs}).
+     *
+     * <p><b>It reaches the version without reading {@code procedure_template}.</b>
+     * There is no JWT, so no property header, so a call lands at organization
+     * level, where row-level security on {@code procedure_template} hides every
+     * property's procedures — a checklist on a property's procedure would be
+     * refused. {@code procedure_template_version} has no row-level security, and
+     * the schema already is the organization boundary, so the version is looked
+     * up directly. Routing this through {@code getOwned} would bring the
+     * property filter back.
+     *
+     * <p>A draft is refused: an inspection is only ever evaluated against the
+     * version it pinned, and only a published version can be pinned. The public
+     * endpoint allows drafts for the author's preview; that difference is the
+     * point of having two.
+     */
+    @Transactional(readOnly = true)
+    public EvaluationResponse evaluatePublished(UUID versionId, UUID orgId, EvaluateRequest request) {
+        ProcedureTemplateVersion version = versions.findById(versionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Procedure version not found: " + versionId));
+        if (version.getState() != VersionState.PUBLISHED) {
+            throw new BusinessRuleException("Procedure version " + versionId + " is a draft; "
+                    + "only a published version can be evaluated for an inspection");
+        }
+        return evaluate(version, orgId, request);
+    }
+
+    private EvaluationResponse evaluate(ProcedureTemplateVersion version, UUID orgId, EvaluateRequest request) {
+        Verdict verdict = Evaluator.evaluate(
+                canonicalizer.parse(version.getDefinitionJson()),
+                Answers.of(request == null ? Map.of() : request.values()),
+                resultRanks(orgId));
+        return EvaluationResponse.of(
+                new VersionRef(version.getTemplateId(), version.getVersionNo(), version.getState()), verdict);
+    }
+
+    /**
+     * Every result type the organization has, <em>inactive ones included</em>
+     * — the sibling of {@link #activeResultKeys}, and deliberately not the
+     * same query. A published version may name a type deactivated since; it
+     * must keep evaluating the way it did, which is the reason the delete guard
+     * points admins at deactivate in the first place.
+     */
+    private ResultRanks resultRanks(UUID orgId) {
+        return ResultRanks.of(resultTypes.findAllByOrgIdOrderBySeverityOrderAsc(orgId));
     }
 
     // --- helpers ------------------------------------------------------------

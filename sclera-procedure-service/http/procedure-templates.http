@@ -374,9 +374,9 @@ Authorization: Bearer {{inspectorToken}}
 ###############################################################################
 # Scoring (feature 6) — what a procedure declares, and what it refuses.
 #
-# Nothing here computes a score: the evaluation endpoint is feature 7. These
-# prove the document can carry a scoring configuration, and that an unfinished
-# one is caught at publish with every reason at once.
+# Nothing here computes a score; the Evaluation section below does, against
+# S3's procedure. These prove the document can carry a scoring configuration,
+# and that an unfinished one is caught at publish with every reason at once.
 ###############################################################################
 
 ### S1. A procedure that scores nothing publishes — the rule everything else bends around
@@ -549,4 +549,119 @@ Authorization: Bearer {{token}}
 
 ###
 POST {{host}}/api/v1/procedure-templates/{{unfinishedId}}/archive
+Authorization: Bearer {{token}}
+
+###############################################################################
+# Evaluation (feature 7) — what a set of answers means
+#
+# Run the Scoring section first: E1–E6 evaluate S3's procedure, version 1.
+# Evaluating only reads, so S10 having archived it does not matter. Its keys,
+# minted by one counter in document order (S4 shows them):
+#
+#   s1 Fire exits     weight 2
+#     q2 Is the fire exit clear?   critical, weight 3   Yes o3 = 10, No o4 = 0
+#   s5 Housekeeping   weight 1
+#     q6 Walkways clear?           Yes o7 = 10, No o8 = 0, N/A o9
+#   bands: up to 69 FAIL, from 70 PASS
+#
+# Only "value" is read from each answer. Missing or blank means not answered
+# yet — the normal state of a half-finished inspection, not an error.
+#
+# The inspection service's endpoint is not here:
+#   POST /internal/api/v1/procedure-versions/{versionId}/orgs/{orgId}/evaluate
+# It is reached over Dapr with an HMAC signature, never through the gateway,
+# so a request from this file could not pass its filter. InternalEvaluationIT
+# covers it.
+###############################################################################
+
+### E1. Nothing answered — no score and no result, not 0% and FAIL
+# Zero would read the bottom band and fail an inspection that has not started.
+# Expect overall.percentage null, overall.result null, unanswered [q2, q6].
+POST {{host}}/api/v1/procedure-templates/{{scoredId}}/versions/1/evaluate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "answers": {} }
+
+### E2. Half answered — a running score
+# Only what was answered counts: Fire exits 100%, Housekeeping no score yet, so
+# the overall is 100% and PASS, with complete false and unanswered [q6].
+POST {{host}}/api/v1/procedure-templates/{{scoredId}}/versions/1/evaluate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "answers": { "q2": { "value": "o3" } } }
+
+### E3. Fully answered — sections combine by their own weight
+# Fire exits 100% at weight 2, Housekeeping 0% at weight 1:
+# (2 × 100 + 1 × 0) / 3 = 66.66%, under 70, so FAIL. complete true.
+POST {{host}}/api/v1/procedure-templates/{{scoredId}}/versions/1/evaluate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "answers": { "q2": { "value": "o3" }, "q6": { "value": "o8" } } }
+
+### E4. Not applicable leaves both sides of the fraction
+# q6 answered N/A: Housekeeping has nothing to score, so the overall is Fire
+# exits alone — 100%, PASS. questions[q6].reason "excluded from scoring".
+POST {{host}}/api/v1/procedure-templates/{{scoredId}}/versions/1/evaluate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "answers": { "q2": { "value": "o3" }, "q6": { "value": "o9" } } }
+
+### E5. A failed critical question — named in critical[], and the overall fails
+# q2 is critical and answered No: critical [q2], overall FAIL whatever the
+# score says. The score is still reported (33.33%).
+POST {{host}}/api/v1/procedure-templates/{{scoredId}}/versions/1/evaluate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "answers": { "q2": { "value": "o4" }, "q6": { "value": "o7" } } }
+
+### E6. Answers that cannot belong — expect 400, every one named at once
+#   q2 has no option o99; q42 is not a question in this version;
+#   s1 is a section, which is never answered
+POST {{host}}/api/v1/procedure-templates/{{scoredId}}/versions/1/evaluate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "answers": { "q2": { "value": "o99" }, "q42": { "value": "x" }, "s1": { "value": "y" } } }
+
+### E7. A draft for the author's preview — its bands leave 70–89 uncovered
+# Never published, so never checked: the evaluator has to cope with that.
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Preview only {{$random.integer(1000, 9999)}}",
+  "definition": {
+    "items": [
+      { "text": "Gauge condition", "type": "RADIO",
+        "options": [
+          { "label": "Fair", "result": "PASS", "score": 75 },
+          { "label": "Good", "result": "PASS", "score": 100 }
+        ]
+      }
+    ],
+    "thresholds": [
+      {            "max": 69, "result": "FAIL" },
+      { "min": 90,            "result": "PASS" }
+    ]
+  }
+}
+
+> {% client.global.set("previewId", response.body.data.id); %}
+
+### E8. Evaluate the draft — 75% falls in the gap, so no result rather than an error
+# version.state DRAFT; overall.percentage 75; overall.result null. Keys q1, o2, o3.
+POST {{host}}/api/v1/procedure-templates/{{previewId}}/versions/1/evaluate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "answers": { "q1": { "value": "o2", "comment": "anything beside value is ignored" } } }
+
+### E9. Tidy up
+POST {{host}}/api/v1/procedure-templates/{{previewId}}/archive
 Authorization: Bearer {{token}}

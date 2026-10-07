@@ -125,6 +125,48 @@ public record DefinitionDocument(
     }
 
     /**
+     * Top-level items grouped by the section heading they sit under, in display
+     * order.
+     *
+     * <p><b>Membership is positional.</b> A section does not contain its
+     * questions — the validator refuses {@code follow} on a {@code SECTION} — so
+     * a question belongs to the nearest section heading above it, and a section
+     * runs until the next one. Nothing in the document records this; it is
+     * worked out here, once, so the evaluator and anything else that asks get
+     * the same answer. The screen that shows a procedure groups it the same
+     * way ({@code DefinitionView.tsx}).
+     *
+     * <p>Questions before the first heading form one group with no section.
+     * That group exists only when there are such questions, and always comes
+     * first. A section with nothing under it is still a group, with no
+     * questions. Follow-ups are not grouped separately: they stay inside their
+     * parent question, wherever it sits.
+     */
+    public List<Group> groups() {
+        List<Group> groups = new ArrayList<>();
+        Item section = null;
+        List<Item> questions = new ArrayList<>();
+        boolean open = false;
+        for (Item item : items) {
+            if (item.type() == QuestionType.SECTION) {
+                if (open) {
+                    groups.add(new Group(section, questions));
+                }
+                section = item;
+                questions = new ArrayList<>();
+                open = true;
+            } else {
+                questions.add(item);
+                open = true;
+            }
+        }
+        if (open) {
+            groups.add(new Group(section, questions));
+        }
+        return groups;
+    }
+
+    /**
      * True when this procedure computes a number — points on an answer, a
      * weight, or bands to read the total against. Silence is a valid procedure
      * and must stay publishable.
@@ -143,6 +185,20 @@ public record DefinitionDocument(
         return flatten().stream().anyMatch(item ->
                 item.weight() != null
                         || item.options().stream().anyMatch(o -> o.score() != null));
+    }
+
+    /**
+     * A section heading and the top-level questions under it — what
+     * {@link #groups()} returns.
+     *
+     * @param section   the {@code SECTION} item, or null for the questions that
+     *                  come before the first heading
+     * @param questions in display order, each still carrying its follow-ups
+     */
+    public record Group(Item section, List<Item> questions) {
+        public Group {
+            questions = List.copyOf(questions);
+        }
     }
 
     /**
