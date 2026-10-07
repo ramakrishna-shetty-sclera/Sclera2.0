@@ -13,6 +13,7 @@ import {
 } from '../api/templates'
 import { createInspection } from '../api/inspections'
 import type { ProcedureTemplate, TemplateVersion, TemplateVersionSummary } from '../api/types'
+import { useAuth } from '../auth/AuthContext'
 import { StatusBadge } from '../components/StatusBadge'
 import { DefinitionView } from '../components/DefinitionView'
 import { VersionHistory } from '../components/VersionHistory'
@@ -30,6 +31,7 @@ import { Refusal } from '../components/Refusal'
 export function TemplateDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { permissions } = useAuth()
   const [procedure, setProcedure] = useState<ProcedureTemplate | null>(null)
   const [version, setVersion] = useState<TemplateVersion | null>(null)
   const [versions, setVersions] = useState<TemplateVersionSummary[]>([])
@@ -169,26 +171,32 @@ export function TemplateDetailPage() {
         <div className="page-actions">
           {!archived && hasDraft && (
             <>
-              <Link className="btn" to={`/templates/${procedure.id}/edit`}>
-                Edit draft
-              </Link>
-              <button className="btn btn-primary" disabled={busy} onClick={onPublish}>
-                Publish
-              </button>
-              <button
-                className="btn"
-                disabled={busy}
-                onClick={() => {
-                  if (confirm(`Discard draft v${procedure.draftVersionNo}? Its edits are lost.`)) {
-                    run(() => discardDraft(procedure.id))
-                  }
-                }}
-              >
-                Discard draft
-              </button>
+              {permissions.canManageTemplates && (
+                <Link className="btn" to={`/templates/${procedure.id}/edit`}>
+                  Edit draft
+                </Link>
+              )}
+              {permissions.canPublishTemplates && (
+                <button className="btn btn-primary" disabled={busy} onClick={onPublish}>
+                  Publish
+                </button>
+              )}
+              {permissions.canManageTemplates && (
+                <button
+                  className="btn"
+                  disabled={busy}
+                  onClick={() => {
+                    if (confirm(`Discard draft v${procedure.draftVersionNo}? Its edits are lost.`)) {
+                      run(() => discardDraft(procedure.id))
+                    }
+                  }}
+                >
+                  Discard draft
+                </button>
+              )}
             </>
           )}
-          {!archived && !hasDraft && published != null && (
+          {!archived && !hasDraft && published != null && permissions.canManageTemplates && (
             <button
               className="btn btn-primary"
               disabled={busy}
@@ -202,10 +210,12 @@ export function TemplateDetailPage() {
               New inspection
             </button>
           )}
-          <button className="btn" disabled={busy} onClick={onClone}>
-            Duplicate
-          </button>
-          {!archived && (
+          {permissions.canManageTemplates && (
+            <button className="btn" disabled={busy} onClick={onClone}>
+              Duplicate
+            </button>
+          )}
+          {!archived && permissions.canManageTemplates && (
             <button
               className="btn btn-danger"
               disabled={busy}
@@ -229,7 +239,12 @@ export function TemplateDetailPage() {
 
       {version === null ? (
         <p className="muted">
-          Nothing authored yet. <Link to={`/templates/${procedure.id}/edit`}>Start the draft</Link>.
+          Nothing authored yet.{' '}
+          {permissions.canManageTemplates ? (
+            <Link to={`/templates/${procedure.id}/edit`}>Start the draft</Link>
+          ) : (
+            'Ask someone with the template author role to start it.'
+          )}
         </p>
       ) : (
         <>

@@ -415,3 +415,15 @@ export interface Property {
   id: string
   code: string
 }
+
+/**
+ * What the signed-in user may do with procedures and result types — the only
+ * way the SPA can know, since "role" means an OpenFGA organization relation
+ * and Keycloak defines no realm roles. Fetched once with the session.
+ */
+export interface Permissions {
+  canViewProcedures: boolean
+  canManageTemplates: boolean
+  canPublishTemplates: boolean
+  canManageResultTypes: boolean
+}

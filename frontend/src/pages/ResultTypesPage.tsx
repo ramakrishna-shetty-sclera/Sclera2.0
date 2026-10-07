@@ -10,6 +10,7 @@ import {
   updateResultType,
 } from '../api/resultTypes'
 import type { ResultType } from '../api/types'
+import { useAuth } from '../auth/AuthContext'
 import { Modal } from '../components/Modal'
 
 const KEY_PATTERN = /^[A-Z][A-Z0-9_]{0,49}$/
@@ -25,6 +26,8 @@ type EditorState = { mode: 'create' } | { mode: 'edit'; type: ResultType } | nul
  * deleted or deactivated.
  */
 export function ResultTypesPage() {
+  const { permissions } = useAuth()
+  const canManage = permissions.canManageResultTypes
   const [types, setTypes] = useState<ResultType[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -58,6 +61,7 @@ export function ResultTypesPage() {
    * reloaded and the reason shown.
    */
   async function moveTo(id: string, toIndex: number) {
+    if (!canManage) return
     const from = types.findIndex((t) => t.id === id)
     if (from < 0 || from === toIndex || reordering) return
     const next = [...types]
@@ -114,14 +118,16 @@ export function ResultTypesPage() {
           </p>
         </div>
         <div className="page-actions">
-          <button className="btn btn-primary" onClick={() => setEditor({ mode: 'create' })}>
-            New result type
-          </button>
+          {canManage && (
+            <button className="btn btn-primary" onClick={() => setEditor({ mode: 'create' })}>
+              New result type
+            </button>
+          )}
         </div>
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
-      {types.length > 1 && (
+      {canManage && types.length > 1 && (
         <p className="muted small">
           {reordering ? 'Saving the new order…' : 'Drag a row, or use ▲ ▼, to change its severity.'}
         </p>
@@ -151,8 +157,9 @@ export function ResultTypesPage() {
                   dragId === t.id ? 'rt-dragging' : '',
                   overId === t.id && dragId !== t.id ? 'rt-drop-target' : '',
                 ].join(' ')}
-                draggable={!reordering}
+                draggable={canManage && !reordering}
                 onDragStart={(e) => {
+                  if (!canManage) return
                   setDragId(t.id)
                   e.dataTransfer.effectAllowed = 'move'
                   e.dataTransfer.setData('text/plain', t.id) // Firefox won't start a drag without data
@@ -172,30 +179,34 @@ export function ResultTypesPage() {
               >
                 <td className="rt-rank">
                   <div className="rt-rank-cell">
-                    <span className="rt-handle" title="Drag to change severity" aria-hidden="true">
-                      ⠿
-                    </span>
+                    {canManage && (
+                      <span className="rt-handle" title="Drag to change severity" aria-hidden="true">
+                        ⠿
+                      </span>
+                    )}
                     <span>{t.severityOrder}</span>
-                    <span className="rt-arrows">
-                      <button
-                        className="btn btn-ghost small"
-                        onClick={() => moveTo(t.id, index - 1)}
-                        disabled={index === 0 || reordering}
-                        aria-label={`Make ${t.name} more severe`}
-                        title="More severe"
-                      >
-                        ▲
-                      </button>
-                      <button
-                        className="btn btn-ghost small"
-                        onClick={() => moveTo(t.id, index + 1)}
-                        disabled={index === types.length - 1 || reordering}
-                        aria-label={`Make ${t.name} less severe`}
-                        title="Less severe"
-                      >
-                        ▼
-                      </button>
-                    </span>
+                    {canManage && (
+                      <span className="rt-arrows">
+                        <button
+                          className="btn btn-ghost small"
+                          onClick={() => moveTo(t.id, index - 1)}
+                          disabled={index === 0 || reordering}
+                          aria-label={`Make ${t.name} more severe`}
+                          title="More severe"
+                        >
+                          ▲
+                        </button>
+                        <button
+                          className="btn btn-ghost small"
+                          onClick={() => moveTo(t.id, index + 1)}
+                          disabled={index === types.length - 1 || reordering}
+                          aria-label={`Make ${t.name} less severe`}
+                          title="Less severe"
+                        >
+                          ▼
+                        </button>
+                      </span>
+                    )}
                   </div>
                 </td>
                 <td>
@@ -215,15 +226,19 @@ export function ResultTypesPage() {
                   {t.system && <span className="badge badge-blue">System</span>}
                 </td>
                 <td className="rt-actions">
-                  <button
-                    className="btn small"
-                    onClick={() => setEditor({ mode: 'edit', type: t })}
-                    disabled={busyId === t.id}
-                  >
-                    Edit
-                  </button>
+                  {canManage ? (
+                    <button
+                      className="btn small"
+                      onClick={() => setEditor({ mode: 'edit', type: t })}
+                      disabled={busyId === t.id}
+                    >
+                      Edit
+                    </button>
+                  ) : (
+                    <span className="muted small">Read only</span>
+                  )}
                   {/* Pass and Fail can never be deactivated or deleted, so those actions are not offered. */}
-                  {!t.system && (
+                  {canManage && !t.system && (
                     <>
                       {t.active ? (
                         <button

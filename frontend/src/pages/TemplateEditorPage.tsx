@@ -5,6 +5,7 @@ import { ApiError } from '../api/client'
 import { numberItems } from '../api/document'
 import type { ItemType, ResultType } from '../api/types'
 import { listResultTypes } from '../api/resultTypes'
+import { useAuth } from '../auth/AuthContext'
 import { ItemEditor } from '../components/ItemEditor'
 import { Refusal } from '../components/Refusal'
 import {
@@ -84,6 +85,7 @@ export function TemplateEditorPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const editing = Boolean(id)
+  const { permissions, permissionsLoaded } = useAuth()
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -272,12 +274,16 @@ export function TemplateEditorPage() {
   }
 
   useEffect(() => {
-    if (!editing) return
+    // Without canManageTemplates the form never renders, so there is nothing
+    // an autosave could be protecting — only a periodic PUT the server would
+    // refuse anyway. Checked here rather than left to the server, so an
+    // account that cannot edit never tries to.
+    if (!editing || !permissions.canManageTemplates) return
     const timer = window.setInterval(() => {
       void autosaveNow()
     }, AUTOSAVE_MS)
     return () => window.clearInterval(timer)
-  }, [editing, id])
+  }, [editing, id, permissions.canManageTemplates])
 
   const docDirty = useMemo(
     () => snapshotOf(schema, items) !== savedSnapshot,
@@ -498,6 +504,22 @@ export function TemplateEditorPage() {
     saveStatus = `Saved ${autosave.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
   } else {
     saveStatus = 'No unsaved changes.'
+  }
+
+  // Checked after every hook above has run, so the two early returns below
+  // never change which hooks this component calls. Nothing gated renders
+  // until permissions have loaded — a form that flashes and then disappears
+  // is worse than one that arrives a moment late.
+  if (!permissionsLoaded) {
+    return <p className="muted center-note">Checking permissions…</p>
+  }
+  if (!permissions.canManageTemplates) {
+    return (
+      <div className="alert alert-error">
+        You do not have permission to author procedures. This closes the route whether you clicked
+        here or typed it directly — ask an organization admin for the template author role.
+      </div>
+    )
   }
 
   if (!loaded) {

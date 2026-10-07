@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { listProcedures } from '../api/templates'
 import type { Pagination, ProcedureStatus, ProcedureTemplate } from '../api/types'
+import { useAuth } from '../auth/AuthContext'
 import { StatusBadge } from '../components/StatusBadge'
 import { Pager } from '../components/Pager'
 
@@ -15,6 +16,7 @@ import { Pager } from '../components/Pager'
  */
 export function TemplatesPage() {
   const navigate = useNavigate()
+  const { permissions } = useAuth()
   const [procedures, setProcedures] = useState<ProcedureTemplate[]>([])
   const [pagination, setPagination] = useState<Pagination | null>(null)
   const [status, setStatus] = useState<ProcedureStatus | ''>('')
@@ -61,9 +63,11 @@ export function TemplatesPage() {
             <option value="ACTIVE">Active</option>
             <option value="ARCHIVED">Archived</option>
           </select>
-          <Link className="btn btn-primary" to="/templates/new">
-            New procedure
-          </Link>
+          {permissions.canManageTemplates && (
+            <Link className="btn btn-primary" to="/templates/new">
+              New procedure
+            </Link>
+          )}
         </div>
       </div>
 
