@@ -127,6 +127,16 @@ sclera:
     # Granted USAGE and DML on every tenant schema as it is provisioned.
     app-role: ${SCLERA_DB_APP_ROLE:sclera_app}
 
+  # Who holds the property vocabulary a procedure's target types are checked
+  # against. Today the helper service, a temporary stand-in: pointing this at a
+  # real property service is the whole cutover, with no code change.
+  # cache-ttl-seconds: how long one organization's lists are kept before they
+  # are read again (0 turns the cache off). A key added in that window may be
+  # refused until it expires.
+  external:
+    vocabulary:
+      app-id: ${SCLERA_VOCABULARY_APP_ID:sclera-helper-service}
+      cache-ttl-seconds: ${SCLERA_VOCABULARY_CACHE_TTL_SECONDS:90}
   # Shared with every service that calls (or is called on) /internal/** — HMAC signing
   event-listener:
     signing-secret: ${SCLERA_INTERNAL_SIGNING_SECRET:dev-internal-signing-secret}
