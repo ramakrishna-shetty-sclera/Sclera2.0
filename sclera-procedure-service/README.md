@@ -337,11 +337,11 @@ the work order belongs to the facilities layer, not here.
 standard, copied from a Sclera template, or taken from a suggestion. Cheap to record now and
 impossible to reconstruct later, once a procedure has been edited a few times.
 
-### Scoring — declared here, computed elsewhere
+### Scoring — declared here, computed by the evaluator
 
-Nothing in the document does arithmetic. It records what an organization decided; the evaluation
-endpoint is a pure function over a published version and is the only thing that reads these and
-works out a number.
+Nothing in the document does arithmetic. It records what an organization decided; the evaluator in
+`evaluation/` is the only thing that reads these and works out a number — see *Evaluation and
+scoring*.
 
 **`score` on an answer** is the points it is worth. Zero is a real score — the normal way to spell
 "this is the wrong answer" — and is kept in the canonical form for that reason. An answer with no
@@ -368,8 +368,7 @@ procedure score differently depending on answers nobody controls.
 **`thresholds`** turn a final score back into a result type, in the organization's own vocabulary.
 Open-ended at both ends — no `min` is "anything up to `max`", no `max` is "anything from `min`" — so
 three bands cover every score without boundary arithmetic. A band's `scope` is the whole inspection
-unless it says `SECTION`, which is accepted and stored now because results roll up through sections,
-but which nothing evaluates yet.
+unless it says `SECTION`, which reads each section's own score and decides that section's result.
 
 **Scoring is opt-in, and silence publishes.** A procedure that configures none of this is complete,
 not unfinished, and that is the rule every other scoring rule is written around. Once an author
@@ -436,8 +435,12 @@ Internal endpoints carry no JWT, so they pin the tenant explicitly:
 
 ```java
 tenantRegistry.ensureTenant(orgId);
-return TenantContext.runAs(orgId, () -> service.getForOrg(id, orgId));
+return TenantContext.runAs(orgId, () -> service.evaluatePublished(versionId, orgId, request));
 ```
+
+The transaction has to open inside `runAs`, which is why `open-in-view` stays off. And no
+property is selected on such a call, so an internal endpoint must not read a property-scoped table
+for something it needs regardless of property — see the internal evaluation endpoint.
 
 ---
 
@@ -451,7 +454,7 @@ publicly.
 | Templates | create, list, get, duplicate, archive; list versions |
 | Versions | get, save draft, publish, new draft from version, diff two versions |
 | Result types | create, list, get, update, reorder, activate, deactivate, delete (conditional) |
-| Evaluation | evaluate answers against a version |
+| Evaluation | evaluate answers against any version, draft included (public); against a published version by id (internal, for the inspection service) |
 | Discovery | published procedures by consumer and target type |
 | Documents | attach to a version or question, list, remove |
 | Library | browse, search and filter global templates; favourite; import; export; link, unlink |
@@ -559,34 +562,104 @@ locally* section has both commands.
 
 ## Evaluation and scoring
 
-Scoring lives here, in one place, rather than being reimplemented by every consumer.
+Scoring lives here, in one place, rather than being reimplemented by every consumer. The code is the
+`evaluation/` package: `Evaluator.evaluate(document, answers, ranks)` is a pure function — no Spring,
+no repository, no request context — so nearly all of it is tested without a container
+(`EvaluatorTest`).
 
-The evaluation endpoint takes a version id and a set of answers and returns the result and score for
-every question, every section and the version as a whole. It accepts **partial** answers and returns
-a provisional result, so an inspector can see a running score while filling a checklist in.
+### Two endpoints
 
-How a result is reached:
+```
+POST /api/v1/procedure-templates/{id}/versions/{versionNo}/evaluate        public, can_view
+POST /internal/api/v1/procedure-versions/{versionId}/orgs/{orgId}/evaluate  Dapr, HMAC
+```
 
-1. **Per question** — a choice answer takes the `result` on the option that was picked; a number
-   answer takes the `result` of the one band in the question's `rules` it falls in — publishing
-   guarantees there is exactly one, so band order never matters. An option marked
-   `excludeFromScoring` produces its result but contributes nothing to the score, and its weight is
-   removed from the denominator so a not-applicable question cannot drag a percentage down.
-2. **Follow-ups** contribute to their parent according to `followRollup`.
-3. **Per section** — question scores are weighted by the question's `weight`, then the section's own
-   `weight` applies when it rolls up.
-4. **Overall** — the total score is matched against `thresholds`, expressed in the organization's own
-   result types, so an inspection can end as Pass, Amber, Fail or anything else defined. A band
-   scoped to `SECTION` reads a single section's own score; feature 7 may ignore it at first, since
-   nothing authored today sets one.
-5. **Critical questions** short-circuit all of it: one failure fails the whole result regardless of
-   score.
+```json
+{ "answers": { "q1": { "value": "o2" },          // single choice: an option key
+               "q3": { "value": ["o7", "o8"] },  // CHECKBOX: option keys
+               "q4": { "value": 140 } } }        // INTEGER: a whole number; text and media: anything
+```
 
-Where several results have to become one — a category from its questions, a record from its
-checklists — the **most severe wins**, which is `MIN(severity_order)` since 1 ranks most severe.
+**The public one** is for the author's running-score preview and anything a person looks at. It is
+addressed and resolved like the diff beside it, so it reaches exactly what every other read reaches,
+and it **evaluates a draft too** — that is what the preview needs. No gateway change was needed: the
+path sits under `/api/v1/procedure-templates/**`.
 
-Evaluation is a pure function over an immutable version, so a parsed version is cached indefinitely
-and the endpoint is trivially testable.
+**The internal one** is for the inspection service. It takes a published version by id, every
+parameter in the path, and refuses a draft: an inspection is only evaluated against the version it
+pinned. It **reaches the version without reading `procedure_template`**. A Dapr call has no
+`X-Sclera-Property`, so it lands at organization level, where row-level security on the template
+hides every property's procedures; the version table has no row-level security and the schema is
+already the organization boundary, so looking the version up directly keeps a property's procedure
+evaluable. `InternalEvaluationIT` holds that.
+
+Only `value` is read from an answer; anything beside it is ignored, so the inspection service can post
+what it stores. Missing, null, blank and empty all mean *not answered yet* — the normal state of a
+half-finished inspection. An answer that cannot belong to the version — an unknown key, an answer to
+a section, an option the question does not have, a number that is not whole — is a 400 that names
+every one at once.
+
+The response is the version evaluated, then `overall` (`result`, `percentage`, `answered`, `scored`,
+`complete`), `sections`, `questions`, `critical`, `workOrders`, `unanswered` and `ignored`.
+**Result-type keys only** — names and colours resolve live, and a caller that shows a verdict already
+has the organization's types to colour it with.
+
+### How a result is reached
+
+0. **What is showing.** A top-level question always is; a follow-up only when its parent is showing
+   and was answered with the option its `when` names. A question that is not showing counts for
+   nothing, and an answer given to it is reported in `ignored` rather than refused — it is what
+   changing the parent's answer leaves behind.
+1. **Per question.** A single choice takes the chosen option's `result` and `score`. A `CHECKBOX`
+   takes the most severe result and the fewest points among its ticks, so one bad tick is not
+   averaged away. An `INTEGER` takes the result of the one band in its `rules` the reading falls in,
+   and **no points** — a band carries no score. Text and media decide nothing. A question is scored
+   when any of its options carries points; its possible score is the best on offer, and an option
+   without points earns zero. An `excludeFromScoring` answer keeps its result but leaves both earned
+   and possible, so N/A cannot drag a percentage down.
+2. **Follow-ups**, by `followRollup`. `INDEPENDENT` scores them beside their parent. `WORST` folds
+   them in: the most severe result, the lowest score ratio. `AVERAGE` folds them in with the mean
+   ratio and still the most severe result — there is no band at question level to turn a mean back
+   into a result. Folded follow-ups are still listed, marked `counted: false`.
+3. **Per section.** A question belongs to the nearest section heading above it
+   (`DefinitionDocument.groups()`); questions before the first heading form one group of weight 1.
+   Earned over possible, weighted by question. The section's result is its own `SECTION` band when one
+   matches, otherwise its most severe question.
+4. **Overall.** The sections' percentages, weighted by **section** weight — not by how many questions
+   each holds. The result is the version band the percentage falls in, or, with no bands at all, the
+   most severe section.
+5. **Critical questions** override all of it: a failed critical question decides the overall result
+   whatever the score said. The score is still reported — "92% but failed on a critical item" is
+   what the inspector needs to see.
+
+Where several results have to become one, the **most severe wins** — `MIN(severity_order)`, since 1
+ranks most severe.
+
+### Decisions worth knowing
+
+- **A failure is a result at least as severe as `FAIL`.** A result type has no "fails" flag, so this
+  is inferred rather than stated: an organization's `CRITICAL` ranked above Fail fails too, and Amber
+  does not. It is what `critical` and `workOrder` both mean by failing.
+- **Every result type ranks, inactive ones included.** A published version may name a type
+  deactivated since — deactivating is what the delete guard tells an admin to do — and it must keep
+  deciding what it decided. That is why evaluation does not use the active-only query publish uses.
+- **A running score counts only what was answered**: three perfect answers out of six is 100%, not
+  50%. `answered` and `complete` say how far along it is.
+- **Nothing scorable answered is no score, not 0%.** Zero would read the bottom band and fail an
+  inspection that has barely started.
+- **A percentage is rounded down before it meets a band**: 89.5 sits in "up to 89", not "from 90".
+  Bands are whole numbers that share no edge, and a score reaches a band only once it gets there.
+  Reported percentages are cut to two decimals for the same reason.
+- **With score bands, the score alone decides the overall result.** A reading carries no points, so a
+  failing reading shows in its question and section but not overall; a reading that must be able to
+  fail an inspection is marked `critical`. Without score bands, readings count like any result.
+- **A draft degrades rather than fails.** It has not been through the publish checks, so a score or
+  a reading may fall in no band; that gives no result, with a reason, not an error.
+
+**Nothing is cached.** The parsed version is immutable and could be — keyed by `definition_hash`,
+which is its content — but the result types are organization state an admin can reorder, and a
+reorder changes a rollup, so a verdict never can be. Caching the parsed version was left out as an
+optimisation with no measurement behind it; it can be added if evaluation ever shows up as slow.
 
 ---
 
@@ -702,8 +775,14 @@ category that any organization can browse, copy whole, or pull individual questi
 
 **Inspection service.** Reads a version over Dapr and pins `procedure_version_id` onto each checklist
 at generation. Because the version is immutable, the checklist needs no snapshot of its own — the
-form is stored once here, not copied per run. On submit it calls the evaluation endpoint and stores
-the returned result and score. It reports usage back.
+form is stored once here, not copied per run. On submit it calls the internal evaluation endpoint and
+stores the returned result and score. It reports usage back.
+
+That is the design, and **not yet what it does.** Today it still decides pass and fail itself — the
+browser sets a `failed` flag on each answer and submit sets `FAILED` if any is set — and its answers
+are keyed by question UUIDs from the deleted two-level model, not by the document's `q<n>` keys.
+Pinning `procedure_version_id`, re-keying answers and calling the endpoint is the integration
+branch's work; the endpoint it will call exists and is tested.
 
 **Property vocabulary.** `version_target_type` keys are validated against the hierarchy levels,
 location types, asset classes and tags the property vocabulary provides.
