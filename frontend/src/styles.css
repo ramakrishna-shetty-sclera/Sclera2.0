@@ -1506,6 +1506,56 @@ tr[draggable='true'] {
   border-color: #d97706;
 }
 
+/* A value the server would refuse on structure — a negative score, a weight
+   below 1. Shown immediately, not saved to find out. */
+.field-invalid {
+  border-color: #dc2626;
+}
+
+/* Points on an answer, beside its result picker in the same row. */
+.answer-row .answer-score {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 70px;
+  max-width: 90px;
+}
+
+.answer-row .checkbox {
+  flex: 0 0 auto;
+}
+
+/* A number question's reading bands, and the document's score thresholds —
+   the same shape one level apart, so the same row styling serves both. */
+.bands {
+  margin: 10px 0;
+}
+
+.band-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.band-row input,
+.band-row select {
+  margin-top: 0;
+}
+
+.band-row input[type='number'] {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 110px;
+}
+
+.band-row select {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 170px;
+  max-width: 40%;
+}
+
 .refusal-list {
   margin: 6px 0 0;
   padding-left: 20px;

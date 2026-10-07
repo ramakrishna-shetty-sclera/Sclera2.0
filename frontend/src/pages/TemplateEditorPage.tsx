@@ -8,6 +8,7 @@ import { listResultTypes } from '../api/resultTypes'
 import { useAuth } from '../auth/AuthContext'
 import { ItemEditor } from '../components/ItemEditor'
 import { Refusal } from '../components/Refusal'
+import { ThresholdsEditor } from '../components/ThresholdsEditor'
 import {
   addFollowIn,
   addOptionIn,
@@ -29,6 +30,7 @@ import {
   replaceIn,
   retype,
   retypeBlockedBy,
+  thresholdsBlockedBy,
   toDocument,
   triggerOptions,
   type ItemDraft,
@@ -243,6 +245,7 @@ export function TemplateEditorPage() {
       savedSnapshot: s.savedSnapshot,
       failedSnapshot: failedSnapshot.current,
       items: s.items,
+      thresholds: s.thresholds,
     })
     if (skip) return
 
@@ -500,7 +503,11 @@ export function TemplateEditorPage() {
   // and a follow-up reads as 2.1 rather than as another question 1.
   const numbers = numberItems(items)
 
-  const waitingOn = docDirty ? autosaveBlockedBy(items) : null
+  const waitingOn = docDirty ? (autosaveBlockedBy(items) ?? thresholdsBlockedBy(thresholds, items)) : null
+  // Sections are items, not a separate list — the thresholds editor only
+  // offers "Each section" once one exists, since a SECTION-scoped band is
+  // refused on every write while the document has none.
+  const hasSections = items.some((item) => item.type === 'SECTION')
   let saveStatus: string
   if (!editing) {
     saveStatus = 'Not saved yet — nothing is kept until you save.'
@@ -643,6 +650,13 @@ export function TemplateEditorPage() {
           </button>
         </div>
       </div>
+
+      <ThresholdsEditor
+        thresholds={thresholds}
+        resultTypes={resultTypes}
+        hasSections={hasSections}
+        onChange={setThresholds}
+      />
 
       {resultTypes.length === 0 && (
         <p className="field-hint">

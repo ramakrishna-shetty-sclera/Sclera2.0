@@ -62,7 +62,7 @@ export interface ItemDraft {
   /** '' means unset (INDEPENDENT) — the same '' sentinel `result` and `when` use for "absent". */
   followRollup: Rollup | ''
   follow: ItemDraft[]
-  /** A number question's bands. No screen edits them yet; they ride through. */
+  /** A number question's bands — what a reading means, as opposed to what may be typed. */
   rules: RangeRule[]
 }
 
@@ -236,8 +236,58 @@ export function autosaveBlockedBy(items: ItemDraft[], followUps = false): string
     ) {
       return 'a minimum is above its maximum'
     }
+    // Structure the server refuses on every write, same as the checks above —
+    // weight and a band's bounds included, now that a screen edits them.
+    if (item.weight.trim() !== '' && Number(item.weight) < 1) {
+      return 'a weight below 1 is refused'
+    }
+    for (const band of item.rules) {
+      if (band.min != null && band.max != null && band.min > band.max) {
+        return 'a band has a minimum above its maximum'
+      }
+    }
+    for (const option of item.options) {
+      if (option.score.trim() !== '' && Number(option.score) < 0) {
+        return 'an answer cannot score below zero'
+      }
+      if (option.excludeFromScoring && option.score.trim() !== '') {
+        return 'an answer excluded from scoring cannot also carry a score'
+      }
+    }
     const below = autosaveBlockedBy(item.follow, true)
     if (below) return below
+  }
+  return null
+}
+
+/** Whether any item in the tree — at any depth — is a section. */
+function hasAnySection(items: ItemDraft[]): boolean {
+  return items.some((item) => item.type === 'SECTION' || hasAnySection(item.follow))
+}
+
+/**
+ * Why the document's score thresholds are not worth autosaving yet, or null
+ * when they are. Mirrors the server's structural checks on a Threshold — a
+ * band running backwards, outside the 0-100 scale, or scoped to a section
+ * when the document has none — all refused on every write, so autosave should
+ * wait for a finished band rather than meet the same refusal every tick.
+ *
+ * Separate from `autosaveBlockedBy` because thresholds are document-level, not
+ * per item, and checking them does not need the recursive walk.
+ */
+export function thresholdsBlockedBy(thresholds: Threshold[], items: ItemDraft[]): string | null {
+  const hasSections = hasAnySection(items)
+  for (const band of thresholds) {
+    if (band.min != null && band.max != null && band.min > band.max) {
+      return 'a score band has a minimum above its maximum'
+    }
+    if ((band.min != null && (band.min < 0 || band.min > 100)) ||
+        (band.max != null && (band.max < 0 || band.max > 100))) {
+      return 'a score band is outside the 0 to 100 scale'
+    }
+    if (band.scope === 'SECTION' && !hasSections) {
+      return 'a score band scores a section, but this procedure has none'
+    }
   }
   return null
 }
@@ -255,6 +305,7 @@ export interface AutosaveState {
   /** The document that last failed to autosave, so a deterministic refusal is not retried forever. */
   failedSnapshot: string | null
   items: ItemDraft[]
+  thresholds: Threshold[]
 }
 
 /** Why this tick should not save, or null when it should. */
@@ -264,7 +315,7 @@ export function autosaveSkipReason(s: AutosaveState): string | null {
   if (s.busy) return 'busy'
   if (s.snapshot === s.savedSnapshot) return 'unchanged'
   if (s.snapshot === s.failedSnapshot) return 'already refused'
-  return autosaveBlockedBy(s.items)
+  return autosaveBlockedBy(s.items) ?? thresholdsBlockedBy(s.thresholds, s.items)
 }
 
 /** The keys a save minted, by the uid of the draft they belong to. */

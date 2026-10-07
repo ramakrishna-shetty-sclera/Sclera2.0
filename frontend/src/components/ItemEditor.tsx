@@ -1,5 +1,6 @@
 import { ITEM_TYPES, hasFixedOptions, isChoice, typeLabel } from '../api/document'
-import type { ItemType, ResultType } from '../api/types'
+import type { ItemType, ResultType, Rollup } from '../api/types'
+import { BandsEditor } from './BandsEditor'
 import { triggerOptions, type ItemDraft, type OptionDraft } from './itemTree'
 
 export interface ItemEditorProps {
@@ -127,6 +128,24 @@ export function ItemEditor(props: ItemEditorProps) {
             ))}
           </select>
         </label>
+        <label>
+          Weight
+          <input
+            type="number"
+            min={1}
+            value={item.weight}
+            placeholder="1"
+            onChange={(e) => onPatch(item.uid, { weight: e.target.value })}
+          />
+          {item.weight.trim() !== '' && Number(item.weight) < 1 ? (
+            <span className="field-error">A weight below 1 is refused — leave it blank to count normally.</span>
+          ) : (
+            <span className="muted small field-hint">
+              {section ? 'How much this group counts' : 'How much this question counts'} against its
+              siblings. Blank counts as 1.
+            </span>
+          )}
+        </label>
       </div>
 
       {parent && (
@@ -163,6 +182,16 @@ export function ItemEditor(props: ItemEditorProps) {
             Required
           </label>
         )}
+        {!section && (
+          <label className="checkbox" title="A failure here fails the whole inspection, whatever the score says">
+            <input
+              type="checkbox"
+              checked={item.critical}
+              onChange={(e) => onPatch(item.uid, { critical: e.target.checked })}
+            />
+            Critical
+          </label>
+        )}
       </div>
 
       {choice && (
@@ -183,6 +212,36 @@ export function ItemEditor(props: ItemEditorProps) {
                 resultTypes={resultTypes}
                 onChange={(result) => onPatchOption(item.uid, option.uid, { result })}
               />
+              <input
+                type="number"
+                className={`answer-score${
+                  option.score.trim() !== '' && Number(option.score) < 0 ? ' field-invalid' : ''
+                }`}
+                value={option.score}
+                placeholder="Points"
+                disabled={option.excludeFromScoring}
+                title={
+                  option.excludeFromScoring
+                    ? 'Excluded from scoring — earns no points'
+                    : 'Points this answer is worth. Zero is a real score; blank means it is not scored at all.'
+                }
+                onChange={(e) => onPatchOption(item.uid, option.uid, { score: e.target.value })}
+              />
+              <label className="checkbox small" title="Earns no points, and does not count toward the total either — choosing it cannot drag a score down">
+                <input
+                  type="checkbox"
+                  checked={option.excludeFromScoring}
+                  onChange={(e) =>
+                    onPatchOption(item.uid, option.uid, {
+                      excludeFromScoring: e.target.checked,
+                      // The server refuses an excluded answer that also carries
+                      // a score, so clear it here rather than let that happen.
+                      score: e.target.checked ? '' : option.score,
+                    })
+                  }
+                />
+                N/A
+              </label>
               {option.key && <span className="rt-key-inline">{option.key}</span>}
               {!fixed && (
                 <button
@@ -235,6 +294,14 @@ export function ItemEditor(props: ItemEditorProps) {
             />
           </label>
         </div>
+      )}
+
+      {item.type === 'INTEGER' && (
+        <BandsEditor
+          rules={item.rules}
+          resultTypes={resultTypes}
+          onChange={(rules) => onPatch(item.uid, { rules })}
+        />
       )}
 
       {choice && (
@@ -308,6 +375,20 @@ export function ItemEditor(props: ItemEditorProps) {
           Work orders are raised during an inspection and carried out elsewhere. The alert profile is
           recorded, not resolved — profiles are a later feature.
         </p>
+      )}
+
+      {item.follow.length > 0 && (
+        <label title="A follow-up is conditional, so counting it like an ordinary question would make this score differently depending on answers nobody controls">
+          How its follow-ups contribute
+          <select
+            value={item.followRollup}
+            onChange={(e) => onPatch(item.uid, { followRollup: e.target.value as Rollup | '' })}
+          >
+            <option value="">Independent — they score on their own</option>
+            <option value="WORST">Worst — one failed follow-up fails this question</option>
+            <option value="AVERAGE">Average — this question's score is their mean</option>
+          </select>
+        </label>
       )}
 
       {item.follow.length > 0 && (
