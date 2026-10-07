@@ -135,7 +135,7 @@ Coverage:
 | Service | Enforcement |
 |---|---|
 | inspection-service | per-object on `/inspections/{id}` (creator/assignee/org role); org-level on create/list, inspection-configs, checklists, tagging |
-| procedure-service | per-object on `/procedure-templates/{id}` (edit; publish needs `can_publish_templates`; delete); org-level on create/list; result types read with `can_view`, changed with `can_manage_result_types`; `X-Sclera-Property` checked against `property.can_view`; `/me/properties` with `can_view` |
+| procedure-service | per-object on `/procedure-templates/{id}` (edit; publish needs `can_publish_templates`; delete); org-level on create/list; result types read with `can_view`, changed with `can_manage_result_types`; `X-Sclera-Property` checked against `property.can_view`; `/me/properties` and `/me/permissions` with `can_view` |
 | helper-service | org-level on locations & assets (`can_manage_assets` / `can_view`) — in-memory resources, no per-object tuples |
 
 `/internal/**` (Dapr + HMAC service-to-service) and actuator/swagger endpoints

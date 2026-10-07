@@ -1,6 +1,8 @@
 package com.sclera.applicationplane.procedure.controller;
 
+import com.sclera.applicationplane.procedure.dto.PermissionsResponse;
 import com.sclera.applicationplane.procedure.dto.PropertyResponse;
+import com.sclera.applicationplane.procedure.service.PermissionsService;
 import com.sclera.applicationplane.procedure.service.PropertyAccessService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,9 +20,11 @@ import java.util.List;
 public class MeController {
 
     private final PropertyAccessService properties;
+    private final PermissionsService permissions;
 
-    public MeController(PropertyAccessService properties) {
+    public MeController(PropertyAccessService properties, PermissionsService permissions) {
         this.properties = properties;
+        this.permissions = permissions;
     }
 
     /**
@@ -32,5 +36,17 @@ public class MeController {
     @PreAuthorize("@fga.checkOrg('can_view')")
     public List<PropertyResponse> properties() {
         return properties.viewable();
+    }
+
+    /**
+     * What the caller may do with procedures and result types — the frontend's
+     * only way to know, since "role" means an OpenFGA organization relation and
+     * Keycloak defines no realm roles. Nothing gated should render before this
+     * has loaded.
+     */
+    @GetMapping("/permissions")
+    @PreAuthorize("@fga.checkOrg('can_view')")
+    public PermissionsResponse permissions() {
+        return permissions.forCurrentUser();
     }
 }
