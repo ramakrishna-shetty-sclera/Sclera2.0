@@ -1,0 +1,27 @@
+# Test profile. application.yml sets `spring.profiles.default: dev`, so without
+# an explicit `test` profile the context would load the dev settings.
+# PostgresIntegrationTest activates this profile; the datasource comes from
+# Testcontainers via @DynamicPropertySource.
+
+spring:
+  jpa:
+    hibernate:
+      # Same as production: Flyway owns the schema, Hibernate only checks that
+      # the entities match it, so a mapping mistake fails the test context.
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+sclera:
+  fga:
+    # FgaAuthorizationService allows everything when disabled, so tests exercise
+    # the service rather than OpenFGA tuples. Who may call what is the
+    # controllers' @PreAuthorize, checked on its own.
+    enabled: false
+
+logging:
+  level:
+    com.sclera: INFO
+    org.testcontainers: WARN
+    com.github.dockerjava: WARN
