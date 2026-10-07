@@ -8,6 +8,7 @@ import { listResultTypes } from '../api/resultTypes'
 import { useAuth } from '../auth/AuthContext'
 import { ItemEditor } from '../components/ItemEditor'
 import { Refusal } from '../components/Refusal'
+import { EvaluationPreview } from '../components/EvaluationPreview'
 import { ThresholdsEditor } from '../components/ThresholdsEditor'
 import {
   addFollowIn,
@@ -103,6 +104,12 @@ export function TemplateEditorPage() {
   const [changeNote, setChangeNote] = useState('')
   const [schema, setSchema] = useState(2)
   /**
+   * The open draft's own version number — distinct from `rowVersion`, the
+   * optimistic lock. The evaluation endpoint is addressed by this, not by the
+   * in-memory document, so the preview can only exist once it is known.
+   */
+  const [draftVersionNo, setDraftVersionNo] = useState<number | null>(null)
+  /**
    * The draft's optimistic lock. A ref, not state: autosave runs from a timer
    * and must always send the value the previous save returned, and a closure
    * over state would hand it a stale one — which then 409s against the author's
@@ -155,6 +162,7 @@ export function TemplateEditorPage() {
     // matters when creating a procedure hands over to its edit route without
     // remounting, so the previous screen's state is briefly still on show.
     rowVersionRef.current = null
+    setDraftVersionNo(null)
     // StrictMode runs this effect twice in development, and both loads resolve.
     // Without this the later response overwrote whatever had been typed since the
     // first one landed — items, rowVersion and the saved-snapshot baseline all —
@@ -169,6 +177,7 @@ export function TemplateEditorPage() {
         setDescription(procedure.description ?? '')
         setOriginal({ name: procedure.name, description: procedure.description ?? '' })
         setSchema(draft.definition.schema)
+        setDraftVersionNo(draft.versionNo)
         const loadedThresholds = draft.definition.thresholds ?? []
         setThresholds(loadedThresholds)
         rowVersionRef.current = draft.rowVersion
@@ -657,6 +666,18 @@ export function TemplateEditorPage() {
         hasSections={hasSections}
         onChange={setThresholds}
       />
+
+      {/* Only once a draft is open and has a version number to address —
+          there is nothing to evaluate against while creating. */}
+      {editing && id && draftVersionNo != null && (
+        <EvaluationPreview
+          templateId={id}
+          versionNo={draftVersionNo}
+          items={items}
+          resultTypes={resultTypes}
+          savedAt={autosave.at}
+        />
+      )}
 
       {resultTypes.length === 0 && (
         <p className="field-hint">

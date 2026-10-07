@@ -486,3 +486,72 @@ export interface Permissions {
   canPublishTemplates: boolean
   canManageResultTypes: boolean
 }
+
+// ── Evaluation (feature 7) ────────────────────────────────────────────────
+// Mirrors EvaluationDtos.EvaluationResponse field for field. Result-type keys
+// only, never names or colours — those resolve live from the organization's
+// own result types, the same rule an option's `result` already follows.
+
+/** Which version was evaluated. A draft is evaluated too — that is what a running-score preview needs. */
+export interface EvaluationVersionRef {
+  templateId: string
+  versionNo: number
+  state: VersionState
+}
+
+/**
+ * The inspection as a whole. `percentage` is absent when nothing scorable has
+ * been answered yet — not 0, which would read the bottom band and call an
+ * inspection that has barely started a failure. `complete` is true only when
+ * every reachable question has been answered.
+ */
+export interface OverallVerdict {
+  result?: string | null
+  percentage?: number | null
+  answered: number
+  scored: number
+  complete: boolean
+}
+
+/** One section's own result and percentage, or the questions before the first heading (key/text absent). */
+export interface SectionVerdict {
+  key?: string | null
+  text?: string | null
+  result?: string | null
+  percentage?: number | null
+}
+
+/**
+ * One reachable, answered question. `counted: false` means a follow-up whose
+ * result and score folded into its parent (`WORST`/`AVERAGE`) — still listed,
+ * so the preview can show what it said even though it is not totalled on its
+ * own.
+ */
+export interface QuestionVerdict {
+  key: string
+  result?: string | null
+  score?: number | null
+  possible?: number | null
+  counted: boolean
+  reason?: string | null
+}
+
+/** A failed answer on a question flagged to raise a work order. */
+export interface WorkOrderVerdict {
+  key: string
+  alertProfile?: string | null
+}
+
+export interface EvaluationResponse {
+  version: EvaluationVersionRef
+  overall: OverallVerdict
+  sections: SectionVerdict[]
+  questions: QuestionVerdict[]
+  /** Critical questions whose failure decided the overall result. */
+  critical: string[]
+  workOrders: WorkOrderVerdict[]
+  /** Reachable questions not answered yet. */
+  unanswered: string[]
+  /** Answers given for a question that is not currently showing. */
+  ignored: string[]
+}

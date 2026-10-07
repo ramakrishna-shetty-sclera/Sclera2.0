@@ -1556,6 +1556,74 @@ tr[draggable='true'] {
   max-width: 40%;
 }
 
+/* The running-score preview. */
+.preview-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.preview-sections {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.preview-sections li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.preview-section {
+  font-weight: 600;
+  margin: 10px 0 4px;
+}
+
+.preview-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.preview-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.preview-row select,
+.preview-row input[type='number'] {
+  margin-top: 0;
+  flex: 0 0 auto;
+  width: auto;
+}
+
+.preview-row select {
+  min-width: 160px;
+  max-width: 40%;
+}
+
+.preview-row input[type='number'] {
+  min-width: 90px;
+}
+
+.preview-text {
+  flex: 1 1 200px;
+}
+
+.preview-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .refusal-list {
   margin: 6px 0 0;
   padding-left: 20px;

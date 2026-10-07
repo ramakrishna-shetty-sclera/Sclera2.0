@@ -2,6 +2,7 @@ import { apiFetch, type ApiResult } from './client'
 import type {
   CloneProcedureRequest,
   CreateProcedureRequest,
+  EvaluationResponse,
   NewDraftRequest,
   ProcedureDiff,
   ProcedureStatus,
@@ -110,4 +111,22 @@ export function listPublishedProcedures(): Promise<ProcedureTemplate[]> {
   return listProcedures({ status: 'ACTIVE', size: 100 }).then((r) =>
     r.data.filter((p) => p.currentPublishedVersionNo != null),
   )
+}
+
+/**
+ * Evaluates a set of trial answers against a stored version — draft or
+ * published. `answers` is keyed by the document's stable question keys, the
+ * value shape the server reads: a string option key for a single choice, an
+ * array of option keys for CHECKBOX, a whole number for INTEGER. Missing or
+ * `undefined` means "not answered yet", which is a normal, evaluable state.
+ */
+export function evaluateVersion(
+  id: string,
+  versionNo: number,
+  answers: Record<string, { value: unknown } | undefined>,
+): Promise<EvaluationResponse> {
+  return apiFetch<EvaluationResponse>(`${PROCEDURES}/${id}/versions/${versionNo}/evaluate`, {
+    method: 'POST',
+    body: { answers },
+  }).then((r) => r.data)
 }
