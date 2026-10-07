@@ -106,7 +106,7 @@ services:
       - "8180:8180"
 
   # ------------------------------------------------------------------
-  # `app` profile: the two services + Dapr sidecars, fully containerized.
+  # `app` profile: the three services + Dapr sidecars, fully containerized.
   # Each daprd shares its app's network namespace (network_mode: service:...)
   # so app and sidecar talk over localhost, same as `dapr run` on the host.
   # Tokens minted from http://localhost:8180 stay valid: the issuer check uses
@@ -213,6 +213,52 @@ services:
     depends_on:
       - inspection-service
 
+  helper-service:
+    profiles: ["app"]
+    build:
+      context: .
+      args:
+        MODULE: sclera-helper-service
+    container_name: sclera-helper-service
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SCLERA_DB_HOST: postgres
+      SCLERA_REDIS_HOST: redis
+      KEYCLOAK_URL: http://keycloak:8180
+      SCLERA_DAPR_HEALTH_ENABLED: "true"
+      SCLERA_FGA_API_URL: http://openfga:8080
+    ports:
+      - "8097:8097"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+
+  helper-dapr:
+    profiles: ["app"]
+    image: daprio/daprd:1.18.3
+    container_name: sclera-helper-dapr
+    network_mode: "service:helper-service"
+    # daprd's default user (nonroot) cannot create the sqlite name-resolution
+    # db on the root-owned shared volume
+    user: "0:0"
+    command:
+      [
+        "./daprd",
+        "--app-id", "sclera-helper-service",
+        "--app-port", "8097",
+        "--dapr-http-port", "3500",
+        "--dapr-grpc-port", "50001",
+        "--config", "/dapr/config.yaml",
+      ]
+    volumes:
+      - ./docker/dapr:/dapr:ro
+      - dapr-nr:/dapr-nr
+    depends_on:
+      - helper-service
 volumes:
   postgres-data:
   dapr-nr:

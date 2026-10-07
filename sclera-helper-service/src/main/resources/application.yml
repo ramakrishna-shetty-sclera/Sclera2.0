@@ -75,7 +75,8 @@ management:
         enabled: true
       show-details: when-authorized
       group:
-        # No db/redis here — this service holds no external state.
+        # The probes below include only the application's own state, not Postgres or Redis.
+        # Locations and assets do persist in Postgres (sclera_helper).
         liveness:
           include: livenessState
         readiness:
