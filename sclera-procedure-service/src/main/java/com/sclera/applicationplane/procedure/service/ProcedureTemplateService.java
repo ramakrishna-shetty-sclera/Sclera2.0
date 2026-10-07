@@ -374,13 +374,46 @@ public class ProcedureTemplateService {
     @Transactional(readOnly = true)
     public EvaluationResponse evaluate(UUID id, int versionNo, EvaluateRequest request) {
         ProcedureTemplate template = getOwned(id);
-        ProcedureTemplateVersion version = requireVersion(template, versionNo);
+        return evaluate(requireVersion(template, versionNo), template.getOrgId(), request);
+    }
+
+    /**
+     * The inspection service's evaluation, over Dapr: a published version, by
+     * its id, for an organization named in the call. The caller must already
+     * be inside that organization's schema ({@code TenantContext.runAs}).
+     *
+     * <p><b>It reaches the version without reading {@code procedure_template}.</b>
+     * There is no JWT, so no property header, so a call lands at organization
+     * level, where row-level security on {@code procedure_template} hides every
+     * property's procedures — a checklist on a property's procedure would be
+     * refused. {@code procedure_template_version} has no row-level security, and
+     * the schema already is the organization boundary, so the version is looked
+     * up directly. Routing this through {@code getOwned} would bring the
+     * property filter back.
+     *
+     * <p>A draft is refused: an inspection is only ever evaluated against the
+     * version it pinned, and only a published version can be pinned. The public
+     * endpoint allows drafts for the author's preview; that difference is the
+     * point of having two.
+     */
+    @Transactional(readOnly = true)
+    public EvaluationResponse evaluatePublished(UUID versionId, UUID orgId, EvaluateRequest request) {
+        ProcedureTemplateVersion version = versions.findById(versionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Procedure version not found: " + versionId));
+        if (version.getState() != VersionState.PUBLISHED) {
+            throw new BusinessRuleException("Procedure version " + versionId + " is a draft; "
+                    + "only a published version can be evaluated for an inspection");
+        }
+        return evaluate(version, orgId, request);
+    }
+
+    private EvaluationResponse evaluate(ProcedureTemplateVersion version, UUID orgId, EvaluateRequest request) {
         Verdict verdict = Evaluator.evaluate(
                 canonicalizer.parse(version.getDefinitionJson()),
                 Answers.of(request == null ? Map.of() : request.values()),
-                resultRanks(template.getOrgId()));
+                resultRanks(orgId));
         return EvaluationResponse.of(
-                new VersionRef(template.getId(), version.getVersionNo(), version.getState()), verdict);
+                new VersionRef(version.getTemplateId(), version.getVersionNo(), version.getState()), verdict);
     }
 
     /**

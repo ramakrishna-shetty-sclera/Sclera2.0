@@ -49,9 +49,35 @@ class ControllerAuthorizationTest {
         assertThat(endpoints).extracting(Method::getDeclaringClass)
                 .contains(ProcedureTemplateController.class, ResultTypeController.class);
 
-        assertThat(endpoints).filteredOn(endpoint -> guard(endpoint) == null)
+        // Internal endpoints are left out by path, not by class name, so a
+        // public endpoint that forgets its guard still fails here.
+        assertThat(endpoints).filteredOn(endpoint -> !isInternal(endpoint) && guard(endpoint) == null)
                 .extracting(ControllerAuthorizationTest::name)
                 .as("endpoints with no @PreAuthorize")
+                .isEmpty();
+    }
+
+    /**
+     * {@code /internal/**} is the one place {@code @PreAuthorize} cannot work.
+     * It is reached over Dapr with no JWT, so there is no principal to check —
+     * and because checks fail closed, a guard there would refuse every call.
+     * What protects it instead is HMAC signing plus {@code InternalEndpointFilter},
+     * {@code SecurityConfig} permitting the path on that basis, and the gateway
+     * never routing it.
+     *
+     * <p>So the rule is the reverse of the one above: an internal endpoint
+     * must carry no guard. And there must be at least one, or the exclusion
+     * above is excluding nothing and has stopped being checked.
+     */
+    @Test
+    void internalEndpointsCarryNoGuardBecauseNoUserCallsThem() {
+        List<Method> internal = endpoints().stream().filter(ControllerAuthorizationTest::isInternal).toList();
+
+        assertThat(internal).extracting(ControllerAuthorizationTest::name)
+                .contains("InternalEvaluationController.evaluate");
+        assertThat(internal).filteredOn(endpoint -> guard(endpoint) != null)
+                .extracting(ControllerAuthorizationTest::name)
+                .as("internal endpoints with an @PreAuthorize that no Dapr call could ever pass")
                 .isEmpty();
     }
 
@@ -133,6 +159,20 @@ class ControllerAuthorizationTest {
             annotation = AnnotatedElementUtils.findMergedAnnotation(endpoint.getDeclaringClass(), PreAuthorize.class);
         }
         return annotation == null ? null : annotation.value();
+    }
+
+    /** Mapped under {@code /internal/}, by its class or by the method itself. */
+    private static boolean isInternal(Method endpoint) {
+        List<String> paths = new ArrayList<>();
+        RequestMapping onClass = AnnotatedElementUtils.findMergedAnnotation(endpoint.getDeclaringClass(), RequestMapping.class);
+        if (onClass != null) {
+            paths.addAll(Arrays.asList(onClass.path()));
+        }
+        RequestMapping onMethod = AnnotatedElementUtils.findMergedAnnotation(endpoint, RequestMapping.class);
+        if (onMethod != null) {
+            paths.addAll(Arrays.asList(onMethod.path()));
+        }
+        return paths.stream().anyMatch(path -> path.startsWith("/internal/"));
     }
 
     private static boolean isGet(Method endpoint) {
