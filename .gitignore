@@ -8,6 +8,10 @@ target/
 _extracted/
 __MACOSX/
 .env
+# Local storage provider's dev folder (sclera-helper-service), relative to
+# wherever it is launched from: the repo root for run-helper-service.ps1, or
+# /app in Docker, where it is the helper-documents named volume instead.
+/data/
 # copied-in archive of the gateway; the extracted folder is the source of truth
 sclera2.0v-api-gateway.zip
 # TypeScript incremental build state
