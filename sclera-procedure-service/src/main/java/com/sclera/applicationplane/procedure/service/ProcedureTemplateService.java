@@ -12,6 +12,7 @@ import com.sclera.applicationplane.procedure.definition.DefinitionDocument;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetType;
 import com.sclera.applicationplane.procedure.definition.DefinitionValidator;
 import com.sclera.applicationplane.procedure.definition.KeyMinter;
+import com.sclera.applicationplane.procedure.domain.ProcedureConsumer;
 import com.sclera.applicationplane.procedure.domain.ProcedureTemplate;
 import com.sclera.applicationplane.procedure.domain.ProcedureTemplateVersion;
 import com.sclera.applicationplane.procedure.domain.TemplateStatus;
@@ -39,6 +40,7 @@ import com.sclera.applicationplane.procedure.evaluation.Verdict;
 import com.sclera.applicationplane.procedure.event.ProcedureTemplateEvent;
 import com.sclera.applicationplane.procedure.event.TemplateEventPublisher;
 import com.sclera.applicationplane.procedure.mapper.ProcedureTemplateMapper;
+import com.sclera.applicationplane.procedure.repository.ProcedureConsumerRepository;
 import com.sclera.applicationplane.procedure.repository.ProcedureTemplateRepository;
 import com.sclera.applicationplane.procedure.repository.ProcedureTemplateVersionRepository;
 import com.sclera.applicationplane.procedure.repository.ResultTypeRepository;
@@ -48,6 +50,7 @@ import com.sclera.applicationplane.procedure.tenancy.PropertyContext;
 import com.sclera.controlplane.common.exception.BusinessRuleException;
 import com.sclera.controlplane.common.exception.ConflictException;
 import com.sclera.controlplane.common.exception.ResourceNotFoundException;
+import com.sclera.controlplane.common.exception.ValidationException;
 import com.sclera.controlplane.common.security.OrgContext;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -91,6 +94,7 @@ public class ProcedureTemplateService {
     private final ResultTypeRepository resultTypes;
     private final VersionResultTypeRefRepository resultTypeRefs;
     private final VersionTargetTypeRepository targetTypeRefs;
+    private final ProcedureConsumerRepository consumers;
     private final CachedVocabulary vocabulary;
 
     public ProcedureTemplateService(ProcedureTemplateRepository templates,
@@ -102,6 +106,7 @@ public class ProcedureTemplateService {
                                     ResultTypeRepository resultTypes,
                                     VersionResultTypeRefRepository resultTypeRefs,
                                     VersionTargetTypeRepository targetTypeRefs,
+                                    ProcedureConsumerRepository consumers,
                                     CachedVocabulary vocabulary) {
         this.templates = templates;
         this.versions = versions;
@@ -112,6 +117,7 @@ public class ProcedureTemplateService {
         this.resultTypes = resultTypes;
         this.resultTypeRefs = resultTypeRefs;
         this.targetTypeRefs = targetTypeRefs;
+        this.consumers = consumers;
         this.vocabulary = vocabulary;
     }
 
@@ -138,7 +144,7 @@ public class ProcedureTemplateService {
         template.setName(name);
         template.setDescription(blankToNull(request.description()));
         if (!isBlank(request.consumerKey())) {
-            template.setConsumerKey(request.consumerKey().strip().toUpperCase(Locale.ROOT));
+            template.setConsumerKey(requireActiveConsumer(request.consumerKey()));
         }
         template.setCreatedBy(OrgContext.getUserId());
         templates.saveAndFlush(template);
@@ -448,6 +454,31 @@ public class ProcedureTemplateService {
     }
 
     // --- helpers ------------------------------------------------------------
+
+    /**
+     * The consumer a new procedure names, checked against the organization's
+     * active consumers. Normalised the way it always was, then looked up: until
+     * now any string up to fifty characters was accepted.
+     *
+     * <p>Only a new procedure is checked. The consumer is identity — set here and
+     * never changed — so a consumer retired later leaves every procedure that
+     * already names it exactly as it was, and a clone keeps the one it copies. A
+     * request that names none gets INSPECTION, the column default, which is
+     * seeded for every organization and is what every existing procedure carries.
+     *
+     * @throws ValidationException naming the valid ones, since "not a consumer"
+     *         with nowhere to go is a dead end
+     */
+    private String requireActiveConsumer(String requested) {
+        String key = requested.strip().toUpperCase(Locale.ROOT);
+        List<String> active = consumers.findAllByActiveOrderByKeyAsc(true).stream()
+                .map(ProcedureConsumer::getKey).toList();
+        if (!active.contains(key)) {
+            throw new ValidationException("'" + key + "' is not one of this organization's procedure consumers"
+                    + (active.isEmpty() ? "" : ": " + String.join(", ", active)));
+        }
+        return key;
+    }
 
     /**
      * The document's target types that the organization's vocabulary does not

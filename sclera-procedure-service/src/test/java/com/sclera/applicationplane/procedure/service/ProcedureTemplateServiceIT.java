@@ -77,12 +77,12 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
                     String.class, schema);
 
             assertThat(tables).contains("procedure_template", "procedure_template_version", "version_result_type_ref",
-                    "version_target_type")
+                    "version_target_type", "procedure_consumer")
                     .doesNotContain("question_template", "template_section", "question");
             // Bump this when a tenant migration is added. Pinning it is the
             // point: it makes anyone adding one notice that every existing
             // tenant schema has to be migrated too, not just new ones.
-            assertThat(migratedTo).isEqualTo("6");
+            assertThat(migratedTo).isEqualTo("7");
             // A property-scoped table with no policy is wide open, and the
             // failure is silent — so provisioning asserts the policy arrived,
             // not merely that the migration ran.
