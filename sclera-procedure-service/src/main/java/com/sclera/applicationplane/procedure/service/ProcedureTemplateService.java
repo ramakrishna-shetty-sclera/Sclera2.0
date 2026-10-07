@@ -23,6 +23,13 @@ import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.TemplateR
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.UpdateTemplateRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.VersionResponse;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.VersionSummary;
+import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluateRequest;
+import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluationResponse;
+import com.sclera.applicationplane.procedure.dto.EvaluationDtos.VersionRef;
+import com.sclera.applicationplane.procedure.evaluation.Answers;
+import com.sclera.applicationplane.procedure.evaluation.Evaluator;
+import com.sclera.applicationplane.procedure.evaluation.ResultRanks;
+import com.sclera.applicationplane.procedure.evaluation.Verdict;
 import com.sclera.applicationplane.procedure.event.ProcedureTemplateEvent;
 import com.sclera.applicationplane.procedure.event.TemplateEventPublisher;
 import com.sclera.applicationplane.procedure.mapper.ProcedureTemplateMapper;
@@ -349,6 +356,42 @@ public class ProcedureTemplateService {
         DefinitionDocument from = canonicalizer.parse(requireVersion(template, fromVersionNo).getDefinitionJson());
         DefinitionDocument to = canonicalizer.parse(requireVersion(template, toVersionNo).getDefinitionJson());
         return new DiffResponse(fromVersionNo, toVersionNo, DefinitionDiff.between(from, to));
+    }
+
+    // --- evaluation ---------------------------------------------------------
+
+    /**
+     * What a set of answers means against one version — a draft as well as a
+     * published one, because the author's running-score preview evaluates the
+     * draft being written. A draft has not been through the publish checks, so
+     * the evaluator degrades on it rather than failing: a score or a reading in
+     * no band gives no result.
+     *
+     * <p>Reads only. The result-type ranks are loaded on every call and never
+     * cached with the verdict: an admin reordering result types changes which
+     * of two results is more severe.
+     */
+    @Transactional(readOnly = true)
+    public EvaluationResponse evaluate(UUID id, int versionNo, EvaluateRequest request) {
+        ProcedureTemplate template = getOwned(id);
+        ProcedureTemplateVersion version = requireVersion(template, versionNo);
+        Verdict verdict = Evaluator.evaluate(
+                canonicalizer.parse(version.getDefinitionJson()),
+                Answers.of(request == null ? Map.of() : request.values()),
+                resultRanks(template.getOrgId()));
+        return EvaluationResponse.of(
+                new VersionRef(template.getId(), version.getVersionNo(), version.getState()), verdict);
+    }
+
+    /**
+     * Every result type the organization has, <em>inactive ones included</em>
+     * — the sibling of {@link #activeResultKeys}, and deliberately not the
+     * same query. A published version may name a type deactivated since; it
+     * must keep evaluating the way it did, which is the reason the delete guard
+     * points admins at deactivate in the first place.
+     */
+    private ResultRanks resultRanks(UUID orgId) {
+        return ResultRanks.of(resultTypes.findAllByOrgIdOrderBySeverityOrderAsc(orgId));
     }
 
     // --- helpers ------------------------------------------------------------

@@ -1,6 +1,8 @@
 package com.sclera.applicationplane.procedure.controller;
 
 import com.sclera.applicationplane.procedure.domain.TemplateStatus;
+import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluateRequest;
+import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluationResponse;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.CloneRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.CreateTemplateRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.DiffResponse;
@@ -140,5 +142,19 @@ public class ProcedureTemplateController {
     @PreAuthorize("@fga.check('procedure_template', #id, 'can_view')")
     public DiffResponse diff(@PathVariable UUID id, @RequestParam int from, @RequestParam int to) {
         return service.diff(id, from, to);
+    }
+
+    // --- evaluation ---------------------------------------------------------
+
+    /**
+     * What a set of answers means against a version, draft included. A POST
+     * because the answers are a body, not because anything changes: it reads
+     * only, so seeing the procedure is enough.
+     */
+    @PostMapping("/{id}/versions/{versionNo}/evaluate")
+    @PreAuthorize("@fga.check('procedure_template', #id, 'can_view')")
+    public EvaluationResponse evaluate(@PathVariable UUID id, @PathVariable int versionNo,
+                                       @RequestBody(required = false) EvaluateRequest request) {
+        return service.evaluate(id, versionNo, request);
     }
 }
