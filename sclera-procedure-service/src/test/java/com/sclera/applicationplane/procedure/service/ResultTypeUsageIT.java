@@ -126,7 +126,7 @@ class ResultTypeUsageIT extends PostgresIntegrationTest {
     private static CreateTemplateRequest procedureUsing(String name, String key) {
         Item question = new Item(null, "Is it in range?", null, QuestionType.DROPDOWN, true, false,
                 List.of(new Option(null, "Yes", "PASS", null, false), new Option(null, "Borderline", key, null, false)),
-                null, null, null, false, null, null, null, null, null, null, List.of(), List.of());
+                null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
         return new CreateTemplateRequest(name, null, null,
                 new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question), List.of()));
     }

@@ -46,8 +46,8 @@ public record DefinitionDiff(
     /**
      * @param changedFields any of: text, help, type, required, critical,
      *                      options, unit, min, max, rules, workOrder,
-     *                      alertProfile, weight, followRollup, standard, when,
-     *                      parent
+     *                      alertProfile, evidenceRequired, weight, followRollup,
+     *                      standard, when, parent
      */
     public record ItemChange(
             String key,
@@ -113,6 +113,7 @@ public record DefinitionDiff(
         if (!b.rules().equals(a.rules())) fields.add("rules");
         if (b.workOrder() != a.workOrder()) fields.add("workOrder");
         if (!Objects.equals(b.alertProfile(), a.alertProfile())) fields.add("alertProfile");
+        if (b.evidenceRequired() != a.evidenceRequired()) fields.add("evidenceRequired");
         if (!Objects.equals(b.weight(), a.weight())) fields.add("weight");
         if (b.followRollup() != a.followRollup()) fields.add("followRollup");
         if (!Objects.equals(b.standard(), a.standard())) fields.add("standard");

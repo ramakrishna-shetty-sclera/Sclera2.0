@@ -112,7 +112,7 @@ class NumberBandsIT extends PostgresIntegrationTest {
 
     private static Item pressure(List<RangeRule> bands) {
         return new Item(null, "Pressure", null, QuestionType.INTEGER, true, false, List.of(),
-                "psi", null, null, false, null, null, null, null, null, null, List.of(), bands);
+                "psi", null, null, false, null, false, null, null, null, null, null, List.of(), bands);
     }
 
     private static CreateTemplateRequest create(Item item) {

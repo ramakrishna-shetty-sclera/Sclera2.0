@@ -4,6 +4,7 @@ import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Item;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Option;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.RangeRule;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Threshold;
+import com.sclera.applicationplane.procedure.domain.ItemSource;
 import com.sclera.applicationplane.procedure.domain.QuestionType;
 import com.sclera.applicationplane.procedure.domain.Rollup;
 import org.junit.jupiter.api.Test;
@@ -23,7 +24,7 @@ class DefinitionCanonicalizerTest {
 
     private static Item question(String key, String text, QuestionType type, boolean required) {
         return new Item(key, text, null, type, required, false, List.of(), null, null, null,
-                false, null, null, null, null, null, null, List.of(), List.of());
+                false, null, false, null, null, null, null, null, List.of(), List.of());
     }
 
     @Test
@@ -44,7 +45,7 @@ class DefinitionCanonicalizerTest {
                 doc(question("q2", "Exit clear?", QuestionType.YES_NO, false)));
         var messy = canonicalizer.canonicalize(doc(
                 new Item("q2", "  Exit clear?  ", "   ", QuestionType.YES_NO, false, false, List.of(),
-                        "  ", null, null, false, null, null, null, "  ", null, null, List.of(), List.of())));
+                        "  ", null, null, false, null, false, null, null, "  ", null, null, List.of(), List.of())));
 
         assertThat(messy.json()).isEqualTo(tidy.json())
                 .doesNotContain("required").doesNotContain("help").doesNotContain("unit");
@@ -59,18 +60,56 @@ class DefinitionCanonicalizerTest {
     }
 
     @Test
+    void everyComponentLandsInItsOwnNamedSlot() {
+        // A probe against transposition, not against the canonicaliser: one
+        // Item built with a distinct value per component, read back by the
+        // record's own named accessors. The compiler only checks arity — it
+        // does not catch a value landing one slot over — so this is what
+        // would have caught the mistake made (and corrected) while threading
+        // evidenceRequired through every call site in this feature.
+        Item follow = new Item("q9", "follow-text", null, QuestionType.TEXT, false, false, List.of(),
+                null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
+        Option option = new Option("o1", "option-label", "PASS", 7, false);
+        RangeRule rule = new RangeRule(1, 2, "PASS");
+        Item item = new Item("q1", "item-text", "item-help", QuestionType.INTEGER, true, true,
+                List.of(option), "item-unit", 3, 4, true, "item-alert", true, 5, ItemSource.DOCUMENT,
+                "item-standard", "item-when", Rollup.WORST, List.of(follow), List.of(rule));
+
+        assertThat(item.key()).isEqualTo("q1");
+        assertThat(item.text()).isEqualTo("item-text");
+        assertThat(item.help()).isEqualTo("item-help");
+        assertThat(item.type()).isEqualTo(QuestionType.INTEGER);
+        assertThat(item.required()).isTrue();
+        assertThat(item.critical()).isTrue();
+        assertThat(item.options()).containsExactly(option);
+        assertThat(item.unit()).isEqualTo("item-unit");
+        assertThat(item.min()).isEqualTo(3);
+        assertThat(item.max()).isEqualTo(4);
+        assertThat(item.workOrder()).isTrue();
+        assertThat(item.alertProfile()).isEqualTo("item-alert");
+        assertThat(item.evidenceRequired()).isTrue();
+        assertThat(item.weight()).isEqualTo(5);
+        assertThat(item.source()).isEqualTo(ItemSource.DOCUMENT);
+        assertThat(item.standard()).isEqualTo("item-standard");
+        assertThat(item.when()).isEqualTo("item-when");
+        assertThat(item.followRollup()).isEqualTo(Rollup.WORST);
+        assertThat(item.follow()).containsExactly(follow);
+        assertThat(item.rules()).containsExactly(rule);
+    }
+
+    @Test
     void reCanonicalisingStoredBytesIsStable() {
         var first = canonicalizer.canonicalize(doc(
                 new Item("s1", "Condition", null, QuestionType.SECTION, false, false, List.of(), null, null, null,
-                        false, null, null, null, null, null, null, List.of(), List.of()),
+                        false, null, false, null, null, null, null, null, List.of(), List.of()),
                 new Item("q2", "Gauge in the green?", "Tap it first", QuestionType.YES_NO_NA, true, false,
                         List.of(new Option("o3", "Yes", "PASS", null, false),
                                 new Option("o4", "No", "FAIL", null, false),
                                 new Option("o5", "N/A", null, null, false)),
-                        null, null, null, true, "ap-std", null, null, "NFPA 10", null,
+                        null, null, null, true, "ap-std", false, null, null, "NFPA 10", null,
                         null,
                         List.of(new Item("q6", "Record the reading", null, QuestionType.INTEGER, false, false,
-                                List.of(), "psi", 0, 300, false, null, null, null, null, "o4", null,
+                                List.of(), "psi", 0, 300, false, null, false, null, null, null, "o4", null,
                                 List.of(), List.of())), List.of())));
 
         var again = canonicalizer.canonicalize(canonicalizer.parse(first.json()));
@@ -83,7 +122,7 @@ class DefinitionCanonicalizerTest {
     void aFollowUpIsPartOfTheContent() {
         Item parent = new Item("q2", "Exit clear?", null, QuestionType.YES_NO, false, false,
                 List.of(new Option("o3", "Yes", "PASS", null, false), new Option("o4", "No", "FAIL", null, false)),
-                null, null, null, false, null, null, null, null, null, null, List.of(), List.of());
+                null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
         Item withFollow = parent.withFollow(List.of(
                 question("q5", "Describe the obstruction", QuestionType.TEXT, true)));
 
@@ -107,7 +146,7 @@ class DefinitionCanonicalizerTest {
         // is the one that would be silently lost if that ever changed.
         var canonical = canonicalizer.canonicalize(doc(
                 new Item("q2", "Reading", null, QuestionType.INTEGER, false, false, List.of(),
-                        "psi", 0, 300, false, null, null, null, null, null, null, List.of(), List.of())));
+                        "psi", 0, 300, false, null, false, null, null, null, null, null, List.of(), List.of())));
 
         assertThat(canonical.json()).contains("\"min\":0");
     }
@@ -119,7 +158,7 @@ class DefinitionCanonicalizerTest {
         // hashes — are unchanged.
         var canonical = canonicalizer.canonicalize(doc(
                 new Item("q2", "Reading", null, QuestionType.INTEGER, false, false, List.of(),
-                        "psi", 0, 300, false, null, null, null, null, null, null, List.of(), List.of())));
+                        "psi", 0, 300, false, null, false, null, null, null, null, null, List.of(), List.of())));
 
         assertThat(canonical.json()).isEqualTo(
                 "{\"items\":[{\"key\":\"q2\",\"max\":300,\"min\":0,\"text\":\"Reading\","
@@ -130,7 +169,7 @@ class DefinitionCanonicalizerTest {
     void bandsAreWrittenInOrderWithOpenEndsLeftOut() {
         var canonical = canonicalizer.canonicalize(doc(
                 new Item("q2", "Pressure", null, QuestionType.INTEGER, false, false, List.of(),
-                        null, null, null, false, null, null, null, null, null, null, List.of(),
+                        null, null, null, false, null, false, null, null, null, null, null, List.of(),
                         List.of(new RangeRule(null, 0, "PASS"), new RangeRule(1, null, "FAIL")))));
 
         // An open end is a null, so it is absent; a 0 edge is a real one and stays.
@@ -204,15 +243,15 @@ class DefinitionCanonicalizerTest {
     void aScoredDocumentSurvivesTheRoundTrip() {
         var first = canonicalizer.canonicalize(new DefinitionDocument(2,
                 List.of(new Item("s1", "Fire exits", null, QuestionType.SECTION, false, false, List.of(),
-                                null, null, null, false, null, 2, null, null, null, null, List.of(), List.of()),
+                                null, null, null, false, null, false, 2, null, null, null, null, List.of(), List.of()),
                         new Item("q2", "Exit clear?", null, QuestionType.YES_NO, true, true,
                                 List.of(new Option("o3", "Yes", "PASS", 10, false),
                                         new Option("o4", "No", "FAIL", 0, false),
                                         new Option("o5", "N/A", null, null, true)),
-                                null, null, null, false, null, 3, null, null, null,
+                                null, null, null, false, null, false, 3, null, null, null,
                                 Rollup.WORST,
                                 List.of(new Item("q6", "Why not?", null, QuestionType.TEXT, true, false,
-                                        List.of(), null, null, null, false, null, null, null, null,
+                                        List.of(), null, null, null, false, null, false, null, null, null,
                                         "o4", null, List.of(), List.of())),
                                 List.of())),
                 List.of(new Threshold(null, null, 69, "FAIL"),

@@ -22,7 +22,7 @@ class DefinitionValidatorTest {
 
     private static Item item(String key, String text, QuestionType type) {
         return new Item(key, text, null, type, false, false, List.of(), null, null, null,
-                false, null, null, null, null, null, null, List.of(), List.of());
+                false, null, false, null, null, null, null, null, List.of(), List.of());
     }
 
     private static Item yesNo(String key, String text) {
@@ -43,14 +43,14 @@ class DefinitionValidatorTest {
                 item("s1", "Fire exits", QuestionType.SECTION),
                 yesNo("q2", "Exit clear?").withFollow(List.of(
                         new Item(follow.key(), follow.text(), null, follow.type(), false, false, List.of(),
-                                null, null, null, false, null, null, null, null, "o91", null, List.of(), List.of()))))))
+                                null, null, null, false, null, false, null, null, null, "o91", null, List.of(), List.of()))))))
                 .doesNotThrowAnyException();
     }
 
     @Test
     void aFollowUpMustNameAnAnswerOfItsOwnParent() {
         Item stray = new Item("q3", "Why?", null, QuestionType.TEXT, false, false, List.of(),
-                null, null, null, false, null, null, null, null, "o77", null, List.of(), List.of());
+                null, null, null, false, null, false, null, null, null, "o77", null, List.of(), List.of());
 
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(
                 doc(yesNo("q2", "Exit clear?").withFollow(List.of(stray)))))
@@ -69,7 +69,7 @@ class DefinitionValidatorTest {
     @Test
     void aTopLevelQuestionCannotBeConditional() {
         Item conditional = new Item("q2", "Why?", null, QuestionType.TEXT, false, false, List.of(),
-                null, null, null, false, null, null, null, null, "o90", null, List.of(), List.of());
+                null, null, null, false, null, false, null, null, null, "o90", null, List.of(), List.of());
 
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(doc(conditional)))
                 .isInstanceOf(ValidationException.class)
@@ -79,7 +79,7 @@ class DefinitionValidatorTest {
     @Test
     void aFollowUpCannotHangOffAQuestionWithNoAnswers() {
         Item follow = new Item("q3", "Why?", null, QuestionType.TEXT, false, false, List.of(),
-                null, null, null, false, null, null, null, null, "o90", null, List.of(), List.of());
+                null, null, null, false, null, false, null, null, null, "o90", null, List.of(), List.of());
 
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(
                 doc(item("q2", "Remarks", QuestionType.TEXT).withFollow(List.of(follow)))))
@@ -99,7 +99,7 @@ class DefinitionValidatorTest {
     @Test
     void onlyNumberQuestionsMayHaveAUnitOrRange() {
         Item texty = new Item("q2", "Remarks", null, QuestionType.TEXT, false, false, List.of(),
-                "psi", null, null, false, null, null, null, null, null, null, List.of(), List.of());
+                "psi", null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
 
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(doc(texty)))
                 .isInstanceOf(ValidationException.class)
@@ -109,7 +109,7 @@ class DefinitionValidatorTest {
     @Test
     void aRangeCannotRunBackwards() {
         Item backwards = new Item("q2", "Reading", null, QuestionType.INTEGER, false, false, List.of(),
-                "psi", 300, 10, false, null, null, null, null, null, null, List.of(), List.of());
+                "psi", 300, 10, false, null, false, null, null, null, null, null, List.of(), List.of());
 
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(doc(backwards)))
                 .isInstanceOf(ValidationException.class)
@@ -119,7 +119,7 @@ class DefinitionValidatorTest {
     @Test
     void onlyChoiceQuestionsMayRaiseAWorkOrder() {
         Item texty = new Item("q2", "Remarks", null, QuestionType.TEXT, false, false, List.of(),
-                null, null, null, true, "ap-std", null, null, null, null, null, List.of(), List.of());
+                null, null, null, true, "ap-std", false, null, null, null, null, null, List.of(), List.of());
 
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(doc(texty)))
                 .isInstanceOf(ValidationException.class)
@@ -139,7 +139,7 @@ class DefinitionValidatorTest {
     @Test
     void oneSaveReportsEveryStructuralProblem() {
         Item backwards = new Item("q2", "Reading", null, QuestionType.INTEGER, false, false, List.of(),
-                null, 300, 10, false, null, null, null, null, null, null, List.of(), List.of());
+                null, 300, 10, false, null, false, null, null, null, null, null, List.of(), List.of());
         Item withAnswers = item("q3", "Remarks", QuestionType.TEXT)
                 .withOptions(List.of(new Option("o4", "Yes", "PASS", null, false)));
 
@@ -189,7 +189,7 @@ class DefinitionValidatorTest {
     void aFollowUpIsCheckedLikeAnyOtherQuestion() {
         Item follow = new Item("q3", "Which one?", null, QuestionType.DROPDOWN, false, false,
                 List.of(new Option("o4", "Only answer", "PASS", null, false)),
-                null, null, null, false, null, null, null, null, "o91", null, List.of(), List.of());
+                null, null, null, false, null, false, null, null, null, "o91", null, List.of(), List.of());
 
         assertThat(DefinitionValidator.publishBlockers(
                 doc(yesNo("q2", "Exit clear?").withFollow(List.of(follow))), PASS_FAIL))
@@ -214,7 +214,7 @@ class DefinitionValidatorTest {
     /** A "Pressure" reading, bounded by {@code min}/{@code max} where set. */
     private static Item pressure(Integer min, Integer max, RangeRule... bands) {
         return new Item("q2", "Pressure", null, QuestionType.INTEGER, true, false, List.of(),
-                "psi", min, max, false, null, null, null, null, null, null, List.of(), List.of(bands));
+                "psi", min, max, false, null, false, null, null, null, null, null, List.of(), List.of(bands));
     }
 
     private static List<String> blockers(Item item) {
@@ -224,7 +224,7 @@ class DefinitionValidatorTest {
     @Test
     void onlyNumberQuestionsMayHaveBands() {
         Item texty = new Item("q2", "Remarks", null, QuestionType.TEXT, false, false, List.of(),
-                null, null, null, false, null, null, null, null, null, null, List.of(), List.of(band(null, 5, "PASS")));
+                null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of(band(null, 5, "PASS")));
 
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(doc(texty)))
                 .isInstanceOf(ValidationException.class)
@@ -234,7 +234,7 @@ class DefinitionValidatorTest {
     @Test
     void aSectionCannotHaveBands() {
         Item section = new Item("s1", "Fire exits", null, QuestionType.SECTION, false, false, List.of(),
-                null, null, null, false, null, null, null, null, null, null, List.of(), List.of(band(null, 5, "PASS")));
+                null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of(band(null, 5, "PASS")));
 
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(doc(section)))
                 .isInstanceOf(ValidationException.class)
@@ -352,7 +352,7 @@ class DefinitionValidatorTest {
     @Test
     void aBandOnAFollowUpIsCheckedLikeAnyOther() {
         Item reading = new Item("q3", "Reading", null, QuestionType.INTEGER, false, false, List.of(),
-                null, null, null, false, null, null, null, null, "o91", null, List.of(), List.of(band(null, 11, "PASS")));
+                null, null, null, false, null, false, null, null, null, "o91", null, List.of(), List.of(band(null, 11, "PASS")));
 
         assertThat(DefinitionValidator.publishBlockers(
                 doc(yesNo("q2", "Gauge fitted?").withFollow(List.of(reading))), WITH_AMBER))
@@ -390,7 +390,7 @@ class DefinitionValidatorTest {
     @Test
     void aSectionCannotBeCriticalOrRollUpFollowUps() {
         Item section = new Item("s1", "Fire exits", null, QuestionType.SECTION, false, true, List.of(),
-                null, null, null, false, null, null, null, null, null, Rollup.WORST, List.of(), List.of());
+                null, null, null, false, null, false, null, null, null, null, Rollup.WORST, List.of(), List.of());
 
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(doc(section)))
                 .isInstanceOf(ValidationException.class)
@@ -401,7 +401,7 @@ class DefinitionValidatorTest {
     @Test
     void aQuestionCannotSayHowFollowUpsContributeWhenItHasNone() {
         Item lonely = new Item("q2", "Exit clear?", null, QuestionType.TEXT, false, false, List.of(),
-                null, null, null, false, null, null, null, null, null, Rollup.WORST, List.of(), List.of());
+                null, null, null, false, null, false, null, null, null, null, Rollup.WORST, List.of(), List.of());
 
         assertThatThrownBy(() -> DefinitionValidator.validateStructure(doc(lonely)))
                 .isInstanceOf(ValidationException.class)
@@ -514,9 +514,9 @@ class DefinitionValidatorTest {
     void sayingHowFollowUpsContributeIsNotScoringEither() {
         Item parent = yesNo("q2", "Exit clear?").withFollow(List.of(
                 new Item("q3", "Why not?", null, QuestionType.TEXT, false, false, List.of(),
-                        null, null, null, false, null, null, null, null, "o91", null, List.of(), List.of())));
+                        null, null, null, false, null, false, null, null, null, "o91", null, List.of(), List.of())));
         Item rolled = new Item(parent.key(), parent.text(), null, parent.type(), false, false,
-                parent.options(), null, null, null, false, null, null, null, null, null,
+                parent.options(), null, null, null, false, null, false, null, null, null, null,
                 Rollup.WORST, parent.follow(), List.of());
 
         assertThat(DefinitionValidator.publishBlockers(doc(rolled), PASS_FAIL)).isEmpty();
@@ -603,14 +603,14 @@ class DefinitionValidatorTest {
     private static Item weighted(Item item, int weight) {
         return new Item(item.key(), item.text(), item.help(), item.type(), item.required(),
                 item.critical(), item.options(), item.unit(), item.min(), item.max(),
-                item.workOrder(), item.alertProfile(), weight, item.source(), item.standard(),
+                item.workOrder(), item.alertProfile(), item.evidenceRequired(), weight, item.source(), item.standard(),
                 item.when(), item.followRollup(), item.follow(), List.of());
     }
 
     private static Item critical(Item item) {
         return new Item(item.key(), item.text(), item.help(), item.type(), item.required(),
                 true, item.options(), item.unit(), item.min(), item.max(),
-                item.workOrder(), item.alertProfile(), item.weight(), item.source(), item.standard(),
+                item.workOrder(), item.alertProfile(), item.evidenceRequired(), item.weight(), item.source(), item.standard(),
                 item.when(), item.followRollup(), item.follow(), List.of());
     }
 }

@@ -125,6 +125,9 @@ public final class DefinitionValidator {
             if (item.followRollup() != null) {
                 problems.add(where + " is a section and has no follow-ups to roll up");
             }
+            if (item.evidenceRequired()) {
+                problems.add(where + " is a section and cannot require evidence: a heading is never answered");
+            }
             checkWeight(item, where, problems);
             return;
         }

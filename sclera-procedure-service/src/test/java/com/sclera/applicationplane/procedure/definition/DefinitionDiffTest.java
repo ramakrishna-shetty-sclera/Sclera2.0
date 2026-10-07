@@ -19,12 +19,12 @@ class DefinitionDiffTest {
 
     private static Item q(String key, String text) {
         return new Item(key, text, null, QuestionType.TEXT, false, false, List.of(), null, null, null,
-                false, null, null, null, null, null, null, List.of(), List.of());
+                false, null, false, null, null, null, null, null, List.of(), List.of());
     }
 
     private static Item section(String key, String title) {
         return new Item(key, title, null, QuestionType.SECTION, false, false, List.of(), null, null, null,
-                false, null, null, null, null, null, null, List.of(), List.of());
+                false, null, false, null, null, null, null, null, List.of(), List.of());
     }
 
     private static DefinitionDocument doc(Item... items) {
@@ -78,7 +78,7 @@ class DefinitionDiffTest {
         DefinitionDocument v1 = doc(q("q2", "Exit clear?"), q("q3", "Old"));
         DefinitionDocument v2 = doc(
                 new Item("q2", "Is the exit clear?", null, QuestionType.YES_NO, true, false, List.of(),
-                        null, null, null, false, null, null, null, null, null, null, List.of(), List.of()),
+                        null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of()),
                 q("q4", "Brand new"));
 
         DefinitionDiff diff = DefinitionDiff.between(v1, v2);
@@ -138,7 +138,7 @@ class DefinitionDiffTest {
         // untouched — which is the whole reason options are keyed.
         Item v1Parent = new Item("q2", "Clear?", null, QuestionType.YES_NO, false, false,
                 List.of(new Option("o3", "Yes", "PASS", null, false), new Option("o4", "No", "FAIL", null, false)),
-                null, null, null, false, null, null, null, null, null,
+                null, null, null, false, null, false, null, null, null, null,
                 null,
                 List.of(q("q5", "Describe it").withKey("q5")),
                 List.of());
@@ -157,7 +157,7 @@ class DefinitionDiffTest {
     void aFollowUpIsComparedLikeAnyOtherItem() {
         Item parent = new Item("q2", "Clear?", null, QuestionType.YES_NO, false, false,
                 List.of(new Option("o3", "No", "FAIL", null, false)), null, null, null,
-                false, null, null, null, null, null, null, List.of(), List.of());
+                false, null, false, null, null, null, null, null, List.of(), List.of());
         DefinitionDocument v1 = doc(parent.withFollow(List.of(q("q4", "Why?"))));
         DefinitionDocument v2 = doc(parent.withFollow(List.of(q("q4", "Why not?"))));
 
@@ -173,10 +173,10 @@ class DefinitionDiffTest {
     @Test
     void movingABandsEdgeIsReportedAsRules() {
         Item v1 = new Item("q2", "Pressure", null, QuestionType.INTEGER, true, false, List.of(),
-                "psi", null, null, false, null, null, null, null, null, null, List.of(),
+                "psi", null, null, false, null, false, null, null, null, null, null, List.of(),
                 List.of(new RangeRule(null, 11, "PASS"), new RangeRule(12, null, "FAIL")));
         Item v2 = new Item("q2", "Pressure", null, QuestionType.INTEGER, true, false, List.of(),
-                "psi", null, null, false, null, null, null, null, null, null, List.of(),
+                "psi", null, null, false, null, false, null, null, null, null, null, List.of(),
                 List.of(new RangeRule(null, 13, "PASS"), new RangeRule(14, null, "FAIL")));
 
         DefinitionDiff diff = DefinitionDiff.between(doc(v1), doc(v2));
