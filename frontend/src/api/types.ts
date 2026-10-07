@@ -199,12 +199,31 @@ export type ItemSource = 'MANUAL' | 'DOCUMENT' | 'TEMPLATE' | 'SUGGESTED'
  * `key` is minted by the server and is what a follow-up's `when` points at, so
  * an option keeps its meaning when the author rewords it. Omit it when adding
  * an option; send it back unchanged when editing one.
+ *
+ * `score` is the points this answer is worth. Zero is a real score — the
+ * normal way to spell "this is the wrong answer" — and is kept in the
+ * canonical form for that reason; an answer with no score at all is different
+ * from one scoring zero, so an empty points field must send `undefined`, never
+ * `0`. `excludeFromScoring` is the not-applicable answer: it earns no points
+ * and does not count towards the total either, so choosing it cannot drag a
+ * score down.
  */
 export interface DefinitionOption {
   key?: string
   label: string
   result?: string | null
+  score?: number | null
+  excludeFromScoring: boolean
 }
+
+/**
+ * How a question's follow-ups contribute to its result and its score. Absent
+ * means INDEPENDENT — the common case, so it costs no bytes. As with
+ * `Threshold.scope`, sending the literal `'INDEPENDENT'` is not the same as
+ * omitting the field: the canonicaliser keeps any non-blank text. Omit
+ * `followRollup` rather than send `'INDEPENDENT'` explicitly.
+ */
+export type Rollup = 'INDEPENDENT' | 'WORST' | 'AVERAGE'
 
 /**
  * One entry in the document: a section, a question, or a follow-up question.
@@ -227,6 +246,11 @@ export interface DefinitionItem {
   type: ItemType
   /** Submit is blocked until this is answered. Never set on a section. */
   required: boolean
+  /**
+   * A failure here fails the whole inspection, whatever the score says. Never
+   * set on a section: a heading is never answered, so it can never fail.
+   */
+  critical: boolean
   /** Choice types only; seeded for YES_NO and YES_NO_NA. */
   options: DefinitionOption[]
   /** INTEGER only — shown beside the field, e.g. "psi". */
@@ -246,6 +270,14 @@ export interface DefinitionItem {
    * nothing else — a top-level item is always shown.
    */
   when?: string | null
+  /**
+   * How much this counts against its siblings. On a SECTION it weights the
+   * whole group; on a question it weights that question within its group.
+   * Absent means 1 — an unweighted procedure scores everything equally.
+   */
+  weight?: number | null
+  /** How this item's follow-ups contribute. Absent means INDEPENDENT. */
+  followRollup?: Rollup | null
   /** Questions shown only when this one is answered a particular way. Nests to any depth. */
   follow: DefinitionItem[]
   /**
@@ -268,6 +300,31 @@ export interface RangeRule {
   result?: string | null
 }
 
+/** What a {@link Threshold} is measured against. Absent means VERSION — the common case, so it costs no bytes. */
+export type Scope = 'VERSION' | 'SECTION'
+
+/**
+ * A band of score mapping to a result type — "90 to 100 is a Pass".
+ *
+ * Open-ended at both ends, the same convention as {@link RangeRule}: a missing
+ * `min` is "anything up to `max`", a missing `max` is "anything from `min`".
+ *
+ * `scope` absent (VERSION) reads the whole inspection's score, the common
+ * case. `SECTION` reads a single section's own score against the same set of
+ * bands, shared across every section rather than targeted at one — there is
+ * no field naming which section, because there is only one shared scale.
+ * Sending the literal string `'VERSION'` is not the same as omitting `scope`:
+ * the canonicaliser drops `null`/absent but keeps any non-blank text, so an
+ * explicit `'VERSION'` would change the version's hash. Omit it for the
+ * common case; send `'SECTION'` only when it is genuinely section-scoped.
+ */
+export interface Threshold {
+  scope?: Scope | null
+  min?: number | null
+  max?: number | null
+  result?: string | null
+}
+
 /**
  * The whole form, as one flat list.
  *
@@ -277,6 +334,8 @@ export interface RangeRule {
 export interface DefinitionDocument {
   schema: number
   items: DefinitionItem[]
+  /** Score bands that turn a final percentage into a result type. Empty means scoring is not configured. */
+  thresholds: Threshold[]
 }
 
 /**

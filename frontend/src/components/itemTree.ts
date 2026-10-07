@@ -1,5 +1,13 @@
 import { hasFixedOptions, isChoice, seededLabels, seededResults } from '../api/document'
-import type { DefinitionDocument, DefinitionItem, ItemSource, ItemType, RangeRule } from '../api/types'
+import type {
+  DefinitionDocument,
+  DefinitionItem,
+  ItemSource,
+  ItemType,
+  RangeRule,
+  Rollup,
+  Threshold,
+} from '../api/types'
 
 /**
  * The editing shape of a document, and the operations on it.
@@ -26,6 +34,9 @@ export interface OptionDraft {
   label: string
   /** A result-type key, or '' for an answer that decides nothing. */
   result: string
+  /** Points this answer is worth, as the text in the input. '' is unset, not zero — zero is a real score. */
+  score: string
+  excludeFromScoring: boolean
 }
 
 export interface ItemDraft {
@@ -35,6 +46,7 @@ export interface ItemDraft {
   help: string
   type: ItemType
   required: boolean
+  critical: boolean
   options: OptionDraft[]
   unit: string
   min: string
@@ -45,6 +57,10 @@ export interface ItemDraft {
   standard: string
   /** The parent option key that shows this item. Empty on a top-level item. */
   when: string
+  /** How much this counts against its siblings, as the text in the input. '' means unset (1). */
+  weight: string
+  /** '' means unset (INDEPENDENT) — the same '' sentinel `result` and `when` use for "absent". */
+  followRollup: Rollup | ''
   follow: ItemDraft[]
   /** A number question's bands. No screen edits them yet; they ride through. */
   rules: RangeRule[]
@@ -61,6 +77,7 @@ export function newItem(type: ItemType = 'TEXT'): ItemDraft {
       help: '',
       type: 'TEXT',
       required: false,
+      critical: false,
       options: [],
       unit: '',
       min: '',
@@ -69,6 +86,8 @@ export function newItem(type: ItemType = 'TEXT'): ItemDraft {
       alertProfile: '',
       standard: '',
       when: '',
+      weight: '',
+      followRollup: '',
       follow: [],
       rules: [],
     },
@@ -80,13 +99,18 @@ export function newItem(type: ItemType = 'TEXT'): ItemDraft {
 export const STARTER_ANSWERS = 2
 
 export function newOption(label = ''): OptionDraft {
-  return { uid: uid(), label, result: '' }
+  return { uid: uid(), label, result: '', score: '', excludeFromScoring: false }
 }
 
 // --- loading and saving --------------------------------------------------
 
 export function fromDocument(document: DefinitionDocument): ItemDraft[] {
   return document.items.map(toDraft)
+}
+
+/** '' means absent — unset is different from zero, so a number is never defaulted to '0'. */
+function numberToText(n: number | null | undefined): string {
+  return n === null || n === undefined ? '' : String(n)
 }
 
 function toDraft(item: DefinitionItem): ItemDraft {
@@ -97,28 +121,37 @@ function toDraft(item: DefinitionItem): ItemDraft {
     help: item.help ?? '',
     type: item.type,
     required: item.required,
+    critical: item.critical,
     options: item.options.map((o) => ({
       uid: uid(),
       key: o.key,
       label: o.label,
       result: o.result ?? '',
+      score: numberToText(o.score),
+      excludeFromScoring: o.excludeFromScoring,
     })),
     unit: item.unit ?? '',
-    min: item.min === null || item.min === undefined ? '' : String(item.min),
-    max: item.max === null || item.max === undefined ? '' : String(item.max),
+    min: numberToText(item.min),
+    max: numberToText(item.max),
     workOrder: item.workOrder,
     alertProfile: item.alertProfile ?? '',
     source: item.source,
     standard: item.standard ?? '',
     when: item.when ?? '',
+    weight: numberToText(item.weight),
+    followRollup: item.followRollup ?? '',
     follow: item.follow.map(toDraft),
     rules: item.rules ?? [],
   }
 }
 
-/** Keys ride through untouched; a blank one is simply absent, so the server mints it. */
-export function toDocument(schema: number, items: ItemDraft[]): DefinitionDocument {
-  return { schema, items: items.map(toItem) }
+/**
+ * Keys ride through untouched; a blank one is simply absent, so the server
+ * mints it. `thresholds` is document-level, not per item, so it rides through
+ * exactly as it was loaded — no screen edits it yet.
+ */
+export function toDocument(schema: number, items: ItemDraft[], thresholds: Threshold[] = []): DefinitionDocument {
+  return { schema, items: items.map(toItem), thresholds }
 }
 
 /**
@@ -136,31 +169,40 @@ function isSentOption(option: OptionDraft): boolean {
   return Boolean(option.key) || option.label.trim() !== ''
 }
 
-function toItem(draft: ItemDraft): DefinitionItem {
-  const number = (text: string): number | undefined =>
-    text.trim() === '' ? undefined : Number(text)
+/** '' or blank is unset; a real number — including 0 — is kept. */
+function textToNumber(text: string): number | undefined {
+  return text.trim() === '' ? undefined : Number(text)
+}
 
+function toItem(draft: ItemDraft): DefinitionItem {
   return {
     key: draft.key,
     text: draft.text.trim(),
     help: draft.help.trim() || undefined,
     type: draft.type,
     required: draft.type === 'SECTION' ? false : draft.required,
+    critical: draft.critical,
     options: draft.options
       .filter(isSentOption)
       .map((o) => ({
         key: o.key,
         label: o.label.trim(),
         result: o.result || undefined,
+        score: textToNumber(o.score),
+        excludeFromScoring: o.excludeFromScoring,
       })),
     unit: draft.unit.trim() || undefined,
-    min: number(draft.min),
-    max: number(draft.max),
+    min: textToNumber(draft.min),
+    max: textToNumber(draft.max),
     workOrder: draft.workOrder,
     alertProfile: draft.alertProfile.trim() || undefined,
     source: draft.source ?? undefined,
     standard: draft.standard.trim() || undefined,
     when: draft.when || undefined,
+    weight: textToNumber(draft.weight),
+    // Never the literal 'INDEPENDENT': the canonicaliser keeps any non-blank
+    // text, so that would change the hash where omitting the field does not.
+    followRollup: draft.followRollup || undefined,
     follow: draft.follow.map(toItem),
     rules: draft.rules.length > 0 ? draft.rules : undefined,
   }
@@ -302,7 +344,15 @@ export function patchIn(
 export function removeIn(items: ItemDraft[], target: string): ItemDraft[] {
   return items
     .filter((item) => item.uid !== target)
-    .map((item) => ({ ...item, follow: removeIn(item.follow, target) }))
+    .map((item) => {
+      const follow = removeIn(item.follow, target)
+      // followRollup only means something when there is a follow-up to roll
+      // up; the server refuses one set on an item with none. Removing the
+      // last follow-up must clear it here too, or a scored item that loses
+      // its only follow-up keeps saying how that follow-up should have
+      // contributed.
+      return follow.length === 0 ? { ...item, follow, followRollup: '' } : { ...item, follow }
+    })
 }
 
 /** Moves an item among its own siblings. Nothing changes level by moving. */
@@ -426,9 +476,11 @@ export function retype(item: ItemDraft, type: ItemType): ItemDraft {
 
   if (type === 'SECTION') {
     // A section is a heading: never answered, so never required, never
-    // conditional, and nothing hangs off it.
-    return { ...next, required: false, options: [], follow: [], when: '', workOrder: false,
-      alertProfile: '', unit: '', min: '', max: '', rules: [] }
+    // critical, never conditional, and nothing hangs off it. `weight` is kept —
+    // a section is weighted as a group, the same as a question is weighted on
+    // its own, and the validator accepts it on both.
+    return { ...next, required: false, critical: false, options: [], follow: [], followRollup: '',
+      when: '', workOrder: false, alertProfile: '', unit: '', min: '', max: '', rules: [] }
   }
 
   if (!isChoice(type)) {

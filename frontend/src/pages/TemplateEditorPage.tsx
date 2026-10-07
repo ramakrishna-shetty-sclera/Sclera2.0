@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { createProcedure, getDraft, getProcedure, saveDraft, updateProcedure } from '../api/templates'
 import { ApiError } from '../api/client'
 import { numberItems } from '../api/document'
-import type { ItemType, ResultType } from '../api/types'
+import type { ItemType, ResultType, Threshold } from '../api/types'
 import { listResultTypes } from '../api/resultTypes'
 import { useAuth } from '../auth/AuthContext'
 import { ItemEditor } from '../components/ItemEditor'
@@ -39,8 +39,8 @@ import {
 const AUTOSAVE_MS = 30_000
 
 /** The document as it would be sent — what "has this changed since the last save" compares. */
-const snapshotOf = (schema: number, items: ItemDraft[]): string =>
-  JSON.stringify(toDocument(schema, items))
+const snapshotOf = (schema: number, items: ItemDraft[], thresholds: Threshold[]): string =>
+  JSON.stringify(toDocument(schema, items, thresholds))
 
 /**
  * Carried through the navigation that creating a procedure forces.
@@ -90,6 +90,14 @@ export function TemplateEditorPage() {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [items, setItems] = useState<ItemDraft[]>([newItem()])
+  /**
+   * Score bands that turn a final percentage into a result type. Document-level,
+   * not per item. No screen edits them yet — they ride through untouched, the
+   * same way an INTEGER question's rules do — so this state exists only to
+   * make sure they survive a load-and-save round trip rather than being
+   * silently dropped.
+   */
+  const [thresholds, setThresholds] = useState<Threshold[]>([])
   const [changeNote, setChangeNote] = useState('')
   const [schema, setSchema] = useState(2)
   /**
@@ -106,7 +114,7 @@ export function TemplateEditorPage() {
    */
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve())
   /** What the server holds, as a snapshot — the thing "unsaved changes" is measured against. */
-  const [savedSnapshot, setSavedSnapshot] = useState(() => snapshotOf(2, [newItem()]))
+  const [savedSnapshot, setSavedSnapshot] = useState(() => snapshotOf(2, [newItem()], []))
   /** The snapshot an autosave was refused on, so a deterministic refusal is not retried every tick. */
   const failedSnapshot = useRef<string | null>(null)
   const [autosave, setAutosave] = useState<{ phase: 'idle' | 'saving' | 'failed'; at: Date | null }>({
@@ -159,12 +167,14 @@ export function TemplateEditorPage() {
         setDescription(procedure.description ?? '')
         setOriginal({ name: procedure.name, description: procedure.description ?? '' })
         setSchema(draft.definition.schema)
+        const loadedThresholds = draft.definition.thresholds ?? []
+        setThresholds(loadedThresholds)
         rowVersionRef.current = draft.rowVersion
         let loadedItems = fromDocument(draft.definition)
         if (loadedItems.length === 0) loadedItems = [newItem()]
         // What the server holds, taken BEFORE any pending follow-up is added:
         // that follow-up is not saved yet, so it should read as a change.
-        setSavedSnapshot(snapshotOf(draft.definition.schema, loadedItems))
+        setSavedSnapshot(snapshotOf(draft.definition.schema, loadedItems, loadedThresholds))
         failedSnapshot.current = null
         // Finishes a "+ Follow-up" that had to create the procedure first. The
         // answers now carry the keys the server minted, so the follow-up has
@@ -215,12 +225,16 @@ export function TemplateEditorPage() {
    * The timer fires with whatever the closure that started it saw, so it reads
    * the current values from here instead.
    */
-  const latest = useRef({ id, editing, items, schema, changeNote, conflict, busy, savingFor, savedSnapshot })
-  latest.current = { id, editing, items, schema, changeNote, conflict, busy, savingFor, savedSnapshot }
+  const latest = useRef({
+    id, editing, items, schema, thresholds, changeNote, conflict, busy, savingFor, savedSnapshot,
+  })
+  latest.current = {
+    id, editing, items, schema, thresholds, changeNote, conflict, busy, savingFor, savedSnapshot,
+  }
 
   async function autosaveNow() {
     const s = latest.current
-    const snapshot = snapshotOf(s.schema, s.items)
+    const snapshot = snapshotOf(s.schema, s.items, s.thresholds)
     const skip = autosaveSkipReason({
       ready: s.editing && rowVersionRef.current !== null,
       conflict: s.conflict,
@@ -239,7 +253,7 @@ export function TemplateEditorPage() {
     try {
       const saved = await enqueue(() =>
         saveDraft(s.id!, {
-          definition: toDocument(s.schema, sent),
+          definition: toDocument(s.schema, sent, s.thresholds),
           rowVersion: rowVersionRef.current!,
           changeNote: s.changeNote.trim() || undefined,
         }),
@@ -251,7 +265,8 @@ export function TemplateEditorPage() {
       // autosave would re-key every new question and answer.
       const minted = keysFromSaved(sent, saved.definition.items)
       setItems((prev) => applyKeys(prev, minted))
-      setSavedSnapshot(snapshotOf(s.schema, applyKeys(sent, minted)))
+      setThresholds(saved.definition.thresholds ?? [])
+      setSavedSnapshot(snapshotOf(s.schema, applyKeys(sent, minted), saved.definition.thresholds ?? []))
       failedSnapshot.current = null
       setAutosave({ phase: 'idle', at: new Date() })
     } catch (e) {
@@ -286,8 +301,8 @@ export function TemplateEditorPage() {
   }, [editing, id, permissions.canManageTemplates])
 
   const docDirty = useMemo(
-    () => snapshotOf(schema, items) !== savedSnapshot,
-    [schema, items, savedSnapshot],
+    () => snapshotOf(schema, items, thresholds) !== savedSnapshot,
+    [schema, items, thresholds, savedSnapshot],
   )
   const identityDirty = editing
     ? name.trim() !== original.name || description.trim() !== original.description
@@ -382,13 +397,13 @@ export function TemplateEditorPage() {
         const created = await createProcedure({
           name: name.trim(),
           description: description.trim() || undefined,
-          definition: toDocument(schema, items),
+          definition: toDocument(schema, items, thresholds),
         })
         navigate(`/templates/${created.id}/edit`, { state: { addFollowAt: path } })
         return
       }
 
-      const definition = toDocument(schema, items)
+      const definition = toDocument(schema, items, thresholds)
       const saved = await enqueue(() =>
         saveDraft(id!, {
           definition,
@@ -400,7 +415,9 @@ export function TemplateEditorPage() {
       // The follow-up added below is not saved yet, so the snapshot is taken
       // from what came back and not from what is about to be shown.
       const reloaded = fromDocument(saved.definition)
-      setSavedSnapshot(snapshotOf(schema, reloaded))
+      const reloadedThresholds = saved.definition.thresholds ?? []
+      setThresholds(reloadedThresholds)
+      setSavedSnapshot(snapshotOf(schema, reloaded, reloadedThresholds))
       failedSnapshot.current = null
       setItems(withFollowAt(reloaded, path))
     } catch (e) {
@@ -441,7 +458,7 @@ export function TemplateEditorPage() {
     setRefusal(null)
     setConflict(false)
     try {
-      const definition = toDocument(schema, items)
+      const definition = toDocument(schema, items, thresholds)
 
       if (!editing) {
         const created = await createProcedure({
