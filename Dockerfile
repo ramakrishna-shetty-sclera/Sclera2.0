@@ -1,4 +1,4 @@
-# Multi-stage build for either service module — used by the `app` profile in
+# Multi-stage build for any service module — used by the `app` profile in
 # docker-compose.yml:
 #   docker build --build-arg MODULE=sclera-procedure-service -t sclera/procedure-service .
 
@@ -18,6 +18,7 @@ RUN mvn -q install:install-file \
 COPY pom.xml .
 COPY sclera-procedure-service/ sclera-procedure-service/
 COPY sclera-inspection-service/ sclera-inspection-service/
+COPY sclera-helper-service/ sclera-helper-service/
 RUN mvn -q -pl ${MODULE} -am package -DskipTests
 
 FROM eclipse-temurin:21-jre

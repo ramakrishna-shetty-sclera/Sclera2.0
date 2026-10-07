@@ -10,7 +10,7 @@ Task Dashboard, Task Map, Reactive Service (QR) and Tagged Procedures.
 |---|---|---|---|---|
 | `sclera-procedure-service` | 8095 | `sclera-procedure-service` | `sclera_procedure` | Author procedure templates: draft → publish → new draft, with immutable published versions |
 | `sclera-inspection-service` | 8096 | `sclera-inspection-service` | `sclera_inspection` | Inspection configs, tagging, checklist lifecycle, reactive services (QR), tagged procedures — plus the original template-run flow |
-| `sclera-helper-service` | 8097 | — (no sidecar) | `sclera_helper` | Locations (building → floor → location) and assets (IP / non-IP) |
+| `sclera-helper-service` | 8097 | `sclera-helper-service` | `sclera_helper` | Locations (building → floor → location) and assets (IP / non-IP) |
 | `sclera2.0v-api-gateway` | 8080 | — (no sidecar locally) | — (Redis sessions) | Single entry point: BFF login (session cookie + CSRF), JWT relay, routing |
 
 ## Architecture
@@ -134,7 +134,7 @@ docker compose up -d
 # 3. Start the services — one terminal each
 .\run-procedure-service.ps1     # procedure-service  on :8095 (Dapr sidecar)
 .\run-inspection-service.ps1    # inspection-service on :8096 (Dapr sidecar)
-.\run-helper-service.ps1        # helper-service     on :8097 (plain jar)
+.\run-helper-service.ps1        # helper-service     on :8097 (Dapr sidecar)
 .\run-api-gateway.ps1           # api-gateway        on :8080 (plain jar)
 
 # 4. Frontend
@@ -164,7 +164,7 @@ docker compose --profile app up -d --build    # first build takes a few minutes
 .\setup-keycloak.ps1                          # if Keycloak is fresh
 ```
 
-Ports and usage are identical to host mode (8095/8096, tokens from
+Ports and usage are identical to host mode (8095/8096/8097, tokens from
 `localhost:8180`). Don't mix modes — the host `run-*.ps1` scripts and the `app`
 profile fight over the same ports. Notes on how it works:
 
