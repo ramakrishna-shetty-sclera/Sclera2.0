@@ -21,7 +21,7 @@ OpenFGA · port **8095** · package root `com.sclera.applicationplane.procedure`
 | The question tree: categories, questions, sub-questions, options | Evidence captured during an inspection |
 | Result types per organization (Pass, Fail, Amber, …) | Signature capture and record locking |
 | Scoring configuration and the evaluation of answers into results | Schedules, assignees, downtime |
-| Reference documents attached to a template or question | The property hierarchy and its vocabulary |
+| A library of reference documents, cited by id from a procedure or question | The property hierarchy and its vocabulary |
 | The global template library, import and export | Cases and work orders |
 
 The rule across Sclera: **store the foreign id plus a denormalised display name, never a database
@@ -172,6 +172,11 @@ on purpose — the delete guard must see every property's versions — and no fo
 `result_type`, since the guard is what stops a referenced type disappearing. There is no backfill:
 versions published before the table existed held test data only and are not counted.
 
+`version_document_ref(version_id, document_id)` is the identical pattern, answering *"is this document
+still cited by any published version?"* for `procedure_document`'s own delete guard — one row per
+distinct document id per version, no row-level security, no foreign key, no backfill, for exactly the
+same reasons.
+
 `version_target_type(version_id, kind, key)` answers *"which published procedures apply to target
 type Y?"*, with `kind ∈ HIERARCHY_LEVEL, LOCATION_TYPE, ASSET_CLASS, ASSET_TAG` (a database check
 constraint). Built, and written the same way as the result-type index: one row per distinct
@@ -185,20 +190,48 @@ new version. It follows the same three decisions:
   `procedure_template`, which does have it.
 - **No backfill.** Nothing published before the table existed is counted.
 
+All three are written at publish from the document. They exist because `definition_json` is `TEXT` and
+therefore unqueryable.
 **No rows is not "applies to nothing" — it is "applies to anything".** That is what every procedure
 authored before this feature is, so the discovery query reads the absence of rows as a match.
 
 Both indexes exist because `definition_json` is `TEXT` and therefore unqueryable.
 
-### `procedure_document` — reference documents
+### `procedure_document` — a library of reference documents
 
-`id, version_id, question_key NULL, name, mime_type, size_bytes, location, display_order,
-created_by, created_at`
+| Column | Notes |
+|---|---|
+| `id`, `org_id`, `name`, `mime_type`, `size_bytes` | |
+| `property_id` | `NULL` — organization-wide, visible from every property. Set — that property only, fully isolated from every other. Same shape and the same row-level-security policy as `procedure_template`'s. |
+| `location` | opaque — the bytes live behind the helper service's storage port and this service never touches a file. Never a URL: a signed URL expires, so a fresh one is generated on every request from this key. |
+| `active` | the escape hatch `delete` points at once a published version cites the document — see below |
+| `uploaded_by`, `uploaded_at` | |
 
-A null `question_key` means the document is attached to the template rather than to one question.
-`location` is opaque — the bytes live behind the storage port and this service never touches a file.
-The definition document references documents by id and name only, never by content, so re-uploading
-the same file cannot change the hash.
+Upload once, cite from any number of procedures: a version cites this row **by id only**, from inside
+its own `documents[]` (`id`, and an optional `questionKey` for a document attached to one question
+rather than the whole procedure). Never by name, size or location — those resolve live, so renaming a
+document in the library reaches every version citing it instead of freezing a stale copy. The citation
+itself, and which question it hangs off, is what changes the hash.
+
+**An organization-wide procedure may cite only an organization-wide document.** A property's procedure
+may cite its own property's documents or the organization's, never another property's. Citing a
+property's document from an organization-wide procedure would make it reachable from every property
+through that procedure — exactly what property isolation forbids. Checked at publish, against
+`citableDocumentIds`: every active document that is organization-wide or belongs to the **procedure's
+own property**, regardless of which property the author happens to be standing in while editing it.
+
+**Deletion is conditional**, the same shape as `result_type`'s and decided by one query against
+`version_document_ref`:
+
+| Situation | Behaviour |
+|---|---|
+| Never cited by a published version | hard delete allowed |
+| Cited by any published version | delete refused; deactivate instead |
+
+The refusal names the cost and the way out — *"Standard.pdf is used by 2 published versions, so it
+cannot be deleted; deactivate it instead"*. As with result types, the count is **organization-wide**,
+counted from every property, and **drafts don't count** — a draft commits to nothing, so a document
+only a draft cites still deletes.
 
 ### `procedure_consumer`, `procedure_usage` and `procedure_favourite`
 
@@ -512,6 +545,8 @@ publicly.
 | Evaluation | evaluate answers against any version, draft included (public); against a published version by id (internal, for the inspection service) |
 | Discovery | `GET /api/v1/procedure-templates/discover?consumer=&kind=&key=` — the active procedures that apply to a target; see *Discovery* below |
 | Documents | attach to a version or question, list, remove |
+| Discovery | published procedures by consumer and target type |
+| Documents | create (upload already done via helper), list, get, activate, deactivate, delete (conditional) |
 | Library | browse, search and filter global templates; favourite; import; export; link, unlink |
 | Updates | check availability, view diff, apply, defer |
 | Usage | record and query which consumers use which version |

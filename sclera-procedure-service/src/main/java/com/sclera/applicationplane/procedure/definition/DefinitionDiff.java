@@ -38,12 +38,17 @@ import java.util.Set;
  *                           same way: widening v1's extinguishers to v2's
  *                           extinguishers and hose reels changes the version
  *                           without touching a single question.
+ * @param documentsChanged  which documents are cited, and which question each
+ *                          hangs off, is version content — the same reason
+ *                          {@code thresholdsChanged} is reported separately
+ *                          rather than folded into a row in the list.
  */
 public record DefinitionDiff(
         boolean identical,
         boolean orderChanged,
         boolean thresholdsChanged,
         boolean targetTypesChanged,
+        boolean documentsChanged,
         List<ItemChange> items
 ) {
     public enum Kind { ADDED, REMOVED, MODIFIED }
@@ -51,8 +56,8 @@ public record DefinitionDiff(
     /**
      * @param changedFields any of: text, help, type, required, critical,
      *                      options, unit, min, max, rules, workOrder,
-     *                      alertProfile, weight, followRollup, standard, when,
-     *                      parent
+     *                      alertProfile, evidenceRequired, weight, followRollup,
+     *                      standard, when, parent
      */
     public record ItemChange(
             String key,
@@ -87,12 +92,15 @@ public record DefinitionDiff(
                 List.copyOf(before.keySet()), List.copyOf(after.keySet()));
         boolean thresholdsChanged = !from.thresholds().equals(to.thresholds());
         boolean targetTypesChanged = !from.targetTypes().equals(to.targetTypes());
+        boolean documentsChanged = !from.documents().equals(to.documents());
 
         return new DefinitionDiff(
+                changes.isEmpty() && !orderChanged && !thresholdsChanged && !documentsChanged,
                 changes.isEmpty() && !orderChanged && !thresholdsChanged && !targetTypesChanged,
                 orderChanged,
                 thresholdsChanged,
                 targetTypesChanged,
+                documentsChanged,
                 List.copyOf(changes));
     }
 
@@ -120,6 +128,7 @@ public record DefinitionDiff(
         if (!b.rules().equals(a.rules())) fields.add("rules");
         if (b.workOrder() != a.workOrder()) fields.add("workOrder");
         if (!Objects.equals(b.alertProfile(), a.alertProfile())) fields.add("alertProfile");
+        if (b.evidenceRequired() != a.evidenceRequired()) fields.add("evidenceRequired");
         if (!Objects.equals(b.weight(), a.weight())) fields.add("weight");
         if (b.followRollup() != a.followRollup()) fields.add("followRollup");
         if (!Objects.equals(b.standard(), a.standard())) fields.add("standard");

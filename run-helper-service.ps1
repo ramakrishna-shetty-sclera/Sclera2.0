@@ -3,6 +3,8 @@
 # behind the same JWT + OpenFGA checks as the other services. It is the
 # temporary stand-in for the external services; the sidecar is what lets the
 # procedure service call it over Dapr invocation (app-id sclera-helper-service).
+# Reference documents' bytes go to the local storage provider by default —
+# ./data/documents, relative to wherever this script is run from.
 # Prereqs: docker compose up -d, dapr init, setup-keycloak.ps1, setup-openfga.ps1,
 #          sclera-common installed in ~/.m2, and the jar built:
 #   mvn -f sclera-helper-service/pom.xml package "-Dmaven.test.skip=true"

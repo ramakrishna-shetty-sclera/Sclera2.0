@@ -229,6 +229,11 @@ services:
       SCLERA_FGA_API_URL: http://openfga:8080
     ports:
       - "8097:8097"
+    volumes:
+      # Reference documents the local storage provider writes, named so they
+      # survive a restart the same way postgres-data does. Irrelevant once
+      # SCLERA_STORAGE_PROVIDER=s3 is real; left mounted either way.
+      - helper-documents:/app/data/documents
     depends_on:
       postgres:
         condition: service_healthy
@@ -262,3 +267,4 @@ services:
 volumes:
   postgres-data:
   dapr-nr:
+  helper-documents:

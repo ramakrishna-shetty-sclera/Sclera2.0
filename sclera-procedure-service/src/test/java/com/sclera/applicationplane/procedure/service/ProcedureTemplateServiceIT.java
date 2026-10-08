@@ -75,9 +75,12 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
             List<String> policies = jdbc.queryForList(
                     "SELECT policyname FROM pg_policies WHERE schemaname = ? AND tablename = 'procedure_template'",
                     String.class, schema);
+            List<String> documentPolicies = jdbc.queryForList(
+                    "SELECT policyname FROM pg_policies WHERE schemaname = ? AND tablename = 'procedure_document'",
+                    String.class, schema);
 
             assertThat(tables).contains("procedure_template", "procedure_template_version", "version_result_type_ref",
-                    "version_target_type", "procedure_consumer")
+                    "version_target_type", "procedure_consumer", "procedure_document", "version_document_ref")
                     .doesNotContain("question_template", "template_section", "question");
             // Bump this when a tenant migration is added. Pinning it is the
             // point: it makes anyone adding one notice that every existing
@@ -87,6 +90,7 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
             // failure is silent — so provisioning asserts the policy arrived,
             // not merely that the migration ran.
             assertThat(policies).containsExactly("property_isolation");
+            assertThat(documentPolicies).containsExactly("property_isolation");
         }
     }
 
@@ -291,10 +295,10 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
             // PASS and FAIL are seeded for a new organization; AMBER is not.
             Item mappedToAmber = new Item(null, "Is the gauge in range?", null, QuestionType.YES_NO, false, false,
                     List.of(new Option(null, "Yes", "PASS", null, false), new Option(null, "Partly", "AMBER", null, false)),
-                    null, null, null, false, null, null, null, null, null, null, List.of(), List.of());
+                    null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
             Item onlyOneAnswer = new Item(null, "Is the seal intact?", null, QuestionType.DROPDOWN, false, false,
                     List.of(new Option(null, "Yes", "PASS", null, false)),
-                    null, null, null, false, null, null, null, null, null, null, List.of(), List.of());
+                    null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
             UUID id = service.create(new CreateTemplateRequest("Blockers", null, null,
                     new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
                             List.of(mappedToAmber, onlyOneAnswer), List.of(), List.of()))).id();
@@ -490,7 +494,7 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
     @SafeVarargs
     private static DefinitionDocument doc(List<Item>... groups) {
         return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
-                Stream.of(groups).flatMap(List::stream).toList(), List.of(), List.of());
+                Stream.of(groups).flatMap(List::stream).toList(), List.of());
     }
 
     private static List<Item> section(String key, String title, Item... questions) {

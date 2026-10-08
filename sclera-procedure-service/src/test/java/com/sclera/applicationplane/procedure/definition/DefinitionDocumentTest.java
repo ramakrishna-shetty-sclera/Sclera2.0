@@ -23,12 +23,12 @@ class DefinitionDocumentTest {
 
     private static Item q(String key) {
         return new Item(key, "Question " + key, null, QuestionType.TEXT, false, false, List.of(), null, null, null,
-                false, null, null, null, null, null, null, List.of(), List.of());
+                false, null, false, null, null, null, null, null, List.of(), List.of());
     }
 
     private static Item section(String key) {
         return new Item(key, "Section " + key, null, QuestionType.SECTION, false, false, List.of(), null, null, null,
-                false, null, null, null, null, null, null, List.of(), List.of());
+                false, null, false, null, null, null, null, null, List.of(), List.of());
     }
 
     private static DefinitionDocument doc(Item... items) {

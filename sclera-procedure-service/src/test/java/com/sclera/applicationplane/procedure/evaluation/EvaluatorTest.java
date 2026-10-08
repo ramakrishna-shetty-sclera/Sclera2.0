@@ -65,7 +65,7 @@ class EvaluatorTest {
 
         Item build() {
             return new Item(key, "Question " + key, null, type, false, critical, options, null, null, null,
-                    workOrder, workOrder ? "ap-" + key : null, weight, null, null, when, rollup, follow, rules);
+                    workOrder, workOrder ? "ap-" + key : null, false, weight, null, null, when, rollup, follow, rules);
         }
     }
 
@@ -88,7 +88,7 @@ class EvaluatorTest {
 
     private static Item section(String key, Integer weight) {
         return new Item(key, "Section " + key, null, QuestionType.SECTION, false, false, List.of(), null, null,
-                null, false, null, weight, null, null, null, null, List.of(), List.of());
+                null, false, null, false, weight, null, null, null, null, List.of(), List.of());
     }
 
     private static Threshold band(Integer min, Integer max, String result) {

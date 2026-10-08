@@ -17,6 +17,7 @@ import com.sclera.applicationplane.procedure.domain.ProcedureConsumer;
 import com.sclera.applicationplane.procedure.domain.ProcedureTemplate;
 import com.sclera.applicationplane.procedure.domain.ProcedureTemplateVersion;
 import com.sclera.applicationplane.procedure.domain.TemplateStatus;
+import com.sclera.applicationplane.procedure.domain.VersionDocumentRef;
 import com.sclera.applicationplane.procedure.domain.VersionResultTypeRef;
 import com.sclera.applicationplane.procedure.domain.VersionTargetType;
 import com.sclera.applicationplane.procedure.domain.VersionState;
@@ -42,11 +43,12 @@ import com.sclera.applicationplane.procedure.event.ProcedureTemplateEvent;
 import com.sclera.applicationplane.procedure.event.TemplateEventPublisher;
 import com.sclera.applicationplane.procedure.mapper.ProcedureTemplateMapper;
 import com.sclera.applicationplane.procedure.repository.ProcedureConsumerRepository;
+import com.sclera.applicationplane.procedure.repository.ProcedureDocumentRepository;
 import com.sclera.applicationplane.procedure.repository.ProcedureTemplateRepository;
 import com.sclera.applicationplane.procedure.repository.ProcedureTemplateVersionRepository;
 import com.sclera.applicationplane.procedure.repository.ResultTypeRepository;
+import com.sclera.applicationplane.procedure.repository.VersionDocumentRefRepository;
 import com.sclera.applicationplane.procedure.repository.VersionResultTypeRefRepository;
-import com.sclera.applicationplane.procedure.repository.VersionTargetTypeRepository;
 import com.sclera.applicationplane.procedure.tenancy.PropertyContext;
 import com.sclera.controlplane.common.exception.BusinessRuleException;
 import com.sclera.controlplane.common.exception.ConflictException;
@@ -97,6 +99,8 @@ public class ProcedureTemplateService {
     private final VersionTargetTypeRepository targetTypeRefs;
     private final ProcedureConsumerRepository consumers;
     private final CachedVocabulary vocabulary;
+    private final ProcedureDocumentRepository documents;
+    private final VersionDocumentRefRepository documentRefs;
 
     public ProcedureTemplateService(ProcedureTemplateRepository templates,
                                     ProcedureTemplateVersionRepository versions,
@@ -109,6 +113,9 @@ public class ProcedureTemplateService {
                                     VersionTargetTypeRepository targetTypeRefs,
                                     ProcedureConsumerRepository consumers,
                                     CachedVocabulary vocabulary) {
+                                    VersionResultTypeRefRepository resultTypeRefs,
+                                    ProcedureDocumentRepository documents,
+                                    VersionDocumentRefRepository documentRefs) {
         this.templates = templates;
         this.versions = versions;
         this.canonicalizer = canonicalizer;
@@ -120,6 +127,8 @@ public class ProcedureTemplateService {
         this.targetTypeRefs = targetTypeRefs;
         this.consumers = consumers;
         this.vocabulary = vocabulary;
+        this.documents = documents;
+        this.documentRefs = documentRefs;
     }
 
     // --- template identity --------------------------------------------------
@@ -338,7 +347,7 @@ public class ProcedureTemplateService {
         // built for a list.
         DefinitionDocument document = canonicalizer.parse(draft.getDefinitionJson());
         List<String> blockers = DefinitionValidator.publishBlockers(document, activeResultKeys(template.getOrgId()),
-                unknownTargetTypes(document, template.getOrgId()));
+                unknownTargetTypes(document, template.getOrgId()), citableDocumentIds(template));
         if (!blockers.isEmpty()) {
             throw new BusinessRuleException("This procedure cannot be published yet: "
                     + String.join("; ", blockers));
@@ -371,6 +380,9 @@ public class ProcedureTemplateService {
         // that means it applies to anything, not to nothing.
         targetTypeRefs.saveAll(document.targetTypeKeys().stream()
                 .map(target -> new VersionTargetType(draft.getId(), target.kind(), target.key()))
+                .toList());
+        documentRefs.saveAll(document.citedDocumentIds().stream()
+                .map(docId -> new VersionDocumentRef(draft.getId(), UUID.fromString(docId)))
                 .toList());
         template.setCurrentPublishedVersionId(draft.getId());
         templates.flush();
@@ -540,6 +552,19 @@ public class ProcedureTemplateService {
      * left out: deactivating a result type is how an organization retires it,
      * and a new version should not start using it again.
      */
+    /**
+     * The documents a draft of this template may cite — the sibling of
+     * {@link #activeResultKeys}, and needing the template's own property for
+     * the same reason that one does not: an organization-wide procedure may
+     * cite only organization-wide documents, whatever property the author
+     * happens to be standing in while they edit it.
+     */
+    private Set<String> citableDocumentIds(ProcedureTemplate template) {
+        return documents.findCitable(template.getOrgId(), template.getPropertyId()).stream()
+                .map(d -> d.getId().toString())
+                .collect(Collectors.toSet());
+    }
+
     private Set<String> activeResultKeys(UUID orgId) {
         return resultTypes.findAllByOrgIdAndActiveOrderBySeverityOrderAsc(orgId, true).stream()
                 .map(rt -> rt.getKey())

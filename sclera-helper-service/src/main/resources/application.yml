@@ -99,6 +99,16 @@ keycloak:
 sclera:
   async:
     enabled: true
+  # The storage port (C2): where a reference document's bytes actually live.
+  # "local" (the default) writes to a directory on this machine — a Docker
+  # named volume in compose, data/documents on a bare java -jar run. "s3" is
+  # specified in docs/external-services.md and not implemented; setting the
+  # provider to it before that lands fails to start, which is the point —
+  # better than silently falling back to local in what looks like production.
+  storage:
+    provider: ${SCLERA_STORAGE_PROVIDER:local}
+    local:
+      root-dir: ${SCLERA_STORAGE_LOCAL_ROOT:data/documents}
   # OpenFGA fine-grained authorization. The store is resolved by NAME at first
   # use (created by setup-openfga.ps1). Set SCLERA_FGA_ENABLED=false to run
   # without OpenFGA (all checks allow; JWT + org scoping still apply).

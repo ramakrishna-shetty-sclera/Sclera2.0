@@ -664,6 +664,110 @@ Content-Type: application/json
 
 ### E9. Tidy up
 POST {{host}}/api/v1/procedure-templates/{{previewId}}/archive
+
+###############################################################################
+# Documents — a library cited by id, and evidenceRequired
+#
+# Bytes never pass through this service. Upload goes straight to the helper
+# service (:8097), which hands back an opaque location; this service only
+# ever stores that location plus metadata, and a version cites the library
+# row by id — never by name, size or location, all of which resolve live.
+# Deleting a document a published version still cites is refused the same
+# way deleting an in-use result type is.
+###############################################################################
+
+@helperHost = http://localhost:8097
+
+### D1. Upload a document through the helper service
+POST {{helperHost}}/api/v1/helper/documents
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=DocBoundary
+
+--DocBoundary
+Content-Disposition: form-data; name="file"; filename="NFPA10.pdf"
+Content-Type: application/pdf
+
+NFPA 10 extract — portable fire extinguishers
+--DocBoundary--
+
+> {% client.global.set("docLocation", response.body.data.location); %}
+
+### D2. Write the library row — organization-wide, no property header on this request
+POST {{host}}/api/v1/procedure-documents
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "NFPA 10.pdf", "mimeType": "application/pdf", "sizeBytes": 46, "location": "{{docLocation}}" }
+
+> {% client.global.set("docId", response.body.data.id); %}
+
+### D3. List the library — the new document, organization-wide (propertyId null)
+GET {{host}}/api/v1/procedure-documents
+Authorization: Bearer {{token}}
+
+### D4. A location the helper service does not recognise is refused
+POST {{host}}/api/v1/procedure-documents
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Nothing here.pdf", "location": "stub-t_nope/nope.pdf" }
+
+### D5. Author a procedure citing the document at procedure level, and requiring evidence on a question
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Extinguisher check {{$random.integer(1000, 9999)}}",
+  "definition": {
+    "items": [
+      { "text": "Is the extinguisher in place?", "type": "YES_NO", "required": true,
+        "evidenceRequired": true,
+        "options": [
+          { "label": "Yes", "result": "PASS" },
+          { "label": "No",  "result": "FAIL" }
+        ]
+      }
+    ],
+    "documents": [ { "id": "{{docId}}" } ]
+  }
+}
+
+> {% client.global.set("docProcId", response.body.data.id); %}
+
+### D6. Publish — succeeds; writes version_document_ref for {{docId}}
+POST {{host}}/api/v1/procedure-templates/{{docProcId}}/publish
+Authorization: Bearer {{token}}
+
+### D7. A document a published version cites cannot be deleted — 400, names deactivate
+DELETE {{host}}/api/v1/procedure-documents/{{docId}}
+Authorization: Bearer {{token}}
+
+### D8. Deactivate it instead — the version keeps citing and resolving it
+POST {{host}}/api/v1/procedure-documents/{{docId}}/deactivate
+Authorization: Bearer {{token}}
+
+### D9. A procedure citing a deactivated (or otherwise non-citable) document is refused at publish
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Citing a deactivated document", "definition": {
+  "items": [ { "text": "Exit clear?", "type": "YES_NO",
+    "options": [ { "label": "Yes", "result": "PASS" }, { "label": "No", "result": "FAIL" } ] } ],
+  "documents": [ { "id": "{{docId}}" } ] } }
+
+> {% client.global.set("deactivatedDocProcId", response.body.data.id); %}
+
+### D10. Publish → 400, "does not exist, is inactive, or is not visible to this procedure"
+POST {{host}}/api/v1/procedure-templates/{{deactivatedDocProcId}}/publish
+Authorization: Bearer {{token}}
+
+### D11. Tidy up
+POST {{host}}/api/v1/procedure-templates/{{docProcId}}/archive
+
+###
+POST {{host}}/api/v1/procedure-templates/{{deactivatedDocProcId}}/archive
 Authorization: Bearer {{token}}
 
 ###############################################################################

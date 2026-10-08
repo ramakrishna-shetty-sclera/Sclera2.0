@@ -1,5 +1,6 @@
 package com.sclera.applicationplane.procedure.definition;
 
+import com.sclera.applicationplane.procedure.definition.DefinitionDocument.DocumentRef;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Item;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Option;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.RangeRule;
@@ -146,6 +147,9 @@ public final class DefinitionValidator {
             if (item.followRollup() != null) {
                 problems.add(where + " is a section and has no follow-ups to roll up");
             }
+            if (item.evidenceRequired()) {
+                problems.add(where + " is a section and cannot require evidence: a heading is never answered");
+            }
             checkWeight(item, where, problems);
             return;
         }
@@ -247,7 +251,10 @@ public final class DefinitionValidator {
      * Every reason this document cannot be published yet, in the order an author
      * would fix them. Empty means ready.
      *
-     * @param activeResultKeys the organization's usable result-type keys
+     * @param activeResultKeys   the organization's usable result-type keys
+     * @param citableDocumentIds the library documents this procedure may cite —
+     *                           active, and either organization-wide or in this
+     *                           procedure's own property, per the isolation rule
      */
     public static List<String> publishBlockers(DefinitionDocument document, Set<String> activeResultKeys) {
         return publishBlockers(document, activeResultKeys, List.of());
@@ -310,6 +317,7 @@ public final class DefinitionValidator {
             blockers.add("The target type " + describe(unknown) + " is not one of this organization's "
                     + listName(unknown.kind()));
         }
+        checkDocumentReferences(document, citableDocumentIds, blockers);
         return blockers;
     }
 
@@ -327,6 +335,36 @@ public final class DefinitionValidator {
     private static String describe(TargetType target) {
         String kind = target.kind() == null ? "no kind" : target.kind().name().toLowerCase().replace('_', ' ');
         return "'" + target.key() + "' (" + kind + ")";
+    }
+
+    /**
+     * Every cited document must exist, be active, and be visible to this
+     * procedure's scope — {@code citableDocumentIds} is already narrowed to
+     * that, so a miss here is reported without needing to say which of the
+     * three failed. A {@code questionKey} naming a question that was since
+     * removed is caught the same way there is no foreign key to catch it in
+     * the database. A document cited twice — at procedure level and again
+     * against a question, or against two questions — is reported once: the
+     * question is "is it still used", not "how many times".
+     */
+    private static void checkDocumentReferences(DefinitionDocument document, Set<String> citableDocumentIds,
+                                                 List<String> blockers) {
+        Set<String> questionKeys = new HashSet<>();
+        for (Item item : document.flatten()) {
+            questionKeys.add(item.key());
+        }
+
+        Set<String> reported = new HashSet<>();
+        for (DocumentRef ref : document.documents()) {
+            if (reported.add(ref.id()) && !citableDocumentIds.contains(ref.id())) {
+                blockers.add("The cited document " + ref.id()
+                        + " does not exist, is inactive, or is not visible to this procedure");
+            }
+            if (ref.questionKey() != null && !questionKeys.contains(ref.questionKey())) {
+                blockers.add("The cited document " + ref.id() + " is attached to question '"
+                        + ref.questionKey() + "', which does not exist");
+            }
+        }
     }
 
     /** Stands in for an open end. Readings are ints, so neither is ever typed. */
