@@ -23,6 +23,17 @@ spring:
     hibernate:
       ddl-auto: validate
 
+  # Spring Boot's own defaults are 1 MB for both limits, well under the
+  # gateway's 10 MB allowance for this upload path (RequestSizeLimitFilter).
+  # Left unset, a file over 1 MB fails multipart parsing before the
+  # controller's @RequestParam("file") ever resolves, which Spring sometimes
+  # reports as "the required file part is not present" rather than a size
+  # error - the actual cause is easy to miss from that message alone.
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
   # Public-schema migrations (table copies for validate + tenant_registry).
   # Per-tenant schemas are migrated programmatically (MultiTenancyConfig).
   flyway:
