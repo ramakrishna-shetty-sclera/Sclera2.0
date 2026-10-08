@@ -25,8 +25,7 @@ class DefinitionCanonicalizerTest {
     }
 
     private static Item question(String key, String text, QuestionType type, boolean required) {
-        return new Item(key, text, null, type, required, false, List.of(), null, null, null,
-                false, null, false, null, null, null, null, null, List.of(), List.of());
+        return Item.builder().key(key).text(text).type(type).required(required).build();
     }
 
     @Test
@@ -46,8 +45,8 @@ class DefinitionCanonicalizerTest {
         var tidy = canonicalizer.canonicalize(
                 doc(question("q2", "Exit clear?", QuestionType.YES_NO, false)));
         var messy = canonicalizer.canonicalize(doc(
-                new Item("q2", "  Exit clear?  ", "   ", QuestionType.YES_NO, false, false, List.of(),
-                        "  ", null, null, false, null, false, null, null, "  ", null, null, List.of(), List.of())));
+                Item.builder().key("q2").text("  Exit clear?  ").help("   ").type(QuestionType.YES_NO)
+                        .unit("  ").standard("  ").build()));
 
         assertThat(messy.json()).isEqualTo(tidy.json())
                 .doesNotContain("required").doesNotContain("help").doesNotContain("unit");
@@ -69,13 +68,16 @@ class DefinitionCanonicalizerTest {
         // does not catch a value landing one slot over — so this is what
         // would have caught the mistake made (and corrected) while threading
         // evidenceRequired through every call site in this feature.
-        Item follow = new Item("q9", "follow-text", null, QuestionType.TEXT, false, false, List.of(),
-                null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
+        Item follow = Item.builder().key("q9").text("follow-text").type(QuestionType.TEXT).build();
         Option option = new Option("o1", "option-label", "PASS", 7, false);
         RangeRule rule = new RangeRule(1, 2, "PASS");
-        Item item = new Item("q1", "item-text", "item-help", QuestionType.INTEGER, true, true,
-                List.of(option), "item-unit", 3, 4, true, "item-alert", true, 5, ItemSource.DOCUMENT,
-                "item-standard", "item-when", Rollup.WORST, List.of(follow), List.of(rule));
+        Item item = Item.builder()
+                .key("q1").text("item-text").help("item-help").type(QuestionType.INTEGER)
+                .required(true).critical(true).options(List.of(option)).unit("item-unit")
+                .min(3).max(4).workOrder(true).alertProfile("item-alert").evidenceRequired(true)
+                .weight(5).source(ItemSource.DOCUMENT).standard("item-standard").when("item-when")
+                .followRollup(Rollup.WORST).follow(List.of(follow)).rules(List.of(rule))
+                .build();
 
         assertThat(item.key()).isEqualTo("q1");
         assertThat(item.text()).isEqualTo("item-text");
@@ -102,17 +104,16 @@ class DefinitionCanonicalizerTest {
     @Test
     void reCanonicalisingStoredBytesIsStable() {
         var first = canonicalizer.canonicalize(doc(
-                new Item("s1", "Condition", null, QuestionType.SECTION, false, false, List.of(), null, null, null,
-                        false, null, false, null, null, null, null, null, List.of(), List.of()),
-                new Item("q2", "Gauge in the green?", "Tap it first", QuestionType.YES_NO_NA, true, false,
-                        List.of(new Option("o3", "Yes", "PASS", null, false),
+                Item.builder().key("s1").text("Condition").type(QuestionType.SECTION).build(),
+                Item.builder().key("q2").text("Gauge in the green?").help("Tap it first")
+                        .type(QuestionType.YES_NO_NA).required(true)
+                        .options(List.of(new Option("o3", "Yes", "PASS", null, false),
                                 new Option("o4", "No", "FAIL", null, false),
-                                new Option("o5", "N/A", null, null, false)),
-                        null, null, null, true, "ap-std", false, null, null, "NFPA 10", null,
-                        null,
-                        List.of(new Item("q6", "Record the reading", null, QuestionType.INTEGER, false, false,
-                                List.of(), "psi", 0, 300, false, null, false, null, null, null, "o4", null,
-                                List.of(), List.of())), List.of())));
+                                new Option("o5", "N/A", null, null, false)))
+                        .workOrder(true).alertProfile("ap-std").standard("NFPA 10")
+                        .follow(List.of(Item.builder().key("q6").text("Record the reading")
+                                .type(QuestionType.INTEGER).unit("psi").min(0).max(300).when("o4").build()))
+                        .build()));
 
         var again = canonicalizer.canonicalize(canonicalizer.parse(first.json()));
 
@@ -122,9 +123,9 @@ class DefinitionCanonicalizerTest {
 
     @Test
     void aFollowUpIsPartOfTheContent() {
-        Item parent = new Item("q2", "Exit clear?", null, QuestionType.YES_NO, false, false,
-                List.of(new Option("o3", "Yes", "PASS", null, false), new Option("o4", "No", "FAIL", null, false)),
-                null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
+        Item parent = Item.builder().key("q2").text("Exit clear?").type(QuestionType.YES_NO)
+                .options(List.of(new Option("o3", "Yes", "PASS", null, false), new Option("o4", "No", "FAIL", null, false)))
+                .build();
         Item withFollow = parent.withFollow(List.of(
                 question("q5", "Describe the obstruction", QuestionType.TEXT, true)));
 
@@ -147,8 +148,8 @@ class DefinitionCanonicalizerTest {
         // nulls, blank strings and false — numbers are never dropped, and this
         // is the one that would be silently lost if that ever changed.
         var canonical = canonicalizer.canonicalize(doc(
-                new Item("q2", "Reading", null, QuestionType.INTEGER, false, false, List.of(),
-                        "psi", 0, 300, false, null, false, null, null, null, null, null, List.of(), List.of())));
+                Item.builder().key("q2").text("Reading").type(QuestionType.INTEGER)
+                        .unit("psi").min(0).max(300).build()));
 
         assertThat(canonical.json()).contains("\"min\":0");
     }
@@ -159,8 +160,8 @@ class DefinitionCanonicalizerTest {
         // dropped like any empty value, so those versions' bytes — and so their
         // hashes — are unchanged.
         var canonical = canonicalizer.canonicalize(doc(
-                new Item("q2", "Reading", null, QuestionType.INTEGER, false, false, List.of(),
-                        "psi", 0, 300, false, null, false, null, null, null, null, null, List.of(), List.of())));
+                Item.builder().key("q2").text("Reading").type(QuestionType.INTEGER)
+                        .unit("psi").min(0).max(300).build()));
 
         assertThat(canonical.json()).isEqualTo(
                 "{\"items\":[{\"key\":\"q2\",\"max\":300,\"min\":0,\"text\":\"Reading\","
@@ -170,9 +171,9 @@ class DefinitionCanonicalizerTest {
     @Test
     void bandsAreWrittenInOrderWithOpenEndsLeftOut() {
         var canonical = canonicalizer.canonicalize(doc(
-                new Item("q2", "Pressure", null, QuestionType.INTEGER, false, false, List.of(),
-                        null, null, null, false, null, false, null, null, null, null, null, List.of(),
-                        List.of(new RangeRule(null, 0, "PASS"), new RangeRule(1, null, "FAIL")))));
+                Item.builder().key("q2").text("Pressure").type(QuestionType.INTEGER)
+                        .rules(List.of(new RangeRule(null, 0, "PASS"), new RangeRule(1, null, "FAIL")))
+                        .build()));
 
         // An open end is a null, so it is absent; a 0 edge is a real one and stays.
         assertThat(canonical.json()).contains(
@@ -244,18 +245,16 @@ class DefinitionCanonicalizerTest {
     @Test
     void aScoredDocumentSurvivesTheRoundTrip() {
         var first = canonicalizer.canonicalize(new DefinitionDocument(2,
-                List.of(new Item("s1", "Fire exits", null, QuestionType.SECTION, false, false, List.of(),
-                                null, null, null, false, null, false, 2, null, null, null, null, List.of(), List.of()),
-                        new Item("q2", "Exit clear?", null, QuestionType.YES_NO, true, true,
-                                List.of(new Option("o3", "Yes", "PASS", 10, false),
+                List.of(Item.builder().key("s1").text("Fire exits").type(QuestionType.SECTION).weight(2).build(),
+                        Item.builder().key("q2").text("Exit clear?").type(QuestionType.YES_NO)
+                                .required(true).critical(true)
+                                .options(List.of(new Option("o3", "Yes", "PASS", 10, false),
                                         new Option("o4", "No", "FAIL", 0, false),
-                                        new Option("o5", "N/A", null, null, true)),
-                                null, null, null, false, null, false, 3, null, null, null,
-                                Rollup.WORST,
-                                List.of(new Item("q6", "Why not?", null, QuestionType.TEXT, true, false,
-                                        List.of(), null, null, null, false, null, false, null, null, null,
-                                        "o4", null, List.of(), List.of())),
-                                List.of())),
+                                        new Option("o5", "N/A", null, null, true)))
+                                .weight(3).followRollup(Rollup.WORST)
+                                .follow(List.of(Item.builder().key("q6").text("Why not?").type(QuestionType.TEXT)
+                                        .required(true).when("o4").build()))
+                                .build()),
                 List.of(new Threshold(null, null, 69, "FAIL"),
                         new Threshold(DefinitionDocument.Scope.SECTION, 70, null, "PASS")), List.of(), List.of()));
 
