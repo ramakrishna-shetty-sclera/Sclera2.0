@@ -665,3 +665,100 @@ Content-Type: application/json
 ### E9. Tidy up
 POST {{host}}/api/v1/procedure-templates/{{previewId}}/archive
 Authorization: Bearer {{token}}
+
+###############################################################################
+# Consumers and coverage (feature 8) — who a procedure is for, and what it
+# applies to.
+#
+# Needs the helper service running WITH its Dapr sidecar (.\run-helper-service.ps1):
+# a publish that names target types asks it whether the keys exist. ROOM and
+# PLANT_ROOM are seeded location types; asset classes are per organization and
+# start empty, so the examples use location types.
+###############################################################################
+
+### C1. A consumer that is not in the list → 400, naming the valid ones
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Wrong consumer {{$random.integer(1000, 9999)}}", "consumerKey": "ROBOT" }
+
+### C2. A procedure for plant rooms — the draft saves, and so would a key the vocabulary lacks
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Plant room walk {{$random.integer(1000, 9999)}}",
+  "consumerKey": "INSPECTION",
+  "definition": {
+    "items": [
+      { "text": "Is the plant room locked?", "type": "YES_NO", "required": true,
+        "options": [
+          { "label": "Yes", "result": "PASS" },
+          { "label": "No",  "result": "FAIL" }
+        ]
+      }
+    ],
+    "targetTypes": [ { "kind": "LOCATION_TYPE", "key": "PLANT_ROOM" } ]
+  }
+}
+
+> {% client.global.set("plantId", response.body.data.id); %}
+
+### C3. Publish — v1; one row per (kind, key) is written to the index
+POST {{host}}/api/v1/procedure-templates/{{plantId}}/publish
+Authorization: Bearer {{token}}
+
+### C4. Discover for a plant room — expect C2's procedure
+GET {{host}}/api/v1/procedure-templates/discover?consumer=INSPECTION&kind=LOCATION_TYPE&key=PLANT_ROOM
+Authorization: Bearer {{token}}
+
+### C5. Discover for a corridor — expect NOT C2's procedure (it names plant rooms only)
+# Procedures that name no target types at all still appear: they apply to anything.
+GET {{host}}/api/v1/procedure-templates/discover?consumer=INSPECTION&kind=LOCATION_TYPE&key=CORRIDOR
+Authorization: Bearer {{token}}
+
+### C6. The same key in another list is a different target — expect NOT C2's procedure
+GET {{host}}/api/v1/procedure-templates/discover?consumer=INSPECTION&kind=ASSET_CLASS&key=PLANT_ROOM
+Authorization: Bearer {{token}}
+
+### C7. Another consumer's procedures — expect an empty page
+GET {{host}}/api/v1/procedure-templates/discover?consumer=TASK&kind=LOCATION_TYPE&key=PLANT_ROOM
+Authorization: Bearer {{token}}
+
+### C8. A key the vocabulary does not have — the draft saves, publish → 400 naming it
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Unknown target {{$random.integer(1000, 9999)}}",
+  "definition": {
+    "items": [
+      { "text": "Present?", "type": "YES_NO",
+        "options": [
+          { "label": "Yes", "result": "PASS" },
+          { "label": "No",  "result": "FAIL" }
+        ]
+      }
+    ],
+    "targetTypes": [ { "kind": "ASSET_CLASS", "key": "NO_SUCH_CLASS" } ]
+  }
+}
+
+> {% client.global.set("unknownId", response.body.data.id); %}
+
+### C9. Publish it → 400, "The target type ASSET_CLASS NO_SUCH_CLASS is not one of this organization's asset classes"
+# With the helper stopped this is a different refusal: a 422 saying the vocabulary
+# could not be read and that nothing is wrong with the procedure.
+POST {{host}}/api/v1/procedure-templates/{{unknownId}}/publish
+Authorization: Bearer {{token}}
+
+### C10. Tidy up
+POST {{host}}/api/v1/procedure-templates/{{plantId}}/archive
+Authorization: Bearer {{token}}
+
+###
+POST {{host}}/api/v1/procedure-templates/{{unknownId}}/archive
+Authorization: Bearer {{token}}

@@ -10,7 +10,7 @@ Task Dashboard, Task Map, Reactive Service (QR) and Tagged Procedures.
 |---|---|---|---|---|
 | `sclera-procedure-service` | 8095 | `sclera-procedure-service` | `sclera_procedure` | Author procedure templates: draft → publish → new draft, with immutable published versions |
 | `sclera-inspection-service` | 8096 | `sclera-inspection-service` | `sclera_inspection` | Inspection configs, tagging, checklist lifecycle, reactive services (QR), tagged procedures — plus the original template-run flow |
-| `sclera-helper-service` | 8097 | `sclera-helper-service` | `sclera_helper` | Locations (building → floor → location) and assets (IP / non-IP) |
+| `sclera-helper-service` | 8097 | `sclera-helper-service` | `sclera_helper` | Locations (building → floor → location) and assets (IP / non-IP), and the property vocabulary procedures check their target types against |
 | `sclera2.0v-api-gateway` | 8080 | — (no sidecar locally) | — (Redis sessions) | Single entry point: BFF login (session cookie + CSRF), JWT relay, routing |
 
 ## Architecture

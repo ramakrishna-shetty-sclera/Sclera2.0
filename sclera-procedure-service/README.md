@@ -173,11 +173,22 @@ on purpose — the delete guard must see every property's versions — and no fo
 versions published before the table existed held test data only and are not counted.
 
 `version_target_type(version_id, kind, key)` answers *"which published procedures apply to target
-type Y?"*, with `kind ∈ HIERARCHY_LEVEL, LOCATION_TYPE, ASSET_CLASS, ASSET_TAG`. Keys are validated
-against the property vocabulary but carry no cross-service foreign key.
+type Y?"*, with `kind ∈ HIERARCHY_LEVEL, LOCATION_TYPE, ASSET_CLASS, ASSET_TAG` (a database check
+constraint). Built, and written the same way as the result-type index: one row per distinct
+`(kind, key)` per version, in the same transaction as the publish and only when a publish creates a
+new version. It follows the same three decisions:
 
-Both are written at publish from the document. They exist because `definition_json` is `TEXT` and
-therefore unqueryable.
+- **A foreign key to the version, none to the vocabulary.** The vocabulary is another service's, and
+  the index has to outlive a decision to retire a key.
+- **No row-level security**, so discovery sees every property's versions. A property's procedure is
+  still hidden from organization level, because the discovery query joins back to
+  `procedure_template`, which does have it.
+- **No backfill.** Nothing published before the table existed is counted.
+
+**No rows is not "applies to nothing" — it is "applies to anything".** That is what every procedure
+authored before this feature is, so the discovery query reads the absence of rows as a match.
+
+Both indexes exist because `definition_json` is `TEXT` and therefore unqueryable.
 
 ### `procedure_document` — reference documents
 
@@ -191,7 +202,16 @@ the same file cannot change the hash.
 
 ### `procedure_consumer`, `procedure_usage` and `procedure_favourite`
 
-`procedure_consumer(key, name, active)` — the configurable consumer list.
+`procedure_consumer(key, name, active)` — the configurable consumer list. Built, and seeded in the
+tenant migration with `INSPECTION` and `TASK`. `INSPECTION` has to stay in the seed: it is the
+default `consumer_key` of every procedure, so a seed without it would invalidate everything already
+authored. `TASK` is the second, and its name is still unsettled — which is why this is a table and
+not an enum.
+
+Creating a procedure validates `consumerKey` against the **active** rows (trimmed and upper-cased),
+and the refusal lists the valid ones. Only creation is checked: the consumer is identity — set at
+create and never changed, and `UpdateTemplateRequest` carries none — so retiring a consumer later
+leaves every procedure that names it exactly as it was, and a clone keeps the one it copies.
 
 `procedure_usage(id, template_id, version_id, consumer_key, consumer_ref_id, target_type_key,
 recorded_at)` — what consumers report back about which template version they use, so an author can
@@ -337,6 +357,41 @@ the work order belongs to the facilities layer, not here.
 standard, copied from a Sclera template, or taken from a suggestion. Cheap to record now and
 impossible to reconstruct later, once a procedure has been edited a few times.
 
+### What a version applies to
+
+`targetTypes` is an optional document-level list naming the kinds of place and asset a version is for:
+
+```json
+"targetTypes": [
+  { "kind": "ASSET_CLASS",   "key": "EXTINGUISHER" },
+  { "kind": "LOCATION_TYPE", "key": "PLANT_ROOM"   }
+]
+```
+
+It is part of the definition, so it is hashed, versioned and diffed like the questions — changing it
+makes a new version, and the diff reports `targetTypesChanged`. Empty or absent means the version
+applies to anything, which is the default and the common case.
+
+The check is split the way the rest of the service splits structure from readiness:
+
+| When | What is checked |
+|---|---|
+| Save | Shape only: each entry has a kind and a key, and none is listed twice. A draft naming a key the vocabulary lacks **saves** — a key that does not exist yet is a normal intermediate state. |
+| Publish | Every key exists in the organization's vocabulary for its kind. Each missing one is a blocker naming it, e.g. *"The target type ASSET_CLASS EXTINGUISHER is not one of this organization's asset classes"*. |
+
+Retired keys count as present, so retiring a key in the vocabulary does not block an unrelated edit to
+a procedure that already names it.
+
+**The vocabulary is read over Dapr, and only when a version declares target types.** A procedure that
+applies to anything never calls out, so existing procedures publish as before and do not start
+depending on the helper being up. If the vocabulary cannot be read, the publish is **refused with a
+message about the vocabulary** — *"…the property vocabulary they are checked against could not be
+read. Nothing is wrong with the procedure; try again shortly"* — never about the key, because telling
+an author a key is wrong when the lookup failed sends them to fix something that is not broken. It is
+a `BusinessRuleException` (422) rather than the shared external-service error, whose fixed generic
+502 wording would throw the explanation away. Each organization's lists are cached for 90 seconds, so
+a key added in that window can be refused until the cache expires; failures are never cached.
+
 ### Scoring — declared here, computed by the evaluator
 
 Nothing in the document does arithmetic. It records what an organization decided; the evaluator in
@@ -455,7 +510,7 @@ publicly.
 | Versions | get, save draft, publish, new draft from version, diff two versions |
 | Result types | create, list, get, update, reorder, activate, deactivate, delete (conditional) |
 | Evaluation | evaluate answers against any version, draft included (public); against a published version by id (internal, for the inspection service) |
-| Discovery | published procedures by consumer and target type |
+| Discovery | `GET /api/v1/procedure-templates/discover?consumer=&kind=&key=` — the active procedures that apply to a target; see *Discovery* below |
 | Documents | attach to a version or question, list, remove |
 | Library | browse, search and filter global templates; favourite; import; export; link, unlink |
 | Updates | check availability, view diff, apply, defer |
@@ -474,6 +529,29 @@ the shared exception types so they map onto the common error codes.
 Internal endpoints are invoked over Dapr (app-id `sclera-procedure-service`), HMAC-signed with the
 shared `sclera.event-listener.signing-secret`, and guarded by `InternalEndpointFilter`. Dapr rejects
 `?` in an invocation method name, so internal endpoints take every parameter in the path.
+
+### Discovery
+
+```
+GET /api/v1/procedure-templates/discover?consumer=INSPECTION&kind=ASSET_CLASS&key=EXTINGUISHER
+```
+
+*"Which procedures does an extinguisher get?"* — all three parameters are required. `kind` is one of
+`HIERARCHY_LEVEL`, `LOCATION_TYPE`, `ASSET_CLASS`, `ASSET_TAG`; `consumer` is trimmed and upper-cased as
+on create, and `key` is only trimmed, because keys are stored as the author wrote them. The response is
+the list's shape: a `Page<TemplateResponse>`, 20 to a page, with each template's current published
+version number.
+
+A procedure is returned when it is **active**, belongs to the asked **consumer**, has a **published**
+version, and that version either names the asked `(kind, key)` or names **no target types at all**.
+
+- **Only the current published version counts.** If v1 named extinguishers and v2 stopped, v1's rows
+  stay in the index but the procedure is no longer found for extinguishers. An open draft changes
+  nothing until it is published.
+- **Never published, archived** and **another consumer's** procedures are not returned.
+- **Organization level sees organization-wide procedures only.** A procedure authored inside a property
+  is found from that property and from nowhere else.
+- Authorization is `can_view` on the organization, as for the list; there is no per-procedure check.
 
 ### A template's life, end to end
 
@@ -784,8 +862,13 @@ are keyed by question UUIDs from the deleted two-level model, not by the documen
 Pinning `procedure_version_id`, re-keying answers and calling the endpoint is the integration
 branch's work; the endpoint it will call exists and is tested.
 
-**Property vocabulary.** `version_target_type` keys are validated against the hierarchy levels,
-location types, asset classes and tags the property vocabulary provides.
+**Property vocabulary.** A version's `targetTypes` are checked at publish against the hierarchy levels,
+location types, asset classes and asset tags the property vocabulary provides. Today that is the helper
+service, a temporary stand-in whose `/api/v1/helper/vocabulary` lists are real rows; the call goes
+through `client/vocabulary/` over Dapr, and **which service answers is configuration**:
+`sclera.external.vocabulary.app-id` (default `sclera-helper-service`). Cutting over to a real property
+service is therefore a change of that value, not of code. The helper must be running with its Dapr
+sidecar (`.\run-helper-service.ps1`) for a publish that names target types to succeed.
 
 **Storage.** Reference documents are written and read through the storage port; this service stores
 only metadata and an opaque `location`.
@@ -829,6 +912,8 @@ Tests run against a real Postgres. H2 cannot do `CREATE SCHEMA`, `search_path` a
 tenancy layer needs the real database.
 
 Configuration worth knowing: `SCLERA_DB_URL` / `_USER` / `_PASSWORD`, `KEYCLOAK_URL`,
+`SCLERA_VOCABULARY_APP_ID` and `SCLERA_VOCABULARY_CACHE_TTL_SECONDS` (who answers vocabulary lookups, and
+how long a lookup is kept; 0 turns the cache off),
 `SCLERA_KAFKA_BOOTSTRAP_SERVERS`, `SCLERA_FGA_ENABLED`, and `SCLERA_INTERNAL_SIGNING_SECRET`, which
 must match every service that calls this one or internal requests fail with `401 HMAC_FAILED`.
 
