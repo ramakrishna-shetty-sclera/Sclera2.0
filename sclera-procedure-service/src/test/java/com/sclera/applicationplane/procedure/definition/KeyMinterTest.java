@@ -30,7 +30,7 @@ class KeyMinterTest {
     }
 
     private static DefinitionDocument doc(Item... items) {
-        return new DefinitionDocument(2, List.of(items), List.of());
+        return new DefinitionDocument(2, List.of(items), List.of(), List.of());
     }
 
     @Test

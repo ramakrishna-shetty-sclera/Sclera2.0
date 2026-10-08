@@ -34,11 +34,16 @@ import java.util.Set;
  *                          different versions if one of them scores 90 as a
  *                          Pass and the other does not, and the hash already
  *                          knows that.
+ * @param documentsChanged  which documents are cited, and which question each
+ *                          hangs off, is version content — the same reason
+ *                          {@code thresholdsChanged} is reported separately
+ *                          rather than folded into a row in the list.
  */
 public record DefinitionDiff(
         boolean identical,
         boolean orderChanged,
         boolean thresholdsChanged,
+        boolean documentsChanged,
         List<ItemChange> items
 ) {
     public enum Kind { ADDED, REMOVED, MODIFIED }
@@ -81,11 +86,13 @@ public record DefinitionDiff(
         boolean orderChanged = relativeOrderChanged(
                 List.copyOf(before.keySet()), List.copyOf(after.keySet()));
         boolean thresholdsChanged = !from.thresholds().equals(to.thresholds());
+        boolean documentsChanged = !from.documents().equals(to.documents());
 
         return new DefinitionDiff(
-                changes.isEmpty() && !orderChanged && !thresholdsChanged,
+                changes.isEmpty() && !orderChanged && !thresholdsChanged && !documentsChanged,
                 orderChanged,
                 thresholdsChanged,
+                documentsChanged,
                 List.copyOf(changes));
     }
 

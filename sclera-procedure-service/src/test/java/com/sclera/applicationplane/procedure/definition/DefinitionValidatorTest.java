@@ -1,5 +1,6 @@
 package com.sclera.applicationplane.procedure.definition;
 
+import com.sclera.applicationplane.procedure.definition.DefinitionDocument.DocumentRef;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Item;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Option;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.RangeRule;
@@ -31,7 +32,7 @@ class DefinitionValidatorTest {
     }
 
     private static DefinitionDocument doc(Item... items) {
-        return new DefinitionDocument(2, List.of(items), List.of());
+        return new DefinitionDocument(2, List.of(items), List.of(), List.of());
     }
 
     // --- structure: refused on save ------------------------------------------
@@ -153,14 +154,14 @@ class DefinitionValidatorTest {
 
     @Test
     void aDocumentWithNothingInItCannotBePublished() {
-        assertThat(DefinitionValidator.publishBlockers(DefinitionDocument.empty(), PASS_FAIL))
+        assertThat(DefinitionValidator.publishBlockers(DefinitionDocument.empty(), PASS_FAIL, Set.of()))
                 .containsExactly("Add at least one question");
     }
 
     @Test
     void aSectionAloneIsNotAQuestion() {
         assertThat(DefinitionValidator.publishBlockers(
-                doc(item("s1", "Fire exits", QuestionType.SECTION)), PASS_FAIL))
+                doc(item("s1", "Fire exits", QuestionType.SECTION)), PASS_FAIL, Set.of()))
                 .containsExactly("Add at least one question");
     }
 
@@ -169,7 +170,7 @@ class DefinitionValidatorTest {
         Item single = item("q2", "Exit clear?", QuestionType.YES_NO)
                 .withOptions(List.of(new Option("o3", "Yes", null, null, false)));
 
-        assertThat(DefinitionValidator.publishBlockers(doc(single), PASS_FAIL))
+        assertThat(DefinitionValidator.publishBlockers(doc(single), PASS_FAIL, Set.of()))
                 .hasSize(2)
                 .anySatisfy(b -> assertThat(b).contains("needs at least two answers"))
                 .anySatisfy(b -> assertThat(b).contains("needs at least one answer mapped to a result"));
@@ -180,7 +181,7 @@ class DefinitionValidatorTest {
         Item amber = item("q2", "Exit clear?", QuestionType.YES_NO).withOptions(
                 List.of(new Option("o3", "Yes", "PASS", null, false), new Option("o4", "Partly", "AMBER", null, false)));
 
-        assertThat(DefinitionValidator.publishBlockers(doc(amber), PASS_FAIL))
+        assertThat(DefinitionValidator.publishBlockers(doc(amber), PASS_FAIL, Set.of()))
                 .singleElement().asString()
                 .contains("'Partly' is mapped to AMBER, which is not an active result type");
     }
@@ -192,14 +193,14 @@ class DefinitionValidatorTest {
                 null, null, null, false, null, false, null, null, null, "o91", null, List.of(), List.of());
 
         assertThat(DefinitionValidator.publishBlockers(
-                doc(yesNo("q2", "Exit clear?").withFollow(List.of(follow))), PASS_FAIL))
+                doc(yesNo("q2", "Exit clear?").withFollow(List.of(follow))), PASS_FAIL, Set.of()))
                 .singleElement().asString().contains("'Which one?' needs at least two answers");
     }
 
     @Test
     void aReadyDocumentHasNoBlockers() {
         assertThat(DefinitionValidator.publishBlockers(
-                doc(item("s1", "Fire exits", QuestionType.SECTION), yesNo("q2", "Exit clear?")), PASS_FAIL))
+                doc(item("s1", "Fire exits", QuestionType.SECTION), yesNo("q2", "Exit clear?")), PASS_FAIL, Set.of()))
                 .isEmpty();
     }
 
@@ -218,7 +219,7 @@ class DefinitionValidatorTest {
     }
 
     private static List<String> blockers(Item item) {
-        return DefinitionValidator.publishBlockers(doc(item), WITH_AMBER);
+        return DefinitionValidator.publishBlockers(doc(item), WITH_AMBER, Set.of());
     }
 
     @Test
@@ -355,12 +356,12 @@ class DefinitionValidatorTest {
                 null, null, null, false, null, false, null, null, null, "o91", null, List.of(), List.of(band(null, 11, "PASS")));
 
         assertThat(DefinitionValidator.publishBlockers(
-                doc(yesNo("q2", "Gauge fitted?").withFollow(List.of(reading))), WITH_AMBER))
+                doc(yesNo("q2", "Gauge fitted?").withFollow(List.of(reading))), WITH_AMBER, Set.of()))
                 .containsExactly("'Reading': no band covers readings above 11");
     }
 
     private static DefinitionDocument scored(List<Threshold> bands, Item... items) {
-        return new DefinitionDocument(2, List.of(items), bands);
+        return new DefinitionDocument(2, List.of(items), bands, List.of());
     }
 
     /**
@@ -478,7 +479,7 @@ class DefinitionValidatorTest {
         assertThat(DefinitionValidator.publishBlockers(
                 scored(List.of(forSection),
                         item("s1", "Fire exits", QuestionType.SECTION),
-                        scoredYesNo("q2", "Exit clear?", 10, 0)), PASS_FAIL))
+                        scoredYesNo("q2", "Exit clear?", 10, 0)), PASS_FAIL, Set.of()))
                 .containsExactly("Scoring is configured, but no thresholds say what a score means");
     }
 
@@ -496,7 +497,7 @@ class DefinitionValidatorTest {
     void aProcedureThatScoresNothingStillPublishes() {
         // The rule every other rule here risks breaking. Guide §5's "Empty"
         // state: no scoring configured, questions have default equal weight.
-        assertThat(DefinitionValidator.publishBlockers(doc(yesNo("q2", "Exit clear?")), PASS_FAIL))
+        assertThat(DefinitionValidator.publishBlockers(doc(yesNo("q2", "Exit clear?")), PASS_FAIL, Set.of()))
                 .isEmpty();
     }
 
@@ -507,7 +508,7 @@ class DefinitionValidatorTest {
         // for it would hold an author to finishing something they never began.
         Item mustPass = critical(yesNo("q2", "Fire exit blocked?"));
 
-        assertThat(DefinitionValidator.publishBlockers(doc(mustPass), PASS_FAIL)).isEmpty();
+        assertThat(DefinitionValidator.publishBlockers(doc(mustPass), PASS_FAIL, Set.of())).isEmpty();
     }
 
     @Test
@@ -519,20 +520,20 @@ class DefinitionValidatorTest {
                 parent.options(), null, null, null, false, null, false, null, null, null, null,
                 Rollup.WORST, parent.follow(), List.of());
 
-        assertThat(DefinitionValidator.publishBlockers(doc(rolled), PASS_FAIL)).isEmpty();
+        assertThat(DefinitionValidator.publishBlockers(doc(rolled), PASS_FAIL, Set.of())).isEmpty();
     }
 
     @Test
     void scoringWithoutThresholdsCannotBePublished() {
         assertThat(DefinitionValidator.publishBlockers(
-                doc(scoredYesNo("q2", "Exit clear?", 10, 0)), PASS_FAIL))
+                doc(scoredYesNo("q2", "Exit clear?", 10, 0)), PASS_FAIL, Set.of()))
                 .containsExactly("Scoring is configured, but no thresholds say what a score means");
     }
 
     @Test
     void aScaleWithAGapCannotBePublished() {
         assertThat(DefinitionValidator.publishBlockers(
-                scored(List.of(FAIL_BAND, TOP_BAND), scoredYesNo("q2", "Exit clear?", 10, 0)), PASS_FAIL))
+                scored(List.of(FAIL_BAND, TOP_BAND), scoredYesNo("q2", "Exit clear?", 10, 0)), PASS_FAIL, Set.of()))
                 .containsExactly("No band covers a score of 70");
     }
 
@@ -540,7 +541,7 @@ class DefinitionValidatorTest {
     void aScaleWithAnOverlapCannotBePublished() {
         assertThat(DefinitionValidator.publishBlockers(
                 scored(List.of(FAIL_BAND, scoreBand(60, null, "PASS")),
-                        scoredYesNo("q2", "Exit clear?", 10, 0)), PASS_FAIL))
+                        scoredYesNo("q2", "Exit clear?", 10, 0)), PASS_FAIL, Set.of()))
                 .containsExactly("Two bands both cover a score of 60");
     }
 
@@ -548,7 +549,7 @@ class DefinitionValidatorTest {
     void aScaleThatStopsShortCannotBePublished() {
         assertThat(DefinitionValidator.publishBlockers(
                 scored(List.of(FAIL_BAND, scoreBand(70, 89, "PASS")),
-                        scoredYesNo("q2", "Exit clear?", 10, 0)), PASS_FAIL))
+                        scoredYesNo("q2", "Exit clear?", 10, 0)), PASS_FAIL, Set.of()))
                 .containsExactly("No band covers a score of 90");
     }
 
@@ -556,7 +557,7 @@ class DefinitionValidatorTest {
     void aBandCannotNameAResultTypeTheOrganizationDoesNotHave() {
         assertThat(DefinitionValidator.publishBlockers(
                 scored(List.of(FAIL_BAND, scoreBand(70, 89, "AMBER"), TOP_BAND),
-                        scoredYesNo("q2", "Exit clear?", 10, 0)), PASS_FAIL))
+                        scoredYesNo("q2", "Exit clear?", 10, 0)), PASS_FAIL, Set.of()))
                 .singleElement().asString()
                 .contains("The band 70 to 89 is mapped to AMBER, which is not an active result type");
     }
@@ -565,7 +566,7 @@ class DefinitionValidatorTest {
     void aBandMustSayWhatItMeans() {
         assertThat(DefinitionValidator.publishBlockers(
                 scored(List.of(FAIL_BAND, scoreBand(70, 89, null), TOP_BAND),
-                        scoredYesNo("q2", "Exit clear?", 10, 0)), PASS_FAIL))
+                        scoredYesNo("q2", "Exit clear?", 10, 0)), PASS_FAIL, Set.of()))
                 .singleElement().asString().contains("The band 70 to 89 is not mapped to a result");
     }
 
@@ -575,7 +576,7 @@ class DefinitionValidatorTest {
                 new Option("o90", "Yes", "PASS", 10, false),
                 new Option("o91", "No", "FAIL", null, false)));
 
-        assertThat(DefinitionValidator.publishBlockers(scored(FULL_SCALE, half), PASS_FAIL))
+        assertThat(DefinitionValidator.publishBlockers(scored(FULL_SCALE, half), PASS_FAIL, Set.of()))
                 .containsExactly("'Exit clear?' scores some of its answers and not others");
     }
 
@@ -588,7 +589,7 @@ class DefinitionValidatorTest {
                 new Option("o91", "No", "FAIL", 0, false),
                 new Option("o92", "N/A", null, null, true)));
 
-        assertThat(DefinitionValidator.publishBlockers(scored(FULL_SCALE, withNa), PASS_FAIL)).isEmpty();
+        assertThat(DefinitionValidator.publishBlockers(scored(FULL_SCALE, withNa), PASS_FAIL, Set.of())).isEmpty();
     }
 
     @Test
@@ -596,7 +597,7 @@ class DefinitionValidatorTest {
         assertThat(DefinitionValidator.publishBlockers(
                 scored(FULL_SCALE,
                         weighted(item("s1", "Fire exits", QuestionType.SECTION), 2),
-                        critical(scoredYesNo("q2", "Exit clear?", 10, 0))), PASS_FAIL))
+                        critical(scoredYesNo("q2", "Exit clear?", 10, 0))), PASS_FAIL, Set.of()))
                 .isEmpty();
     }
 
@@ -612,5 +613,57 @@ class DefinitionValidatorTest {
                 true, item.options(), item.unit(), item.min(), item.max(),
                 item.workOrder(), item.alertProfile(), item.evidenceRequired(), item.weight(), item.source(), item.standard(),
                 item.when(), item.followRollup(), item.follow(), List.of());
+    }
+
+    // --- documents a version cites -------------------------------------------
+
+    private static DefinitionDocument docWithRefs(List<DocumentRef> refs, Item... items) {
+        return new DefinitionDocument(2, List.of(items), List.of(), refs);
+    }
+
+    @Test
+    void aCitedDocumentMustBeInTheCitableSet() {
+        DefinitionDocument doc = docWithRefs(
+                List.of(new DocumentRef("doc-1", null)), yesNo("q2", "Exit clear?"));
+
+        assertThat(DefinitionValidator.publishBlockers(doc, PASS_FAIL, Set.of()))
+                .containsExactly("The cited document doc-1 does not exist, is inactive, or is not visible to this procedure");
+    }
+
+    @Test
+    void aCitedDocumentInTheCitableSetIsNotABlocker() {
+        DefinitionDocument doc = docWithRefs(
+                List.of(new DocumentRef("doc-1", null)), yesNo("q2", "Exit clear?"));
+
+        assertThat(DefinitionValidator.publishBlockers(doc, PASS_FAIL, Set.of("doc-1"))).isEmpty();
+    }
+
+    @Test
+    void aDocumentsQuestionKeyMustResolve() {
+        DefinitionDocument doc = docWithRefs(
+                List.of(new DocumentRef("doc-1", "q99")), yesNo("q2", "Exit clear?"));
+
+        assertThat(DefinitionValidator.publishBlockers(doc, PASS_FAIL, Set.of("doc-1")))
+                .containsExactly("The cited document doc-1 is attached to question 'q99', which does not exist");
+    }
+
+    @Test
+    void aDocumentAttachedToARealQuestionIsFine() {
+        DefinitionDocument doc = docWithRefs(
+                List.of(new DocumentRef("doc-1", "q2")), yesNo("q2", "Exit clear?"));
+
+        assertThat(DefinitionValidator.publishBlockers(doc, PASS_FAIL, Set.of("doc-1"))).isEmpty();
+    }
+
+    @Test
+    void aDocumentCitedTwiceIsReportedOnce() {
+        // Once at procedure level, once against a question — the index this
+        // feeds answers "is it still used", not "how many times".
+        DefinitionDocument doc = docWithRefs(
+                List.of(new DocumentRef("missing-id", null), new DocumentRef("missing-id", "q2")),
+                yesNo("q2", "Exit clear?"));
+
+        assertThat(DefinitionValidator.publishBlockers(doc, PASS_FAIL, Set.of()))
+                .containsExactly("The cited document missing-id does not exist, is inactive, or is not visible to this procedure");
     }
 }

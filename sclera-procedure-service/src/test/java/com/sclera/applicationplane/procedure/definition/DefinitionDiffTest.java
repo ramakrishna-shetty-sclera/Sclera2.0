@@ -2,6 +2,7 @@ package com.sclera.applicationplane.procedure.definition;
 
 import com.sclera.applicationplane.procedure.definition.DefinitionDiff.ItemChange;
 import com.sclera.applicationplane.procedure.definition.DefinitionDiff.Kind;
+import com.sclera.applicationplane.procedure.definition.DefinitionDocument.DocumentRef;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Item;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Option;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.RangeRule;
@@ -28,7 +29,7 @@ class DefinitionDiffTest {
     }
 
     private static DefinitionDocument doc(Item... items) {
-        return new DefinitionDocument(2, List.of(items), List.of());
+        return new DefinitionDocument(2, List.of(items), List.of(), List.of());
     }
 
     @Test
@@ -39,6 +40,7 @@ class DefinitionDiffTest {
 
         assertThat(diff.identical()).isTrue();
         assertThat(diff.thresholdsChanged()).isFalse();
+        assertThat(diff.documentsChanged()).isFalse();
         assertThat(diff.items()).isEmpty();
     }
 
@@ -49,14 +51,31 @@ class DefinitionDiffTest {
         // these identical while their hashes differ.
         Item q = q("q2", "Exit clear?");
         DefinitionDocument v1 = new DefinitionDocument(2, List.of(q),
-                List.of(new Threshold(null, null, 69, "FAIL"), new Threshold(null, 70, null, "PASS")));
+                List.of(new Threshold(null, null, 69, "FAIL"), new Threshold(null, 70, null, "PASS")), List.of());
         DefinitionDocument v2 = new DefinitionDocument(2, List.of(q),
-                List.of(new Threshold(null, null, 49, "FAIL"), new Threshold(null, 50, null, "PASS")));
+                List.of(new Threshold(null, null, 49, "FAIL"), new Threshold(null, 50, null, "PASS")), List.of());
 
         DefinitionDiff diff = DefinitionDiff.between(v1, v2);
 
         assertThat(diff.identical()).isFalse();
         assertThat(diff.thresholdsChanged()).isTrue();
+        assertThat(diff.items()).isEmpty();
+    }
+
+    @Test
+    void changingOnlyTheDocumentsIsStillAChange() {
+        // Same reasoning as thresholds: which documents are cited, and which
+        // question each hangs off, is version content that no item carries.
+        Item q = q("q2", "Exit clear?");
+        DefinitionDocument v1 = new DefinitionDocument(2, List.of(q), List.of(),
+                List.of(new DocumentRef("doc-1", null)));
+        DefinitionDocument v2 = new DefinitionDocument(2, List.of(q), List.of(),
+                List.of(new DocumentRef("doc-1", null), new DocumentRef("doc-2", "q2")));
+
+        DefinitionDiff diff = DefinitionDiff.between(v1, v2);
+
+        assertThat(diff.identical()).isFalse();
+        assertThat(diff.documentsChanged()).isTrue();
         assertThat(diff.items()).isEmpty();
     }
 

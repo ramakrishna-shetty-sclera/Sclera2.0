@@ -19,7 +19,7 @@ class DefinitionCanonicalizerTest {
     private final DefinitionCanonicalizer canonicalizer = new DefinitionCanonicalizer();
 
     private static DefinitionDocument doc(Item... items) {
-        return new DefinitionDocument(1, List.of(items), List.of());
+        return new DefinitionDocument(1, List.of(items), List.of(), List.of());
     }
 
     private static Item question(String key, String text, QuestionType type, boolean required) {
@@ -54,7 +54,7 @@ class DefinitionCanonicalizerTest {
 
     @Test
     void ignoresTheSchemaNumberTheClientSent() {
-        var sent = new DefinitionDocument(99, List.of(), List.of());
+        var sent = new DefinitionDocument(99, List.of(), List.of(), List.of());
 
         assertThat(canonicalizer.canonicalize(sent).json()).isEqualTo("{\"schema\":2}");
     }
@@ -230,9 +230,9 @@ class DefinitionCanonicalizerTest {
         // to drop them from the hash and never notice until two versions that
         // score differently collided as "already published".
         Item q = question("q2", "Exit clear?", QuestionType.YES_NO, false);
-        var bare = new DefinitionDocument(2, List.of(q), List.of());
+        var bare = new DefinitionDocument(2, List.of(q), List.of(), List.of());
         var banded = new DefinitionDocument(2, List.of(q),
-                List.of(new Threshold(null, 0, 69, "FAIL"), new Threshold(null, 70, null, "PASS")));
+                List.of(new Threshold(null, 0, 69, "FAIL"), new Threshold(null, 70, null, "PASS")), List.of());
 
         assertThat(canonicalizer.canonicalize(bare).hash())
                 .isNotEqualTo(canonicalizer.canonicalize(banded).hash());
@@ -255,7 +255,8 @@ class DefinitionCanonicalizerTest {
                                         "o4", null, List.of(), List.of())),
                                 List.of())),
                 List.of(new Threshold(null, null, 69, "FAIL"),
-                        new Threshold(DefinitionDocument.Scope.SECTION, 70, null, "PASS"))));
+                        new Threshold(DefinitionDocument.Scope.SECTION, 70, null, "PASS")),
+                List.of()));
 
         var again = canonicalizer.canonicalize(canonicalizer.parse(first.json()));
 

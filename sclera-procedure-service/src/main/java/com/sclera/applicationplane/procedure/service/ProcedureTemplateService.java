@@ -33,6 +33,7 @@ import com.sclera.applicationplane.procedure.evaluation.Verdict;
 import com.sclera.applicationplane.procedure.event.ProcedureTemplateEvent;
 import com.sclera.applicationplane.procedure.event.TemplateEventPublisher;
 import com.sclera.applicationplane.procedure.mapper.ProcedureTemplateMapper;
+import com.sclera.applicationplane.procedure.repository.ProcedureDocumentRepository;
 import com.sclera.applicationplane.procedure.repository.ProcedureTemplateRepository;
 import com.sclera.applicationplane.procedure.repository.ProcedureTemplateVersionRepository;
 import com.sclera.applicationplane.procedure.repository.ResultTypeRepository;
@@ -83,6 +84,7 @@ public class ProcedureTemplateService {
     private final FgaAuthorizationService fga;
     private final ResultTypeRepository resultTypes;
     private final VersionResultTypeRefRepository resultTypeRefs;
+    private final ProcedureDocumentRepository documents;
 
     public ProcedureTemplateService(ProcedureTemplateRepository templates,
                                     ProcedureTemplateVersionRepository versions,
@@ -91,7 +93,8 @@ public class ProcedureTemplateService {
                                     TemplateEventPublisher events,
                                     FgaAuthorizationService fga,
                                     ResultTypeRepository resultTypes,
-                                    VersionResultTypeRefRepository resultTypeRefs) {
+                                    VersionResultTypeRefRepository resultTypeRefs,
+                                    ProcedureDocumentRepository documents) {
         this.templates = templates;
         this.versions = versions;
         this.canonicalizer = canonicalizer;
@@ -100,6 +103,7 @@ public class ProcedureTemplateService {
         this.fga = fga;
         this.resultTypes = resultTypes;
         this.resultTypeRefs = resultTypeRefs;
+        this.documents = documents;
     }
 
     // --- template identity --------------------------------------------------
@@ -300,7 +304,8 @@ public class ProcedureTemplateService {
         // list, not one refusal per attempt — and the screens that show it are
         // built for a list.
         DefinitionDocument document = canonicalizer.parse(draft.getDefinitionJson());
-        List<String> blockers = DefinitionValidator.publishBlockers(document, activeResultKeys(template.getOrgId()));
+        List<String> blockers = DefinitionValidator.publishBlockers(
+                document, activeResultKeys(template.getOrgId()), citableDocumentIds(template));
         if (!blockers.isEmpty()) {
             throw new BusinessRuleException("This procedure cannot be published yet: "
                     + String.join("; ", blockers));
@@ -434,6 +439,19 @@ public class ProcedureTemplateService {
      * left out: deactivating a result type is how an organization retires it,
      * and a new version should not start using it again.
      */
+    /**
+     * The documents a draft of this template may cite — the sibling of
+     * {@link #activeResultKeys}, and needing the template's own property for
+     * the same reason that one does not: an organization-wide procedure may
+     * cite only organization-wide documents, whatever property the author
+     * happens to be standing in while they edit it.
+     */
+    private Set<String> citableDocumentIds(ProcedureTemplate template) {
+        return documents.findCitable(template.getOrgId(), template.getPropertyId()).stream()
+                .map(d -> d.getId().toString())
+                .collect(Collectors.toSet());
+    }
+
     private Set<String> activeResultKeys(UUID orgId) {
         return resultTypes.findAllByOrgIdAndActiveOrderBySeverityOrderAsc(orgId, true).stream()
                 .map(rt -> rt.getKey())

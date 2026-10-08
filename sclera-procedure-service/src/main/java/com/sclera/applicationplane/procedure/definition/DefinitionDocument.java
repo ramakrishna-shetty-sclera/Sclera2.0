@@ -38,6 +38,12 @@ import java.util.TreeSet;
  * endpoint is a pure function over a published version, and it is the only
  * thing that reads these and decides anything.
  *
+ * <p><b>Documents are cited by id, not copied in.</b> {@link DocumentRef} names
+ * a row in the organization's (or one property's) reference-document library —
+ * never a name, a size or a location, all of which resolve live from that row.
+ * Renaming a document in the library reaches every version citing it; the
+ * citation itself, and which question it hangs off, is what changes the hash.
+ *
  * <p>Stored as the canonical JSON that {@code definition_hash} is taken over,
  * so <b>every field in this record is part of a version's identity</b>. Adding
  * one changes the bytes of anything that uses it; the canonical form omits
@@ -46,7 +52,8 @@ import java.util.TreeSet;
 public record DefinitionDocument(
         int schema,
         List<@Valid Item> items,
-        List<@Valid Threshold> thresholds) {
+        List<@Valid Threshold> thresholds,
+        List<@Valid DocumentRef> documents) {
 
     /**
      * 2 — the flat item list. Schema 1 was {@code categories[] -> questions[]}
@@ -63,10 +70,11 @@ public record DefinitionDocument(
     public DefinitionDocument {
         items = items == null ? List.of() : List.copyOf(items);
         thresholds = thresholds == null ? List.of() : List.copyOf(thresholds);
+        documents = documents == null ? List.of() : List.copyOf(documents);
     }
 
     public static DefinitionDocument empty() {
-        return new DefinitionDocument(CURRENT_SCHEMA, List.of(), List.of());
+        return new DefinitionDocument(CURRENT_SCHEMA, List.of(), List.of(), List.of());
     }
 
     /** Questions at every depth, sections excluded — what "12 questions" means on screen. */
@@ -108,6 +116,20 @@ public record DefinitionDocument(
         if (result != null && !result.isBlank()) {
             keys.add(result);
         }
+    }
+
+    /**
+     * Every document id this document cites, once each — what publishing
+     * records in {@code version_document_ref}. A document cited twice, or
+     * cited once at procedure level and again against a question, counts once:
+     * the index answers "is this document still used", not "how many times".
+     */
+    public SortedSet<String> citedDocumentIds() {
+        SortedSet<String> ids = new TreeSet<>();
+        for (DocumentRef ref : documents) {
+            ids.add(ref.id());
+        }
+        return ids;
     }
 
     /** Every item, parents before their follow-ups, in display order. */
@@ -400,5 +422,22 @@ public record DefinitionDocument(
         VERSION,
         /** One section's own score. */
         SECTION
+    }
+
+    /**
+     * Cites one row of the reference-document library by id — never its name,
+     * size or location, all of which resolve live so a rename in the library
+     * reaches every version citing it instead of freezing a stale copy.
+     *
+     * @param id          the library row's id. Not validated against anything
+     *                    at structure time: a draft citing a document that does
+     *                    not exist yet, or no longer resolves, is a normal
+     *                    intermediate state, checked only at publish.
+     * @param questionKey which question this document is attached to, or null
+     *                    for a document attached to the whole procedure.
+     */
+    public record DocumentRef(
+            @NotBlank @Size(max = 50) String id,
+            @Size(max = 20) String questionKey) {
     }
 }

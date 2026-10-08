@@ -141,7 +141,7 @@ class InternalEvaluationIT extends PostgresIntegrationTest {
                 List.of(new Option(null, "Yes", "PASS", 10, false), new Option(null, "No", "FAIL", 0, false)),
                 null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
         DefinitionDocument document = new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question),
-                List.of(new Threshold(null, 0, 59, "FAIL"), new Threshold(null, 60, 100, "PASS")));
+                List.of(new Threshold(null, 0, 59, "FAIL"), new Threshold(null, 60, 100, "PASS")), List.of());
         return new CreateTemplateRequest("Inspected " + UUID.randomUUID(), null, null, document);
     }
 
