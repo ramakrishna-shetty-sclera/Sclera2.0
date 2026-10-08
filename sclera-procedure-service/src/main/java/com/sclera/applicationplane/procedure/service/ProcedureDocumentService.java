@@ -6,6 +6,7 @@ import com.sclera.applicationplane.procedure.dto.ProcedureDocumentRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureDocumentResponse;
 import com.sclera.applicationplane.procedure.mapper.ProcedureDocumentMapper;
 import com.sclera.applicationplane.procedure.repository.ProcedureDocumentRepository;
+import com.sclera.applicationplane.procedure.repository.VersionDocumentRefRepository;
 import com.sclera.applicationplane.procedure.tenancy.PropertyContext;
 import com.sclera.controlplane.common.exception.BusinessRuleException;
 import com.sclera.controlplane.common.exception.ResourceNotFoundException;
@@ -29,12 +30,14 @@ public class ProcedureDocumentService {
     private final ProcedureDocumentRepository repository;
     private final ProcedureDocumentMapper mapper;
     private final StorageClient storage;
+    private final VersionDocumentRefRepository refs;
 
     public ProcedureDocumentService(ProcedureDocumentRepository repository, ProcedureDocumentMapper mapper,
-                                     StorageClient storage) {
+                                     StorageClient storage, VersionDocumentRefRepository refs) {
         this.repository = repository;
         this.mapper = mapper;
         this.storage = storage;
+        this.refs = refs;
     }
 
     /**
@@ -84,10 +87,9 @@ public class ProcedureDocumentService {
 
     /**
      * Stops the document being offered for new citations while every version
-     * that already cites it keeps resolving it. The guard that refuses an
-     * outright delete once a published version cites a document arrives with
-     * {@code version_document_ref}; until then this is the only way back from
-     * a mistaken upload.
+     * that already cites it keeps resolving it. This is the escape hatch
+     * {@link #delete} points at once a published version cites the document,
+     * since deleting it outright is refused from that point on.
      */
     public ProcedureDocumentResponse deactivate(UUID id) {
         ProcedureDocument document = getOwned(id);
@@ -99,6 +101,27 @@ public class ProcedureDocumentService {
         ProcedureDocument document = getOwned(id);
         document.setActive(true);
         return mapper.toResponse(document);
+    }
+
+    /**
+     * Hard delete, refused once any published version cites the document:
+     * that version is the record of what a past inspection's evidence pointed
+     * at, and deleting the document it cites would leave that record pointing
+     * at nothing. Deactivating is the way out, and the refusal says so — the
+     * same shape as {@code ResultTypeService.delete}'s guard, for the same
+     * reason.
+     */
+    public void delete(UUID id) {
+        ProcedureDocument document = getOwned(id);
+        // Counts every published version in the organization, whatever
+        // property it belongs to: the index carries no row-level security.
+        long usedBy = refs.countByDocumentId(id);
+        if (usedBy > 0) {
+            throw new BusinessRuleException(document.getName() + " is used by " + usedBy
+                    + (usedBy == 1 ? " published version" : " published versions")
+                    + ", so it cannot be deleted; deactivate it instead");
+        }
+        repository.delete(document);
     }
 
     private ProcedureDocument getOwned(UUID id) {

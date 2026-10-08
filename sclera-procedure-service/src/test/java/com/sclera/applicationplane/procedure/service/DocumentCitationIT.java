@@ -39,6 +39,9 @@ class DocumentCitationIT extends PostgresIntegrationTest {
     private ProcedureTemplateService service;
 
     @Autowired
+    private ProcedureDocumentService documentService;
+
+    @Autowired
     private ProcedureDocumentRepository documents;
 
     private UUID document(UUID orgId, UUID propertyId) {
@@ -144,5 +147,45 @@ class DocumentCitationIT extends PostgresIntegrationTest {
         assertThatThrownBy(() -> asOrg(org, () -> service.publish(id, null)))
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("is attached to question 'q99', which does not exist");
+    }
+
+    // --- the delete guard -----------------------------------------------------
+
+    @Test
+    void aDocumentNothingCitesCanStillBeDeleted() {
+        UUID org = UUID.randomUUID();
+        UUID docId = asOrg(org, () -> document(org, null));
+
+        asOrg(org, () -> documentService.delete(docId));
+
+        assertThat(asOrg(org, () -> documents.findById(docId))).isEmpty();
+    }
+
+    @Test
+    void aDocumentAPublishedVersionCitesCannotBeDeleted() {
+        UUID org = UUID.randomUUID();
+        UUID docId = asOrg(org, () -> document(org, null));
+        asOrg(org, () -> {
+            UUID id = service.create(request(new DocumentRef(docId.toString(), null))).id();
+            service.publish(id, null);
+            return id;
+        });
+
+        assertThatThrownBy(() -> asOrg(org, () -> documentService.delete(docId)))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("is used by 1 published version")
+                .hasMessageContaining("deactivate it instead");
+        assertThat(asOrg(org, () -> documents.findById(docId))).isPresent();
+    }
+
+    @Test
+    void aDocumentOnlyADraftCitesCanStillBeDeleted() {
+        UUID org = UUID.randomUUID();
+        UUID docId = asOrg(org, () -> document(org, null));
+        asOrg(org, () -> service.create(request(new DocumentRef(docId.toString(), null))));  // never published
+
+        asOrg(org, () -> documentService.delete(docId));
+
+        assertThat(asOrg(org, () -> documents.findById(docId))).isEmpty();
     }
 }

@@ -10,6 +10,7 @@ import com.sclera.applicationplane.procedure.definition.KeyMinter;
 import com.sclera.applicationplane.procedure.domain.ProcedureTemplate;
 import com.sclera.applicationplane.procedure.domain.ProcedureTemplateVersion;
 import com.sclera.applicationplane.procedure.domain.TemplateStatus;
+import com.sclera.applicationplane.procedure.domain.VersionDocumentRef;
 import com.sclera.applicationplane.procedure.domain.VersionResultTypeRef;
 import com.sclera.applicationplane.procedure.domain.VersionState;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.CloneRequest;
@@ -37,6 +38,7 @@ import com.sclera.applicationplane.procedure.repository.ProcedureDocumentReposit
 import com.sclera.applicationplane.procedure.repository.ProcedureTemplateRepository;
 import com.sclera.applicationplane.procedure.repository.ProcedureTemplateVersionRepository;
 import com.sclera.applicationplane.procedure.repository.ResultTypeRepository;
+import com.sclera.applicationplane.procedure.repository.VersionDocumentRefRepository;
 import com.sclera.applicationplane.procedure.repository.VersionResultTypeRefRepository;
 import com.sclera.applicationplane.procedure.tenancy.PropertyContext;
 import com.sclera.controlplane.common.exception.BusinessRuleException;
@@ -85,6 +87,7 @@ public class ProcedureTemplateService {
     private final ResultTypeRepository resultTypes;
     private final VersionResultTypeRefRepository resultTypeRefs;
     private final ProcedureDocumentRepository documents;
+    private final VersionDocumentRefRepository documentRefs;
 
     public ProcedureTemplateService(ProcedureTemplateRepository templates,
                                     ProcedureTemplateVersionRepository versions,
@@ -94,7 +97,8 @@ public class ProcedureTemplateService {
                                     FgaAuthorizationService fga,
                                     ResultTypeRepository resultTypes,
                                     VersionResultTypeRefRepository resultTypeRefs,
-                                    ProcedureDocumentRepository documents) {
+                                    ProcedureDocumentRepository documents,
+                                    VersionDocumentRefRepository documentRefs) {
         this.templates = templates;
         this.versions = versions;
         this.canonicalizer = canonicalizer;
@@ -104,6 +108,7 @@ public class ProcedureTemplateService {
         this.resultTypes = resultTypes;
         this.resultTypeRefs = resultTypeRefs;
         this.documents = documents;
+        this.documentRefs = documentRefs;
     }
 
     // --- template identity --------------------------------------------------
@@ -332,6 +337,9 @@ public class ProcedureTemplateService {
         // it names stays deletable.
         resultTypeRefs.saveAll(document.resultTypeKeys().stream()
                 .map(key -> new VersionResultTypeRef(draft.getId(), key))
+                .toList());
+        documentRefs.saveAll(document.citedDocumentIds().stream()
+                .map(docId -> new VersionDocumentRef(draft.getId(), UUID.fromString(docId)))
                 .toList());
         template.setCurrentPublishedVersionId(draft.getId());
         templates.flush();
