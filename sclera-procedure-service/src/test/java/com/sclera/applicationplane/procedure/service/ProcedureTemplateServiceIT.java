@@ -293,12 +293,12 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
         void publishNamesEveryReasonAndChecksTheOrganizationsOwnResultTypes() {
             actAsNewOrg();
             // PASS and FAIL are seeded for a new organization; AMBER is not.
-            Item mappedToAmber = new Item(null, "Is the gauge in range?", null, QuestionType.YES_NO, false, false,
-                    List.of(new Option(null, "Yes", "PASS", null, false), new Option(null, "Partly", "AMBER", null, false)),
-                    null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
-            Item onlyOneAnswer = new Item(null, "Is the seal intact?", null, QuestionType.DROPDOWN, false, false,
-                    List.of(new Option(null, "Yes", "PASS", null, false)),
-                    null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
+            Item mappedToAmber = Item.builder().text("Is the gauge in range?").type(QuestionType.YES_NO)
+                    .options(List.of(new Option(null, "Yes", "PASS", null, false), new Option(null, "Partly", "AMBER", null, false)))
+                    .build();
+            Item onlyOneAnswer = Item.builder().text("Is the seal intact?").type(QuestionType.DROPDOWN)
+                    .options(List.of(new Option(null, "Yes", "PASS", null, false)))
+                    .build();
             UUID id = service.create(new CreateTemplateRequest("Blockers", null, null,
                     new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
                             List.of(mappedToAmber, onlyOneAnswer), List.of(), List.of(), List.of()))).id();
@@ -498,14 +498,12 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
     }
 
     private static List<Item> section(String key, String title, Item... questions) {
-        Item heading = new Item(key, title, null, QuestionType.SECTION, false, false, List.of(),
-                null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
+        Item heading = Item.builder().key(key).text(title).type(QuestionType.SECTION).build();
         return Stream.concat(Stream.of(heading), Stream.of(questions)).toList();
     }
 
     private static Item question(String key, String text) {
-        return new Item(key, text, null, QuestionType.TEXT, false, false, List.of(),
-                null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
+        return Item.builder().key(key).text(text).type(QuestionType.TEXT).build();
     }
 
     /** Every key in document order, follow-ups included. */

@@ -17,18 +17,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class KeyMinterTest {
 
     private static Item q(String key, String text) {
-        return new Item(key, text, null, QuestionType.TEXT, false, false, List.of(), null, null, null,
-                false, null, false, null, null, null, null, null, List.of(), List.of());
+        return Item.builder().key(key).text(text).type(QuestionType.TEXT).build();
     }
 
     private static Item section(String key, String title) {
-        return new Item(key, title, null, QuestionType.SECTION, false, false, List.of(), null, null, null,
-                false, null, false, null, null, null, null, null, List.of(), List.of());
+        return Item.builder().key(key).text(title).type(QuestionType.SECTION).build();
     }
 
     private static Item choice(String key, String text, Option... options) {
-        return new Item(key, text, null, QuestionType.YES_NO, false, false, List.of(options), null, null, null,
-                false, null, false, null, null, null, null, null, List.of(), List.of());
+        return Item.builder().key(key).text(text).type(QuestionType.YES_NO).options(List.of(options)).build();
     }
 
     private static DefinitionDocument doc(Item... items) {
