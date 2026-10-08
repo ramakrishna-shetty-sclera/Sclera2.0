@@ -404,6 +404,57 @@ tr[draggable='true'] {
   margin-left: 6px;
 }
 
+.applies-row {
+  display: flex;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid #e5e7eb;
+}
+.applies-label {
+  flex: 0 0 140px;
+  font-weight: 600;
+  font-size: 0.9em;
+}
+.applies-body {
+  flex: 1;
+  min-width: 0;
+}
+.applies-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.applies-add {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.applies-add input {
+  flex: 0 1 260px;
+}
+.key-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  background: #f9fafb;
+  font-size: 0.9em;
+}
+.chip-remove {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: #6b7280;
+  font-size: 1.1em;
+  line-height: 1;
+  padding: 0 2px;
+}
+.chip-remove:hover {
+  color: #b91c1c;
+}
 .rt-key-inline {
   font-family: 'Consolas', 'SF Mono', monospace;
   font-weight: 600;

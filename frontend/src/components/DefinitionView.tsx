@@ -129,8 +129,23 @@ export function DefinitionView({ definition }: { definition: DefinitionDocument 
     return <p className="muted">Nothing in this procedure yet.</p>
   }
 
+  const targetTypes = definition.targetTypes ?? []
+
   return (
     <>
+      {targetTypes.length > 0 && (
+        <div className="card">
+          <div className="field-label">Applies to</div>
+          <div className="applies-chips">
+            {targetTypes.map((t) => (
+              <span className="key-chip" key={t.kind + ':' + t.key}>
+                {t.key}
+                <span className="muted small"> {typeLabel(t.kind)}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
       {group(definition.items).map((g, index) => (
         <div className="card" key={g.section?.key ?? `g${index}`}>
           {g.section && (

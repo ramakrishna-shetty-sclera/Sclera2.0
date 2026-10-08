@@ -9,6 +9,7 @@ import { useAuth } from '../auth/AuthContext'
 import { ItemEditor } from '../components/ItemEditor'
 import { Refusal } from '../components/Refusal'
 import { EvaluationPreview } from '../components/EvaluationPreview'
+import { AppliesToCard } from '../components/AppliesToCard'
 import { ThresholdsEditor } from '../components/ThresholdsEditor'
 import {
   addFollowIn,
@@ -42,8 +43,13 @@ import {
 const AUTOSAVE_MS = 30_000
 
 /** The document as it would be sent — what "has this changed since the last save" compares. */
-const snapshotOf = (schema: number, items: ItemDraft[], thresholds: Threshold[]): string =>
-  JSON.stringify(toDocument(schema, items, thresholds))
+const snapshotOf = (
+  schema: number,
+  items: ItemDraft[],
+  thresholds: Threshold[],
+  targetTypes: TargetType[] = [],
+  documents: DocumentRef[] = [],
+): string => JSON.stringify(toDocument(schema, items, thresholds, targetTypes, documents))
 
 /**
  * Carried through the navigation that creating a procedure forces.
@@ -102,16 +108,18 @@ export function TemplateEditorPage() {
    */
   const [thresholds, setThresholds] = useState<Threshold[]>([])
   /**
-   * What the procedure applies to, document-level like the thresholds. No screen
-   * edits it yet, so it is held in a ref rather than state: it only has to
-   * survive a load-and-save round trip instead of being dropped, and nothing
-   * renders from it. Replaced from every response the server sends back.
+   * What the procedure applies to, document-level like the thresholds. State, so
+   * that editing it counts as a change: it is part of the snapshot, so it makes
+   * the draft dirty and autosave carries it. Replaced from every response the
+   * server sends back.
    */
-  const targetTypesRef = useRef<TargetType[]>([])
-  // Carried through every save untouched, the way targetTypes is: a screen that
-  // does not edit a document-level list must not drop it from a version written
-  // elsewhere.
-  const documentsRef = useRef<DocumentRef[]>([])
+  const [targetTypes, setTargetTypes] = useState<TargetType[]>([])
+  /**
+   * The library documents this version cites, document-level in the same way.
+   * Held beside targetTypes so that a save from a screen that does not edit it
+   * still sends it back instead of dropping it.
+   */
+  const [documents, setDocuments] = useState<DocumentRef[]>([])
   const [changeNote, setChangeNote] = useState('')
   const [schema, setSchema] = useState(2)
   /**
@@ -191,14 +199,18 @@ export function TemplateEditorPage() {
         setDraftVersionNo(draft.versionNo)
         const loadedThresholds = draft.definition.thresholds ?? []
         setThresholds(loadedThresholds)
-        targetTypesRef.current = draft.definition.targetTypes ?? []
-        documentsRef.current = draft.definition.documents ?? []
+        const loadedTargetTypes = draft.definition.targetTypes ?? []
+        const loadedDocuments = draft.definition.documents ?? []
+        setTargetTypes(loadedTargetTypes)
+        setDocuments(loadedDocuments)
         rowVersionRef.current = draft.rowVersion
         let loadedItems = fromDocument(draft.definition)
         if (loadedItems.length === 0) loadedItems = [newItem()]
         // What the server holds, taken BEFORE any pending follow-up is added:
         // that follow-up is not saved yet, so it should read as a change.
-        setSavedSnapshot(snapshotOf(draft.definition.schema, loadedItems, loadedThresholds))
+        setSavedSnapshot(
+          snapshotOf(draft.definition.schema, loadedItems, loadedThresholds, loadedTargetTypes, loadedDocuments),
+        )
         failedSnapshot.current = null
         // Finishes a "+ Follow-up" that had to create the procedure first. The
         // answers now carry the keys the server minted, so the follow-up has
@@ -250,15 +262,17 @@ export function TemplateEditorPage() {
    * the current values from here instead.
    */
   const latest = useRef({
-    id, editing, items, schema, thresholds, changeNote, conflict, busy, savingFor, savedSnapshot,
+    id, editing, items, schema, thresholds, targetTypes, documents, changeNote, conflict, busy, savingFor,
+    savedSnapshot,
   })
   latest.current = {
-    id, editing, items, schema, thresholds, changeNote, conflict, busy, savingFor, savedSnapshot,
+    id, editing, items, schema, thresholds, targetTypes, documents, changeNote, conflict, busy, savingFor,
+    savedSnapshot,
   }
 
   async function autosaveNow() {
     const s = latest.current
-    const snapshot = snapshotOf(s.schema, s.items, s.thresholds)
+    const snapshot = snapshotOf(s.schema, s.items, s.thresholds, s.targetTypes, s.documents)
     const skip = autosaveSkipReason({
       ready: s.editing && rowVersionRef.current !== null,
       conflict: s.conflict,
@@ -278,7 +292,7 @@ export function TemplateEditorPage() {
     try {
       const saved = await enqueue(() =>
         saveDraft(s.id!, {
-          definition: toDocument(s.schema, sent, s.thresholds, targetTypesRef.current, documentsRef.current),
+          definition: toDocument(s.schema, sent, s.thresholds, s.targetTypes, s.documents),
           rowVersion: rowVersionRef.current!,
           changeNote: s.changeNote.trim() || undefined,
         }),
@@ -291,9 +305,17 @@ export function TemplateEditorPage() {
       const minted = keysFromSaved(sent, saved.definition.items)
       setItems((prev) => applyKeys(prev, minted))
       setThresholds(saved.definition.thresholds ?? [])
-      targetTypesRef.current = saved.definition.targetTypes ?? []
-      documentsRef.current = saved.definition.documents ?? []
-      setSavedSnapshot(snapshotOf(s.schema, applyKeys(sent, minted), saved.definition.thresholds ?? []))
+      setTargetTypes(saved.definition.targetTypes ?? [])
+      setDocuments(saved.definition.documents ?? [])
+      setSavedSnapshot(
+        snapshotOf(
+          s.schema,
+          applyKeys(sent, minted),
+          saved.definition.thresholds ?? [],
+          saved.definition.targetTypes ?? [],
+          saved.definition.documents ?? [],
+        ),
+      )
       failedSnapshot.current = null
       setAutosave({ phase: 'idle', at: new Date() })
     } catch (e) {
@@ -328,8 +350,8 @@ export function TemplateEditorPage() {
   }, [editing, id, permissions.canManageTemplates])
 
   const docDirty = useMemo(
-    () => snapshotOf(schema, items, thresholds) !== savedSnapshot,
-    [schema, items, thresholds, savedSnapshot],
+    () => snapshotOf(schema, items, thresholds, targetTypes, documents) !== savedSnapshot,
+    [schema, items, thresholds, targetTypes, documents, savedSnapshot],
   )
   const identityDirty = editing
     ? name.trim() !== original.name || description.trim() !== original.description
@@ -424,13 +446,13 @@ export function TemplateEditorPage() {
         const created = await createProcedure({
           name: name.trim(),
           description: description.trim() || undefined,
-          definition: toDocument(schema, items, thresholds, targetTypesRef.current, documentsRef.current),
+          definition: toDocument(schema, items, thresholds, targetTypes, documents),
         })
         navigate(`/templates/${created.id}/edit`, { state: { addFollowAt: path } })
         return
       }
 
-      const definition = toDocument(schema, items, thresholds, targetTypesRef.current, documentsRef.current)
+      const definition = toDocument(schema, items, thresholds, targetTypes, documents)
       const saved = await enqueue(() =>
         saveDraft(id!, {
           definition,
@@ -444,9 +466,11 @@ export function TemplateEditorPage() {
       const reloaded = fromDocument(saved.definition)
       const reloadedThresholds = saved.definition.thresholds ?? []
       setThresholds(reloadedThresholds)
-      targetTypesRef.current = saved.definition.targetTypes ?? []
-      documentsRef.current = saved.definition.documents ?? []
-      setSavedSnapshot(snapshotOf(schema, reloaded, reloadedThresholds))
+      const reloadedTargetTypes = saved.definition.targetTypes ?? []
+      const reloadedDocuments = saved.definition.documents ?? []
+      setTargetTypes(reloadedTargetTypes)
+      setDocuments(reloadedDocuments)
+      setSavedSnapshot(snapshotOf(schema, reloaded, reloadedThresholds, reloadedTargetTypes, reloadedDocuments))
       failedSnapshot.current = null
       setItems(withFollowAt(reloaded, path))
     } catch (e) {
@@ -487,7 +511,7 @@ export function TemplateEditorPage() {
     setRefusal(null)
     setConflict(false)
     try {
-      const definition = toDocument(schema, items, thresholds, targetTypesRef.current, documentsRef.current)
+      const definition = toDocument(schema, items, thresholds, targetTypes, documents)
 
       if (!editing) {
         const created = await createProcedure({
@@ -676,6 +700,8 @@ export function TemplateEditorPage() {
           </button>
         </div>
       </div>
+
+      <AppliesToCard targetTypes={targetTypes} onChange={setTargetTypes} />
 
       <ThresholdsEditor
         thresholds={thresholds}

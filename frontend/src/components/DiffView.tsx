@@ -42,6 +42,9 @@ export function DiffView({ result }: { result: ProcedureDiff }) {
       </p>
 
       {diff.orderChanged && <div className="alert alert-amber">The items were reordered.</div>}
+      {diff.targetTypesChanged && (
+        <div className="alert alert-amber">What the procedure applies to changed.</div>
+      )}
 
       {diff.items.length > 0 && (
         <div className="card">
