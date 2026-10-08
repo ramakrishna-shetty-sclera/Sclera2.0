@@ -356,6 +356,25 @@ export interface DefinitionDocument {
   documents?: DocumentRef[]
 }
 
+/**
+ * One row of the reference-document library: a standard's extract, a
+ * manufacturer's sheet. The bytes live behind the storage port; `location` is
+ * an opaque key to them, never a URL, because a link expires and a fresh one is
+ * asked for each time it is needed.
+ */
+export interface ProcedureDocument {
+  id: string
+  /** Absent means organization-wide, visible from every property. Set means that property only. */
+  propertyId?: string | null
+  name: string
+  mimeType?: string | null
+  sizeBytes?: number | null
+  location: string
+  active: boolean
+  uploadedBy?: string | null
+  uploadedAt?: string | null
+}
+
 /** One citation of a library document: the whole procedure, or one question. */
 export interface DocumentRef {
   id: string

@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react'
 import { numberItems, typeLabel } from '../api/document'
-import type { DefinitionDocument, DefinitionItem, DefinitionOption } from '../api/types'
+import { listDocuments, openDocument } from '../api/documents'
+import type { DefinitionDocument, DefinitionItem, DefinitionOption, ProcedureDocument } from '../api/types'
 
 /** What a follow-up hangs off, named by the answer rather than by its key. */
 function trigger(when: string | null | undefined, parentOptions: DefinitionOption[]): string | null {
@@ -86,6 +88,74 @@ function QuestionView({
   )
 }
 
+/** The questions of a document at every depth, with the number the reader sees. */
+function questionLabels(definition: DefinitionDocument): Map<string, string> {
+  const numbers = numberItems(definition.items)
+  const out = new Map<string, string>()
+  const walk = (list: DefinitionItem[]) => {
+    for (const item of list) {
+      if (item.key && item.type !== 'SECTION') out.set(item.key, (numbers.get(item) ?? '') + ' ' + item.text)
+      walk(item.follow)
+    }
+  }
+  walk(definition.items)
+  return out
+}
+
+/**
+ * The documents this version cites. Names come from the library at the moment
+ * of viewing, because a citation is an id and nothing else.
+ */
+function CitedDocuments({ definition }: { definition: DefinitionDocument }) {
+  const refs = definition.documents ?? []
+  const [library, setLibrary] = useState<ProcedureDocument[] | null>(null)
+
+  useEffect(() => {
+    if (refs.length === 0) return
+    let cancelled = false
+    listDocuments()
+      .then((list) => {
+        if (!cancelled) setLibrary(list)
+      })
+      .catch(() => {
+        if (!cancelled) setLibrary([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [refs.length])
+
+  if (refs.length === 0) return null
+  const byId = new Map((library ?? []).map((d) => [d.id, d]))
+  const labels = questionLabels(definition)
+
+  return (
+    <div className="card">
+      <div className="field-label">Reference documents</div>
+      <ul className="doc-refs">
+        {refs.map((ref) => {
+          const doc = byId.get(ref.id)
+          return (
+            <li key={ref.id + ':' + (ref.questionKey ?? '')}>
+              {doc ? (
+                <button type="button" className="link-button" onClick={() => openDocument(doc.location)}>
+                  {doc.name}
+                </button>
+              ) : (
+                <span className="muted">{library ? 'document unavailable' : 'Loading…'}</span>
+              )}
+              <span className="muted small">
+                {' '}
+                {ref.questionKey ? 'on ' + (labels.get(ref.questionKey) ?? 'question ' + ref.questionKey) : 'whole procedure'}
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
 /**
  * A section heading and the questions that come after it.
  *
@@ -133,6 +203,7 @@ export function DefinitionView({ definition }: { definition: DefinitionDocument 
 
   return (
     <>
+      <CitedDocuments definition={definition} />
       {targetTypes.length > 0 && (
         <div className="card">
           <div className="field-label">Applies to</div>

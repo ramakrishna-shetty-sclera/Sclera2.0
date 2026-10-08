@@ -20,6 +20,7 @@ import { ScanPage } from './pages/ScanPage'
 import { TemplatesPage } from './pages/TemplatesPage'
 import { TemplateDetailPage } from './pages/TemplateDetailPage'
 import { TemplateEditorPage } from './pages/TemplateEditorPage'
+import { DocumentsPage } from './pages/DocumentsPage'
 import { ResultTypesPage } from './pages/ResultTypesPage'
 
 function Layout() {
@@ -45,6 +46,7 @@ function Layout() {
           <NavLink to="/assets">Assets</NavLink>
           <NavLink to="/templates">Procedures</NavLink>
           <NavLink to="/settings/result-types">Result types</NavLink>
+          <NavLink to="/settings/documents">Documents</NavLink>
           <NavLink to="/inspection-configs">Inspections</NavLink>
           <NavLink to="/reactive-services">Reactive</NavLink>
           <NavLink to="/tasks">Tasks</NavLink>
@@ -96,6 +98,7 @@ export function App() {
         <Route path="/templates/:id" element={<TemplateDetailPage />} />
         <Route path="/templates/:id/edit" element={<TemplateEditorPage />} />
         <Route path="/settings/result-types" element={<ResultTypesPage />} />
+        <Route path="/settings/documents" element={<DocumentsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

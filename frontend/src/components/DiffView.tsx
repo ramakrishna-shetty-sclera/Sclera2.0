@@ -45,6 +45,9 @@ export function DiffView({ result }: { result: ProcedureDiff }) {
       {diff.targetTypesChanged && (
         <div className="alert alert-amber">What the procedure applies to changed.</div>
       )}
+      {diff.documentsChanged && (
+        <div className="alert alert-amber">The documents this procedure cites changed.</div>
+      )}
 
       {diff.items.length > 0 && (
         <div className="card">

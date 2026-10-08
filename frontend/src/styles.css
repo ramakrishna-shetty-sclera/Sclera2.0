@@ -455,6 +455,27 @@ tr[draggable='true'] {
 .chip-remove:hover {
   color: #b91c1c;
 }
+.doc-refs {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+.doc-refs li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+.link-button {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: #2563eb;
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
 .rt-key-inline {
   font-family: 'Consolas', 'SF Mono', monospace;
   font-weight: 600;

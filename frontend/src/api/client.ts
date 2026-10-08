@@ -174,6 +174,11 @@ export async function apiFetch<T>(
   options: {
     method?: string
     body?: unknown
+    /**
+     * A multipart body, for a file upload. Sent as is, with no Content-Type of
+     * ours: the browser has to write it, because it carries the boundary.
+     */
+    form?: FormData
     query?: Record<string, string | number | undefined>
   } = {},
 ): Promise<ApiResult<T>> {
@@ -191,7 +196,7 @@ export async function apiFetch<T>(
     method: options.method ?? 'GET',
     credentials: 'same-origin',
     headers: gatewayHeaders(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    body: options.form ?? (options.body !== undefined ? JSON.stringify(options.body) : undefined),
   })
 
   if (res.status === 401) sessionExpired()

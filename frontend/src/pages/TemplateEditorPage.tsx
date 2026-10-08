@@ -10,6 +10,7 @@ import { ItemEditor } from '../components/ItemEditor'
 import { Refusal } from '../components/Refusal'
 import { EvaluationPreview } from '../components/EvaluationPreview'
 import { AppliesToCard } from '../components/AppliesToCard'
+import { ReferenceDocumentsCard } from '../components/ReferenceDocumentsCard'
 import { ThresholdsEditor } from '../components/ThresholdsEditor'
 import {
   addFollowIn,
@@ -702,6 +703,8 @@ export function TemplateEditorPage() {
       </div>
 
       <AppliesToCard targetTypes={targetTypes} onChange={setTargetTypes} />
+
+      <ReferenceDocumentsCard documents={documents} items={items} onChange={setDocuments} />
 
       <ThresholdsEditor
         thresholds={thresholds}
