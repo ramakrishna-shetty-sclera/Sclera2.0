@@ -21,13 +21,11 @@ import static org.assertj.core.api.Assertions.tuple;
 class DefinitionDiffTest {
 
     private static Item q(String key, String text) {
-        return new Item(key, text, null, QuestionType.TEXT, false, false, List.of(), null, null, null,
-                false, null, false, null, null, null, null, null, List.of(), List.of());
+        return Item.builder().key(key).text(text).type(QuestionType.TEXT).build();
     }
 
     private static Item section(String key, String title) {
-        return new Item(key, title, null, QuestionType.SECTION, false, false, List.of(), null, null, null,
-                false, null, false, null, null, null, null, null, List.of(), List.of());
+        return Item.builder().key(key).text(title).type(QuestionType.SECTION).build();
     }
 
     private static DefinitionDocument doc(Item... items) {
@@ -98,8 +96,7 @@ class DefinitionDiffTest {
     void reportsAddedRemovedAndModifiedByKey() {
         DefinitionDocument v1 = doc(q("q2", "Exit clear?"), q("q3", "Old"));
         DefinitionDocument v2 = doc(
-                new Item("q2", "Is the exit clear?", null, QuestionType.YES_NO, true, false, List.of(),
-                        null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of()),
+                Item.builder().key("q2").text("Is the exit clear?").type(QuestionType.YES_NO).required(true).build(),
                 q("q4", "Brand new"));
 
         DefinitionDiff diff = DefinitionDiff.between(v1, v2);
@@ -157,12 +154,10 @@ class DefinitionDiffTest {
     void rewordingAnAnswerIsReportedWithoutLosingTheFollowUp() {
         // The option keeps its key, so the follow-up that points at it is
         // untouched — which is the whole reason options are keyed.
-        Item v1Parent = new Item("q2", "Clear?", null, QuestionType.YES_NO, false, false,
-                List.of(new Option("o3", "Yes", "PASS", null, false), new Option("o4", "No", "FAIL", null, false)),
-                null, null, null, false, null, false, null, null, null, null,
-                null,
-                List.of(q("q5", "Describe it").withKey("q5")),
-                List.of());
+        Item v1Parent = Item.builder().key("q2").text("Clear?").type(QuestionType.YES_NO)
+                .options(List.of(new Option("o3", "Yes", "PASS", null, false), new Option("o4", "No", "FAIL", null, false)))
+                .follow(List.of(q("q5", "Describe it").withKey("q5")))
+                .build();
         Item v2Parent = v1Parent.withOptions(
                 List.of(new Option("o3", "Yes", "PASS", null, false), new Option("o4", "No — blocked", "FAIL", null, false)));
 
@@ -176,9 +171,9 @@ class DefinitionDiffTest {
 
     @Test
     void aFollowUpIsComparedLikeAnyOtherItem() {
-        Item parent = new Item("q2", "Clear?", null, QuestionType.YES_NO, false, false,
-                List.of(new Option("o3", "No", "FAIL", null, false)), null, null, null,
-                false, null, false, null, null, null, null, null, List.of(), List.of());
+        Item parent = Item.builder().key("q2").text("Clear?").type(QuestionType.YES_NO)
+                .options(List.of(new Option("o3", "No", "FAIL", null, false)))
+                .build();
         DefinitionDocument v1 = doc(parent.withFollow(List.of(q("q4", "Why?"))));
         DefinitionDocument v2 = doc(parent.withFollow(List.of(q("q4", "Why not?"))));
 
@@ -193,12 +188,12 @@ class DefinitionDiffTest {
 
     @Test
     void movingABandsEdgeIsReportedAsRules() {
-        Item v1 = new Item("q2", "Pressure", null, QuestionType.INTEGER, true, false, List.of(),
-                "psi", null, null, false, null, false, null, null, null, null, null, List.of(),
-                List.of(new RangeRule(null, 11, "PASS"), new RangeRule(12, null, "FAIL")));
-        Item v2 = new Item("q2", "Pressure", null, QuestionType.INTEGER, true, false, List.of(),
-                "psi", null, null, false, null, false, null, null, null, null, null, List.of(),
-                List.of(new RangeRule(null, 13, "PASS"), new RangeRule(14, null, "FAIL")));
+        Item v1 = Item.builder().key("q2").text("Pressure").type(QuestionType.INTEGER).required(true)
+                .unit("psi").rules(List.of(new RangeRule(null, 11, "PASS"), new RangeRule(12, null, "FAIL")))
+                .build();
+        Item v2 = Item.builder().key("q2").text("Pressure").type(QuestionType.INTEGER).required(true)
+                .unit("psi").rules(List.of(new RangeRule(null, 13, "PASS"), new RangeRule(14, null, "FAIL")))
+                .build();
 
         DefinitionDiff diff = DefinitionDiff.between(doc(v1), doc(v2));
 
