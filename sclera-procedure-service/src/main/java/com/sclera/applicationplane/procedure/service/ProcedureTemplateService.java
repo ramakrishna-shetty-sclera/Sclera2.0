@@ -9,6 +9,7 @@ import com.sclera.applicationplane.procedure.client.vocabulary.Vocabulary;
 import com.sclera.applicationplane.procedure.client.vocabulary.VocabularyKind;
 import com.sclera.applicationplane.procedure.client.vocabulary.VocabularyUnavailableException;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument;
+import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetKind;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetType;
 import com.sclera.applicationplane.procedure.definition.DefinitionValidator;
 import com.sclera.applicationplane.procedure.definition.KeyMinter;
@@ -196,6 +197,23 @@ public class ProcedureTemplateService {
         Page<ProcedureTemplate> page = status == null
                 ? templates.findAllByOrgId(orgId, pageable)
                 : templates.findAllByOrgIdAndStatus(orgId, status, pageable);
+        return withVersionNumbers(page);
+    }
+
+    /**
+     * The active procedures that apply to one target — "which checklists does an
+     * extinguisher get?". One that names no target types applies to anything and
+     * is always included. Row-level security still hides a procedure that belongs
+     * to a property the caller is not standing in.
+     */
+    @Transactional(readOnly = true)
+    public Page<TemplateResponse> discover(String consumerKey, TargetKind kind, String key, Pageable pageable) {
+        Page<ProcedureTemplate> page = templates.findApplicableTo(OrgContext.getOrgId(),
+                consumerKey.trim().toUpperCase(Locale.ROOT), kind, key.strip(), pageable);
+        return withVersionNumbers(page);
+    }
+
+    private Page<TemplateResponse> withVersionNumbers(Page<ProcedureTemplate> page) {
         if (page.isEmpty()) {
             return page.map(t -> mapper.toResponse(t, null, null));
         }

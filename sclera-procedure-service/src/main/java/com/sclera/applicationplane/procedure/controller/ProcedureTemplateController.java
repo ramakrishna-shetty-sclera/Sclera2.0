@@ -1,5 +1,6 @@
 package com.sclera.applicationplane.procedure.controller;
 
+import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetKind;
 import com.sclera.applicationplane.procedure.domain.TemplateStatus;
 import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluateRequest;
 import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluationResponse;
@@ -63,6 +64,19 @@ public class ProcedureTemplateController {
     public Page<TemplateResponse> list(@RequestParam(required = false) TemplateStatus status,
                                        @PageableDefault(size = 20) Pageable pageable) {
         return service.list(status, pageable);
+    }
+
+    /**
+     * The procedures that apply to one target, for the consumer that will run
+     * them. Organization-wide like {@link #list}, so the same permission.
+     */
+    @GetMapping("/discover")
+    @PreAuthorize("@fga.checkOrg('can_view')")
+    public Page<TemplateResponse> discover(@RequestParam String consumer,
+                                           @RequestParam TargetKind kind,
+                                           @RequestParam String key,
+                                           @PageableDefault(size = 20) Pageable pageable) {
+        return service.discover(consumer, kind, key, pageable);
     }
 
     @GetMapping("/{id}")
