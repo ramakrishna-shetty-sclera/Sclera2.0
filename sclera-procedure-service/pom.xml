@@ -110,6 +110,15 @@
             <artifactId>caffeine</artifactId>
         </dependency>
 
+        <!-- Lombok: @Builder on Item (definition/DefinitionDocument.java). Version
+             comes from spring-boot-starter-parent's dependencyManagement via the
+             aggregator pom's parent chain — do not pin one here. -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

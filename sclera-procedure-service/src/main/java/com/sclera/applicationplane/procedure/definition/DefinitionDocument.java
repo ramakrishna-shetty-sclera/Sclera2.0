@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import lombok.Builder;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -261,7 +262,17 @@ public record DefinitionDocument(
      * SECTION uses almost none of them. The document does not try to express
      * that in its shape; the validator enforces it, which keeps one record
      * readable instead of six that mostly repeat each other.
+     *
+     * <p>Built only through {@link ItemBuilder} — {@code Item.builder()
+     * .key("q1").text("...").type(...).build()} — never through the
+     * 20-argument constructor directly. The constructor stays public (Java
+     * requires this: a record's canonical constructor can never be more
+     * restrictive than the record type itself, and {@code Item} has to stay
+     * public), so this is a convention the codebase follows rather than one
+     * the compiler enforces — there being no external caller of this service
+     * to protect against, there is nothing else to enforce it against.
      */
+    @Builder
     public record Item(
             @Size(max = 20) String key,
 
