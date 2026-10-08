@@ -53,9 +53,10 @@ class VersionDocumentRefIT extends PostgresIntegrationTest {
         return documents.saveAndFlush(document).getId();
     }
 
+    /** Keys are left unset: a new template has issued none, so the minter assigns them. */
     private static Item question() {
-        return new Item("q2", "Exit clear?", null, QuestionType.YES_NO, true, false,
-                List.of(new Option("o3", "Yes", "PASS", null, false), new Option("o4", "No", "FAIL", null, false)),
+        return new Item(null, "Exit clear?", null, QuestionType.YES_NO, true, false,
+                List.of(new Option(null, "Yes", "PASS", null, false), new Option(null, "No", "FAIL", null, false)),
                 null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
     }
 
@@ -70,15 +71,24 @@ class VersionDocumentRefIT extends PostgresIntegrationTest {
         UUID docA = asOrg(org, () -> document(org));
         UUID docB = asOrg(org, () -> document(org));
 
-        // docA cited twice (procedure level and against q2); docB once.
         PublishResponse published = asOrg(org, () -> {
-            UUID id = service.create(request(
-                    new DocumentRef(docA.toString(), null),
-                    new DocumentRef(docA.toString(), "q2"),
-                    new DocumentRef(docB.toString(), null))).id();
+            UUID id = service.create(request()).id();
+            // The question's key is minted on create, so a citation hanging off
+            // that question can only be written once the key is known.
+            VersionResponse draft = service.getDraft(id);
+            String questionKey = draft.definition().items().get(0).key();
+            service.saveDraft(id, new SaveDraftRequest(
+                    new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
+                            draft.definition().items(), List.of(),
+                            List.of(new DocumentRef(docA.toString(), null),
+                                    new DocumentRef(docA.toString(), questionKey),
+                                    new DocumentRef(docB.toString(), null))),
+                    draft.rowVersion(), null));
             return service.publish(id, null);
         });
 
+        // docA is cited twice — at procedure level and against the question —
+        // and gets one row, not two.
         assertThat(asOrg(org, () -> { return refs.findAll(); }))
                 .extracting(VersionDocumentRef::getVersionId, VersionDocumentRef::getDocumentId)
                 .containsExactlyInAnyOrder(

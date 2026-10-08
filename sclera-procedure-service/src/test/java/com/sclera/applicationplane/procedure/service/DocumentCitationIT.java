@@ -54,9 +54,10 @@ class DocumentCitationIT extends PostgresIntegrationTest {
         return documents.saveAndFlush(document).getId();
     }
 
+    /** Keys are left unset: a new template has issued none, so the minter assigns them. */
     private static Item question() {
-        return new Item("q2", "Exit clear?", null, QuestionType.YES_NO, true, false,
-                List.of(new Option("o3", "Yes", "PASS", null, false), new Option("o4", "No", "FAIL", null, false)),
+        return new Item(null, "Exit clear?", null, QuestionType.YES_NO, true, false,
+                List.of(new Option(null, "Yes", "PASS", null, false), new Option(null, "No", "FAIL", null, false)),
                 null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
     }
 
