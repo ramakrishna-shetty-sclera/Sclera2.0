@@ -32,7 +32,7 @@ class DefinitionDocumentTest {
     }
 
     private static DefinitionDocument doc(Item... items) {
-        return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(items), List.of(), List.of());
+        return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(items), List.of(), List.of(), List.of());
     }
 
     /** Each group as (section key or null, its question keys) — enough to see the shape at a glance. */
@@ -114,7 +114,7 @@ class DefinitionDocumentTest {
         DefinitionDocument document = new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(q("q1")), List.of(),
                 List.of(new TargetType(TargetKind.ASSET_CLASS, "EXTINGUISHER"),
                         new TargetType(TargetKind.HIERARCHY_LEVEL, "FLOOR"),
-                        new TargetType(TargetKind.ASSET_CLASS, " EXTINGUISHER ")));
+                        new TargetType(TargetKind.ASSET_CLASS, " EXTINGUISHER ")), List.of());
 
         assertThat(document.targetTypeKeys()).containsExactly(
                 new TargetType(TargetKind.ASSET_CLASS, "EXTINGUISHER"), new TargetType(TargetKind.HIERARCHY_LEVEL, "FLOOR"));

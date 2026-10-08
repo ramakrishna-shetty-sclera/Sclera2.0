@@ -32,7 +32,7 @@ class KeyMinterTest {
     }
 
     private static DefinitionDocument doc(Item... items) {
-        return new DefinitionDocument(2, List.of(items), List.of(), List.of());
+        return new DefinitionDocument(2, List.of(items), List.of(), List.of(), List.of());
     }
 
     @Test
@@ -134,7 +134,7 @@ class KeyMinterTest {
         // It rebuilds the document from its parts; a part left out of that is
         // dropped on every single save.
         DefinitionDocument document = new DefinitionDocument(2, List.of(q(null, "Present?")), List.of(),
-                List.of(new TargetType(TargetKind.ASSET_CLASS, "EXTINGUISHER")));
+                List.of(new TargetType(TargetKind.ASSET_CLASS, "EXTINGUISHER")), List.of());
 
         DefinitionDocument keyed = KeyMinter.assignKeys(document, 0, new java.util.concurrent.atomic.AtomicInteger()::incrementAndGet);
 

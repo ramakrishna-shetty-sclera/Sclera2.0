@@ -66,9 +66,9 @@ class TargetTypesIT extends PostgresIntegrationTest {
     private static CreateTemplateRequest create(TargetType... targets) {
         Item question = new Item(null, "Extinguisher present?", null, QuestionType.YES_NO, true, false,
                 List.of(new Option(null, "Yes", "PASS", null, false), new Option(null, "No", "FAIL", null, false)),
-                null, null, null, false, null, null, null, null, null, null, List.of(), List.of());
+                null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
         return new CreateTemplateRequest("Fire walk " + UUID.randomUUID(), null, null,
-                new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question), List.of(), List.of(targets)));
+                new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question), List.of(), List.of(targets), List.of()));
     }
 
     // --- the vocabulary is only asked when there is something to check -----------------
@@ -197,7 +197,7 @@ class TargetTypesIT extends PostgresIntegrationTest {
         procedures.createDraft(id, new NewDraftRequest(1));
         VersionResponse draft = procedures.getDraft(id);
         DefinitionDocument widened = new DefinitionDocument(draft.definition().schema(), draft.definition().items(),
-                draft.definition().thresholds(), List.of(asset("EXTINGUISHER"), asset("HOSE_REEL")));
+                draft.definition().thresholds(), List.of(asset("EXTINGUISHER"), asset("HOSE_REEL")), List.of());
         procedures.saveDraft(id, new SaveDraftRequest(widened, draft.rowVersion(), "Added hose reels"));
         PublishResponse v2 = procedures.publish(id, null);
 

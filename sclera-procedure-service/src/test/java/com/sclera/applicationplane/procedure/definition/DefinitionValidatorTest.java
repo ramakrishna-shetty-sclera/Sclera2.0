@@ -34,7 +34,7 @@ class DefinitionValidatorTest {
     }
 
     private static DefinitionDocument doc(Item... items) {
-        return new DefinitionDocument(2, List.of(items), List.of(), List.of());
+        return new DefinitionDocument(2, List.of(items), List.of(), List.of(), List.of());
     }
 
     // --- structure: refused on save ------------------------------------------
@@ -363,7 +363,7 @@ class DefinitionValidatorTest {
     }
 
     private static DefinitionDocument scored(List<Threshold> bands, Item... items) {
-        return new DefinitionDocument(2, List.of(items), bands, List.of());
+        return new DefinitionDocument(2, List.of(items), bands, List.of(), List.of());
     }
 
     /**
@@ -620,7 +620,7 @@ class DefinitionValidatorTest {
     // --- target types ----------------------------------------------------------
 
     private static DefinitionDocument withTargets(TargetType... targets) {
-        return new DefinitionDocument(2, List.of(yesNo("q1", "Extinguisher present?")), List.of(), List.of(targets));
+        return new DefinitionDocument(2, List.of(yesNo("q1", "Extinguisher present?")), List.of(), List.of(targets), List.of());
     }
 
     private static TargetType asset(String key) {
@@ -678,7 +678,7 @@ class DefinitionValidatorTest {
     @Test
     void unknownTargetTypesAreListedBesideTheOtherReasonsNotInsteadOfThem() {
         DefinitionDocument unfinished = new DefinitionDocument(2,
-                List.of(item("q1", "Exit clear?", QuestionType.YES_NO)), List.of(), List.of(asset("EXTINGUISHER")));
+                List.of(item("q1", "Exit clear?", QuestionType.YES_NO)), List.of(), List.of(asset("EXTINGUISHER")), List.of());
 
         assertThat(DefinitionValidator.publishBlockers(unfinished, PASS_FAIL, List.of(asset("EXTINGUISHER"))))
                 .anySatisfy(b -> assertThat(b).contains("needs at least two answers"))
@@ -688,7 +688,7 @@ class DefinitionValidatorTest {
     // --- documents a version cites -------------------------------------------
 
     private static DefinitionDocument docWithRefs(List<DocumentRef> refs, Item... items) {
-        return new DefinitionDocument(2, List.of(items), List.of(), refs);
+        return new DefinitionDocument(2, List.of(items), List.of(), List.of(), refs);
     }
 
     @Test

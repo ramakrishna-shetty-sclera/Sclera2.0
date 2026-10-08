@@ -15,7 +15,11 @@
 -- because a property's document must never become reachable from outside
 -- that property by way of a procedure that is visible everywhere.
 --
--- DDL is identical to db/migration/V8__procedure_documents.sql; keep the two in step.
+-- DDL is identical to db/tenant/V8__procedure_documents.sql; keep the two in step.
+--
+-- This copy exists because ddl-auto=validate checks every entity against the
+-- default schema at boot. No tenant data lives here, so the policy guards
+-- nothing — it is kept identical so the two files never drift.
 
 CREATE TABLE procedure_document (
     id          UUID         PRIMARY KEY,
@@ -76,7 +80,7 @@ CREATE POLICY property_isolation ON procedure_document
 -- would hide exactly the usage that matters. No backfill: nothing published
 -- before this table existed cited anything by this mechanism.
 --
--- DDL is identical to db/migration/V8__procedure_documents.sql; keep the two in step.
+-- DDL is identical to db/tenant/V8__procedure_documents.sql; keep the two in step.
 
 CREATE TABLE version_document_ref (
     version_id  UUID NOT NULL REFERENCES procedure_template_version (id),

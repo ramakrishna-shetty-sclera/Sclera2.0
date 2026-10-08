@@ -194,7 +194,7 @@ class EvaluationIT extends PostgresIntegrationTest {
     }
 
     private static DefinitionDocument doc(List<Threshold> thresholds, Item... items) {
-        return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(items), thresholds, List.of());
+        return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(items), thresholds, List.of(), List.of());
     }
 
     private static CreateTemplateRequest create(DefinitionDocument definition) {

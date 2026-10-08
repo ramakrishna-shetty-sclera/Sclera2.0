@@ -95,8 +95,8 @@ public record DefinitionDiff(
         boolean documentsChanged = !from.documents().equals(to.documents());
 
         return new DefinitionDiff(
-                changes.isEmpty() && !orderChanged && !thresholdsChanged && !documentsChanged,
-                changes.isEmpty() && !orderChanged && !thresholdsChanged && !targetTypesChanged,
+                changes.isEmpty() && !orderChanged && !thresholdsChanged
+                        && !targetTypesChanged && !documentsChanged,
                 orderChanged,
                 thresholdsChanged,
                 targetTypesChanged,

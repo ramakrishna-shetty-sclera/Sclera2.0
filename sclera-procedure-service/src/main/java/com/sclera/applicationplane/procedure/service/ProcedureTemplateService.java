@@ -49,6 +49,7 @@ import com.sclera.applicationplane.procedure.repository.ProcedureTemplateVersion
 import com.sclera.applicationplane.procedure.repository.ResultTypeRepository;
 import com.sclera.applicationplane.procedure.repository.VersionDocumentRefRepository;
 import com.sclera.applicationplane.procedure.repository.VersionResultTypeRefRepository;
+import com.sclera.applicationplane.procedure.repository.VersionTargetTypeRepository;
 import com.sclera.applicationplane.procedure.tenancy.PropertyContext;
 import com.sclera.controlplane.common.exception.BusinessRuleException;
 import com.sclera.controlplane.common.exception.ConflictException;
@@ -112,8 +113,7 @@ public class ProcedureTemplateService {
                                     VersionResultTypeRefRepository resultTypeRefs,
                                     VersionTargetTypeRepository targetTypeRefs,
                                     ProcedureConsumerRepository consumers,
-                                    CachedVocabulary vocabulary) {
-                                    VersionResultTypeRefRepository resultTypeRefs,
+                                    CachedVocabulary vocabulary,
                                     ProcedureDocumentRepository documents,
                                     VersionDocumentRefRepository documentRefs) {
         this.templates = templates;

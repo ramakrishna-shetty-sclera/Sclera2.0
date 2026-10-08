@@ -63,7 +63,7 @@ class DocumentCitationIT extends PostgresIntegrationTest {
 
     private static CreateTemplateRequest request(DocumentRef... refs) {
         return new CreateTemplateRequest("Fire check", null, null,
-                new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question()), List.of(), List.of(refs)));
+                new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question()), List.of(), List.of(), List.of(refs)));
     }
 
     @Test

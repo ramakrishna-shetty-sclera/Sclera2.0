@@ -137,14 +137,12 @@ sclera:
     vocabulary:
       app-id: ${SCLERA_VOCABULARY_APP_ID:sclera-helper-service}
       cache-ttl-seconds: ${SCLERA_VOCABULARY_CACHE_TTL_SECONDS:90}
+    # Where the reference-document storage port lives today (client/storage/).
+    storage:
+      app-id: ${SCLERA_STORAGE_APP_ID:sclera-helper-service}
   # Shared with every service that calls (or is called on) /internal/** — HMAC signing
   event-listener:
     signing-secret: ${SCLERA_INTERNAL_SIGNING_SECRET:dev-internal-signing-secret}
-  # Where each external port's stub lives today. A real service later is a
-  # config change here, never a code change — see client/storage/.
-  external:
-    storage:
-      app-id: ${SCLERA_STORAGE_APP_ID:sclera-helper-service}
   cors:
     allowed-origins: ${SCLERA_CORS_ALLOWED_ORIGINS:https://app.sclera.com,https://admin.sclera.com}
     allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS

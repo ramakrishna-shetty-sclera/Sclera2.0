@@ -62,7 +62,7 @@ class VersionDocumentRefIT extends PostgresIntegrationTest {
 
     private static CreateTemplateRequest request(DocumentRef... refs) {
         return new CreateTemplateRequest("Fire check", null, null,
-                new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question()), List.of(), List.of(refs)));
+                new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question()), List.of(), List.of(), List.of(refs)));
     }
 
     @Test
@@ -80,7 +80,7 @@ class VersionDocumentRefIT extends PostgresIntegrationTest {
             service.saveDraft(id, new SaveDraftRequest(
                     new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
                             draft.definition().items(), List.of(),
-                            List.of(new DocumentRef(docA.toString(), null),
+                            List.of(), List.of(new DocumentRef(docA.toString(), null),
                                     new DocumentRef(docA.toString(), questionKey),
                                     new DocumentRef(docB.toString(), null))),
                     draft.rowVersion(), null));

@@ -73,9 +73,9 @@ class VersionTargetTypeIT extends PostgresIntegrationTest {
     private static CreateTemplateRequest create(TargetType... targets) {
         Item question = new Item(null, "Present?", null, QuestionType.YES_NO, true, false,
                 List.of(new Option(null, "Yes", "PASS", null, false), new Option(null, "No", "FAIL", null, false)),
-                null, null, null, false, null, null, null, null, null, null, List.of(), List.of());
+                null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
         return new CreateTemplateRequest("Walk " + UUID.randomUUID(), null, null,
-                new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question), List.of(), List.of(targets)));
+                new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question), List.of(), List.of(targets), List.of()));
     }
 
     private static List<org.assertj.core.groups.Tuple> rows(List<VersionTargetType> found) {
@@ -155,7 +155,7 @@ class VersionTargetTypeIT extends PostgresIntegrationTest {
         service.createDraft(id, new NewDraftRequest(1));
         VersionResponse draft = service.getDraft(id);
         DefinitionDocument widened = new DefinitionDocument(draft.definition().schema(), draft.definition().items(),
-                draft.definition().thresholds(), List.of(asset("EXTINGUISHER"), asset("HOSE_REEL")));
+                draft.definition().thresholds(), List.of(asset("EXTINGUISHER"), asset("HOSE_REEL")), List.of());
         service.saveDraft(id, new SaveDraftRequest(widened, draft.rowVersion(), "Added hose reels"));
         PublishResponse v2 = service.publish(id, null);
 

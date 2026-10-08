@@ -252,12 +252,25 @@ public final class DefinitionValidator {
      * would fix them. Empty means ready.
      *
      * @param activeResultKeys   the organization's usable result-type keys
-     * @param citableDocumentIds the library documents this procedure may cite —
-     *                           active, and either organization-wide or in this
-     *                           procedure's own property, per the isolation rule
      */
     public static List<String> publishBlockers(DefinitionDocument document, Set<String> activeResultKeys) {
-        return publishBlockers(document, activeResultKeys, List.of());
+        return publishBlockers(document, activeResultKeys, List.of(), Set.of());
+    }
+
+    /**
+     * As above, naming the library documents this procedure may cite: active,
+     * and either organization-wide or in this procedure's own property, per the
+     * isolation rule.
+     */
+    public static List<String> publishBlockers(DefinitionDocument document, Set<String> activeResultKeys,
+                                               Set<String> citableDocumentIds) {
+        return publishBlockers(document, activeResultKeys, List.of(), citableDocumentIds);
+    }
+
+    /** As above, naming the target types the vocabulary did not have. */
+    public static List<String> publishBlockers(DefinitionDocument document, Set<String> activeResultKeys,
+                                               List<TargetType> unknownTargetTypes) {
+        return publishBlockers(document, activeResultKeys, unknownTargetTypes, Set.of());
     }
 
     /**
@@ -274,9 +287,11 @@ public final class DefinitionValidator {
      *
      * @param unknownTargetTypes the document's target types missing from the
      *                           vocabulary, empty when all are present
+     * @param citableDocumentIds the library documents this procedure may cite
      */
     public static List<String> publishBlockers(DefinitionDocument document, Set<String> activeResultKeys,
-                                               List<TargetType> unknownTargetTypes) {
+                                               List<TargetType> unknownTargetTypes,
+                                               Set<String> citableDocumentIds) {
         List<String> blockers = new ArrayList<>();
 
         if (document.questionCount() == 0) {

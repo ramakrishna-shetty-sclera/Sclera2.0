@@ -85,7 +85,7 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
             // Bump this when a tenant migration is added. Pinning it is the
             // point: it makes anyone adding one notice that every existing
             // tenant schema has to be migrated too, not just new ones.
-            assertThat(migratedTo).isEqualTo("7");
+            assertThat(migratedTo).isEqualTo("8");
             // A property-scoped table with no policy is wide open, and the
             // failure is silent — so provisioning asserts the policy arrived,
             // not merely that the migration ran.
@@ -301,7 +301,7 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
                     null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
             UUID id = service.create(new CreateTemplateRequest("Blockers", null, null,
                     new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
-                            List.of(mappedToAmber, onlyOneAnswer), List.of(), List.of()))).id();
+                            List.of(mappedToAmber, onlyOneAnswer), List.of(), List.of(), List.of()))).id();
 
             // Both problems in one refusal: an author fixing a checklist should
             // not have to publish once per mistake to find them all.
@@ -494,18 +494,18 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
     @SafeVarargs
     private static DefinitionDocument doc(List<Item>... groups) {
         return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
-                Stream.of(groups).flatMap(List::stream).toList(), List.of());
+                Stream.of(groups).flatMap(List::stream).toList(), List.of(), List.of(), List.of());
     }
 
     private static List<Item> section(String key, String title, Item... questions) {
         Item heading = new Item(key, title, null, QuestionType.SECTION, false, false, List.of(),
-                null, null, null, false, null, null, null, null, null, null, List.of(), List.of());
+                null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
         return Stream.concat(Stream.of(heading), Stream.of(questions)).toList();
     }
 
     private static Item question(String key, String text) {
         return new Item(key, text, null, QuestionType.TEXT, false, false, List.of(),
-                null, null, null, false, null, null, null, null, null, null, List.of(), List.of());
+                null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
     }
 
     /** Every key in document order, follow-ups included. */

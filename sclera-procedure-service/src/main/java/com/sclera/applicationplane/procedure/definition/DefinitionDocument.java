@@ -63,8 +63,7 @@ public record DefinitionDocument(
         int schema,
         List<@Valid Item> items,
         List<@Valid Threshold> thresholds,
-        List<@Valid TargetType> targetTypes) {
-        List<@Valid Threshold> thresholds,
+        List<@Valid TargetType> targetTypes,
         List<@Valid DocumentRef> documents) {
 
     /**
@@ -305,6 +304,15 @@ public record DefinitionDocument(
             @Size(max = 50) String alertProfile,
 
             /**
+             * Submit is blocked until at least one piece of evidence is
+             * attached to this question — a rule, not a question type, so a
+             * {@code YES_NO} question can demand a photo without becoming an
+             * {@code IMAGE} question. Never set on a section: a heading is
+             * never answered, so nothing can be attached to it.
+             */
+            boolean evidenceRequired,
+
+            /**
              * How much this counts against its siblings. On a SECTION it
              * weights the whole group; on a question it weights that question.
              * Null means 1 — an unweighted procedure scores everything equally,
@@ -349,20 +357,20 @@ public record DefinitionDocument(
 
         public Item withKey(String newKey) {
             return new Item(newKey, text, help, type, required, critical, options, unit, min, max,
-                    workOrder, alertProfile, weight, source, standard, when, followRollup, follow,
-                    rules);
+                    workOrder, alertProfile, evidenceRequired, weight, source, standard, when, followRollup,
+                    follow, rules);
         }
 
         public Item withOptions(List<Option> newOptions) {
             return new Item(key, text, help, type, required, critical, newOptions, unit, min, max,
-                    workOrder, alertProfile, weight, source, standard, when, followRollup, follow,
-                    rules);
+                    workOrder, alertProfile, evidenceRequired, weight, source, standard, when, followRollup,
+                    follow, rules);
         }
 
         public Item withFollow(List<Item> newFollow) {
             return new Item(key, text, help, type, required, critical, options, unit, min, max,
-                    workOrder, alertProfile, weight, source, standard, when, followRollup, newFollow,
-                    rules);
+                    workOrder, alertProfile, evidenceRequired, weight, source, standard, when, followRollup,
+                    newFollow, rules);
         }
     }
 

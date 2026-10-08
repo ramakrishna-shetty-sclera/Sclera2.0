@@ -117,6 +117,6 @@ class NumberBandsIT extends PostgresIntegrationTest {
 
     private static CreateTemplateRequest create(Item item) {
         return new CreateTemplateRequest("Boiler pressure", null, null,
-                new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(item), List.of(), List.of()));
+                new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(item), List.of(), List.of(), List.of()));
     }
 }

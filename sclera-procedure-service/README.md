@@ -190,12 +190,11 @@ new version. It follows the same three decisions:
   `procedure_template`, which does have it.
 - **No backfill.** Nothing published before the table existed is counted.
 
-All three are written at publish from the document. They exist because `definition_json` is `TEXT` and
-therefore unqueryable.
 **No rows is not "applies to nothing" — it is "applies to anything".** That is what every procedure
 authored before this feature is, so the discovery query reads the absence of rows as a match.
 
-Both indexes exist because `definition_json` is `TEXT` and therefore unqueryable.
+All three indexes are written at publish from the document. They exist because `definition_json` is `TEXT`
+and therefore unqueryable.
 
 ### `procedure_document` — a library of reference documents
 
@@ -544,8 +543,6 @@ publicly.
 | Result types | create, list, get, update, reorder, activate, deactivate, delete (conditional) |
 | Evaluation | evaluate answers against any version, draft included (public); against a published version by id (internal, for the inspection service) |
 | Discovery | `GET /api/v1/procedure-templates/discover?consumer=&kind=&key=` — the active procedures that apply to a target; see *Discovery* below |
-| Documents | attach to a version or question, list, remove |
-| Discovery | published procedures by consumer and target type |
 | Documents | create (upload already done via helper), list, get, activate, deactivate, delete (conditional) |
 | Library | browse, search and filter global templates; favourite; import; export; link, unlink |
 | Updates | check availability, view diff, apply, defer |
