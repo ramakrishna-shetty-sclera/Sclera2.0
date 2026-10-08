@@ -642,7 +642,7 @@ refused with a 404 before they ever reach us. The paths live in the `procedure-s
 - id: procedure-service
   uri: ${PROCEDURE_SERVICE_URL:http://localhost:8095}
   predicates:
-    - Path=/api/v1/procedure-templates/**,/api/v1/result-types/**,/api/v1/me/properties,/api/v1/me/permissions
+    - Path=/api/v1/procedure-templates/**,/api/v1/result-types/**,/api/v1/procedure-documents/**,/api/v1/me/properties,/api/v1/me/permissions
 ```
 
 Each `/api/v1/me/*` endpoint is listed exactly rather than as `/api/v1/me/**`, so the rest of `/me`
