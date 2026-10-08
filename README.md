@@ -236,7 +236,7 @@ for the application-plane services:
 | Route id | Path predicate | Downstream (env var) |
 |---|---|---|
 | `procedure-service` | `/api/v1/procedure-templates/**,/api/v1/result-types/**,/api/v1/procedure-documents/**,/api/v1/me/properties,/api/v1/me/permissions` | `PROCEDURE_SERVICE_URL` (`:8095`) |
-| `inspection-service` | `/api/v1/inspections/**,/api/v1/inspection-configs/**,/api/v1/checklists/**` | `INSPECTION_SERVICE_URL` (`:8096`) |
+| `inspection-service` | `/api/v1/inspections/**,/api/v1/inspection-configs/**,/api/v1/checklists/**,/api/v1/tagged-procedures/**,/api/v1/reactive-services/**` | `INSPECTION_SERVICE_URL` (`:8096`) |
 
 **CORS allowed headers must also include `X-Sclera-Property`** — the header that
 says which property (VDMS) a request is scoped to. Both `allowed-headers` lists
