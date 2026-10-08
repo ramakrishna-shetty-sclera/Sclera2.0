@@ -182,15 +182,14 @@ class EvaluationIT extends PostgresIntegrationTest {
 
     /** Yes passes for 10 points, No fails for none; 0 to 59 fails, 60 to 100 passes. */
     private static DefinitionDocument scoredYesNo() {
-        Item question = new Item(null, "Exit clear?", null, QuestionType.YES_NO, true, false,
-                List.of(new Option(null, "Yes", "PASS", 10, false), new Option(null, "No", "FAIL", 0, false)),
-                null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
+        Item question = Item.builder().text("Exit clear?").type(QuestionType.YES_NO).required(true)
+                .options(List.of(new Option(null, "Yes", "PASS", 10, false), new Option(null, "No", "FAIL", 0, false)))
+                .build();
         return doc(List.of(new Threshold(null, 0, 59, "FAIL"), new Threshold(null, 60, 100, "PASS")), question);
     }
 
     private static Item choice(String text, Option... options) {
-        return new Item(null, text, null, QuestionType.RADIO, false, false, List.of(options),
-                null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
+        return Item.builder().text(text).type(QuestionType.RADIO).options(List.of(options)).build();
     }
 
     private static DefinitionDocument doc(List<Threshold> thresholds, Item... items) {

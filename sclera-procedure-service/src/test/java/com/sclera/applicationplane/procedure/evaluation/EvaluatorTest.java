@@ -64,8 +64,10 @@ class EvaluatorTest {
         Q rules(RangeRule... value) { rules = List.of(value); return this; }
 
         Item build() {
-            return new Item(key, "Question " + key, null, type, false, critical, options, null, null, null,
-                    workOrder, workOrder ? "ap-" + key : null, false, weight, null, null, when, rollup, follow, rules);
+            return Item.builder().key(key).text("Question " + key).type(type).critical(critical)
+                    .options(options).workOrder(workOrder).alertProfile(workOrder ? "ap-" + key : null)
+                    .weight(weight).when(when).followRollup(rollup).follow(follow).rules(rules)
+                    .build();
         }
     }
 
@@ -87,8 +89,7 @@ class EvaluatorTest {
     }
 
     private static Item section(String key, Integer weight) {
-        return new Item(key, "Section " + key, null, QuestionType.SECTION, false, false, List.of(), null, null,
-                null, false, null, false, weight, null, null, null, null, List.of(), List.of());
+        return Item.builder().key(key).text("Section " + key).type(QuestionType.SECTION).weight(weight).build();
     }
 
     private static Threshold band(Integer min, Integer max, String result) {

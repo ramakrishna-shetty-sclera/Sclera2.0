@@ -59,9 +59,9 @@ class DiscoveryIT extends PostgresIntegrationTest {
     }
 
     private static DefinitionDocument document(TargetType... targets) {
-        Item question = new Item(null, "Present?", null, QuestionType.YES_NO, true, false,
-                List.of(new Option(null, "Yes", "PASS", null, false), new Option(null, "No", "FAIL", null, false)),
-                null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
+        Item question = Item.builder().text("Present?").type(QuestionType.YES_NO).required(true)
+                .options(List.of(new Option(null, "Yes", "PASS", null, false), new Option(null, "No", "FAIL", null, false)))
+                .build();
         return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question), List.of(), List.of(targets), List.of());
     }
 

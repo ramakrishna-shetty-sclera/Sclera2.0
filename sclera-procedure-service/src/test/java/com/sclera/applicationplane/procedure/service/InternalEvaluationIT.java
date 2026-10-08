@@ -137,9 +137,9 @@ class InternalEvaluationIT extends PostgresIntegrationTest {
     }
 
     private static CreateTemplateRequest create() {
-        Item question = new Item(null, "Exit clear?", null, QuestionType.YES_NO, true, false,
-                List.of(new Option(null, "Yes", "PASS", 10, false), new Option(null, "No", "FAIL", 0, false)),
-                null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
+        Item question = Item.builder().text("Exit clear?").type(QuestionType.YES_NO).required(true)
+                .options(List.of(new Option(null, "Yes", "PASS", 10, false), new Option(null, "No", "FAIL", 0, false)))
+                .build();
         DefinitionDocument document = new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question),
                 List.of(new Threshold(null, 0, 59, "FAIL"), new Threshold(null, 60, 100, "PASS")), List.of(), List.of());
         return new CreateTemplateRequest("Inspected " + UUID.randomUUID(), null, null, document);

@@ -22,13 +22,11 @@ import static org.assertj.core.api.Assertions.tuple;
 class DefinitionDocumentTest {
 
     private static Item q(String key) {
-        return new Item(key, "Question " + key, null, QuestionType.TEXT, false, false, List.of(), null, null, null,
-                false, null, false, null, null, null, null, null, List.of(), List.of());
+        return Item.builder().key(key).text("Question " + key).type(QuestionType.TEXT).build();
     }
 
     private static Item section(String key) {
-        return new Item(key, "Section " + key, null, QuestionType.SECTION, false, false, List.of(), null, null, null,
-                false, null, false, null, null, null, null, null, List.of(), List.of());
+        return Item.builder().key(key).text("Section " + key).type(QuestionType.SECTION).build();
     }
 
     private static DefinitionDocument doc(Item... items) {

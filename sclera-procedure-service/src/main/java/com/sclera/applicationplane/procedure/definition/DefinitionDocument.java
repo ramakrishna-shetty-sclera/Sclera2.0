@@ -271,8 +271,12 @@ public record DefinitionDocument(
      * public), so this is a convention the codebase follows rather than one
      * the compiler enforces — there being no external caller of this service
      * to protect against, there is nothing else to enforce it against.
+     * {@code toBuilder()} is for "copy this item, change one field" —
+     * {@code item.toBuilder().critical(true).build()} — the same job
+     * {@code withKey}/{@code withOptions}/{@code withFollow} already do for
+     * their one field each, generalised to any field.
      */
-    @Builder
+    @Builder(toBuilder = true)
     public record Item(
             @Size(max = 20) String key,
 

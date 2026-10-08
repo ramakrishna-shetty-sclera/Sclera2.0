@@ -55,9 +55,9 @@ class VersionDocumentRefIT extends PostgresIntegrationTest {
 
     /** Keys are left unset: a new template has issued none, so the minter assigns them. */
     private static Item question() {
-        return new Item(null, "Exit clear?", null, QuestionType.YES_NO, true, false,
-                List.of(new Option(null, "Yes", "PASS", null, false), new Option(null, "No", "FAIL", null, false)),
-                null, null, null, false, null, false, null, null, null, null, null, List.of(), List.of());
+        return Item.builder().text("Exit clear?").type(QuestionType.YES_NO).required(true)
+                .options(List.of(new Option(null, "Yes", "PASS", null, false), new Option(null, "No", "FAIL", null, false)))
+                .build();
     }
 
     private static CreateTemplateRequest request(DocumentRef... refs) {
