@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { createProcedure, getDraft, getProcedure, saveDraft, updateProcedure } from '../api/templates'
 import { ApiError } from '../api/client'
 import { numberItems } from '../api/document'
-import type { ItemType, ResultType, TargetType, Threshold } from '../api/types'
+import type { DocumentRef, ItemType, ResultType, TargetType, Threshold } from '../api/types'
 import { listResultTypes } from '../api/resultTypes'
 import { useAuth } from '../auth/AuthContext'
 import { ItemEditor } from '../components/ItemEditor'
@@ -108,6 +108,10 @@ export function TemplateEditorPage() {
    * renders from it. Replaced from every response the server sends back.
    */
   const targetTypesRef = useRef<TargetType[]>([])
+  // Carried through every save untouched, the way targetTypes is: a screen that
+  // does not edit a document-level list must not drop it from a version written
+  // elsewhere.
+  const documentsRef = useRef<DocumentRef[]>([])
   const [changeNote, setChangeNote] = useState('')
   const [schema, setSchema] = useState(2)
   /**
@@ -188,6 +192,7 @@ export function TemplateEditorPage() {
         const loadedThresholds = draft.definition.thresholds ?? []
         setThresholds(loadedThresholds)
         targetTypesRef.current = draft.definition.targetTypes ?? []
+        documentsRef.current = draft.definition.documents ?? []
         rowVersionRef.current = draft.rowVersion
         let loadedItems = fromDocument(draft.definition)
         if (loadedItems.length === 0) loadedItems = [newItem()]
@@ -273,7 +278,7 @@ export function TemplateEditorPage() {
     try {
       const saved = await enqueue(() =>
         saveDraft(s.id!, {
-          definition: toDocument(s.schema, sent, s.thresholds, targetTypesRef.current),
+          definition: toDocument(s.schema, sent, s.thresholds, targetTypesRef.current, documentsRef.current),
           rowVersion: rowVersionRef.current!,
           changeNote: s.changeNote.trim() || undefined,
         }),
@@ -287,6 +292,7 @@ export function TemplateEditorPage() {
       setItems((prev) => applyKeys(prev, minted))
       setThresholds(saved.definition.thresholds ?? [])
       targetTypesRef.current = saved.definition.targetTypes ?? []
+      documentsRef.current = saved.definition.documents ?? []
       setSavedSnapshot(snapshotOf(s.schema, applyKeys(sent, minted), saved.definition.thresholds ?? []))
       failedSnapshot.current = null
       setAutosave({ phase: 'idle', at: new Date() })
@@ -418,13 +424,13 @@ export function TemplateEditorPage() {
         const created = await createProcedure({
           name: name.trim(),
           description: description.trim() || undefined,
-          definition: toDocument(schema, items, thresholds, targetTypesRef.current),
+          definition: toDocument(schema, items, thresholds, targetTypesRef.current, documentsRef.current),
         })
         navigate(`/templates/${created.id}/edit`, { state: { addFollowAt: path } })
         return
       }
 
-      const definition = toDocument(schema, items, thresholds, targetTypesRef.current)
+      const definition = toDocument(schema, items, thresholds, targetTypesRef.current, documentsRef.current)
       const saved = await enqueue(() =>
         saveDraft(id!, {
           definition,
@@ -439,6 +445,7 @@ export function TemplateEditorPage() {
       const reloadedThresholds = saved.definition.thresholds ?? []
       setThresholds(reloadedThresholds)
       targetTypesRef.current = saved.definition.targetTypes ?? []
+      documentsRef.current = saved.definition.documents ?? []
       setSavedSnapshot(snapshotOf(schema, reloaded, reloadedThresholds))
       failedSnapshot.current = null
       setItems(withFollowAt(reloaded, path))
@@ -480,7 +487,7 @@ export function TemplateEditorPage() {
     setRefusal(null)
     setConflict(false)
     try {
-      const definition = toDocument(schema, items, thresholds, targetTypesRef.current)
+      const definition = toDocument(schema, items, thresholds, targetTypesRef.current, documentsRef.current)
 
       if (!editing) {
         const created = await createProcedure({

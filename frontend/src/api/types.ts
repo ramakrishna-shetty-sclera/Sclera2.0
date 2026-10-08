@@ -251,6 +251,13 @@ export interface DefinitionItem {
    * set on a section: a heading is never answered, so it can never fail.
    */
   critical: boolean
+  /**
+   * An answer does not count until at least one piece of evidence, such as a
+   * photo, is attached. A rule, not a question type, so a Yes / No question can
+   * demand one. Never set on a section: a heading is never answered. Absent
+   * reads false.
+   */
+  evidenceRequired?: boolean
   /** Choice types only; seeded for YES_NO and YES_NO_NA. */
   options: DefinitionOption[]
   /** INTEGER only — shown beside the field, e.g. "psi". */
@@ -338,10 +345,22 @@ export interface DefinitionDocument {
   thresholds: Threshold[]
   /**
    * What the procedure applies to. Absent or empty means anything — every
-   * version written before this existed. No screen edits it yet; the editor
-   * carries it through a save untouched so it is not silently dropped.
+   * version written before this existed.
    */
   targetTypes?: TargetType[]
+  /**
+   * The reference documents this version cites, by library id. Never a name,
+   * size or location: those resolve live from the library, so renaming a
+   * document reaches every version citing it.
+   */
+  documents?: DocumentRef[]
+}
+
+/** One citation of a library document: the whole procedure, or one question. */
+export interface DocumentRef {
+  id: string
+  /** The question it hangs off. Absent means the whole procedure. */
+  questionKey?: string | null
 }
 
 /** One key from one of the property-vocabulary lists the procedure applies to. */
@@ -442,6 +461,8 @@ export interface DefinitionDiff {
   orderChanged: boolean
   /** What the procedure applies to differs between the two versions. */
   targetTypesChanged?: boolean
+  /** Which documents are cited, or which question each hangs off, differs between the two versions. */
+  documentsChanged?: boolean
   items: ItemChange[]
 }
 

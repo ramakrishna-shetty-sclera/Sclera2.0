@@ -2,6 +2,7 @@ import { hasFixedOptions, isChoice, seededLabels, seededResults } from '../api/d
 import type {
   DefinitionDocument,
   DefinitionItem,
+  DocumentRef,
   ItemSource,
   ItemType,
   RangeRule,
@@ -48,6 +49,8 @@ export interface ItemDraft {
   type: ItemType
   required: boolean
   critical: boolean
+  /** An answer does not count until evidence is attached. Never on a section. */
+  evidenceRequired: boolean
   options: OptionDraft[]
   unit: string
   min: string
@@ -79,6 +82,7 @@ export function newItem(type: ItemType = 'TEXT'): ItemDraft {
       type: 'TEXT',
       required: false,
       critical: false,
+      evidenceRequired: false,
       options: [],
       unit: '',
       min: '',
@@ -123,6 +127,7 @@ function toDraft(item: DefinitionItem): ItemDraft {
     type: item.type,
     required: item.required,
     critical: item.critical,
+    evidenceRequired: item.evidenceRequired ?? false,
     options: item.options.map((o) => ({
       uid: uid(),
       key: o.key,
@@ -157,8 +162,15 @@ export function toDocument(
   items: ItemDraft[],
   thresholds: Threshold[] = [],
   targetTypes: TargetType[] = [],
+  documents: DocumentRef[] = [],
 ): DefinitionDocument {
-  return { schema, items: items.map(toItem), thresholds, ...(targetTypes.length > 0 ? { targetTypes } : {}) }
+  return {
+    schema,
+    items: items.map(toItem),
+    thresholds,
+    ...(targetTypes.length > 0 ? { targetTypes } : {}),
+    ...(documents.length > 0 ? { documents } : {}),
+  }
 }
 
 /**
@@ -189,6 +201,7 @@ function toItem(draft: ItemDraft): DefinitionItem {
     type: draft.type,
     required: draft.type === 'SECTION' ? false : draft.required,
     critical: draft.critical,
+    evidenceRequired: draft.type === 'SECTION' ? false : draft.evidenceRequired,
     options: draft.options
       .filter(isSentOption)
       .map((o) => ({
@@ -537,7 +550,7 @@ export function retype(item: ItemDraft, type: ItemType): ItemDraft {
     // critical, never conditional, and nothing hangs off it. `weight` is kept —
     // a section is weighted as a group, the same as a question is weighted on
     // its own, and the validator accepts it on both.
-    return { ...next, required: false, critical: false, options: [], follow: [], followRollup: '',
+    return { ...next, required: false, critical: false, evidenceRequired: false, options: [], follow: [], followRollup: '',
       when: '', workOrder: false, alertProfile: '', unit: '', min: '', max: '', rules: [] }
   }
 

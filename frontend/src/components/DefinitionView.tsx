@@ -51,6 +51,7 @@ function QuestionView({
         {item.workOrder && (
           <span>raises a work order{item.alertProfile ? ` · ${item.alertProfile}` : ''}</span>
         )}
+        {item.evidenceRequired && <span className="badge badge-amber">evidence required</span>}
         {item.standard && <span>{item.standard}</span>}
         {item.source && item.source !== 'MANUAL' && <span>from {typeLabel(item.source)}</span>}
       </div>

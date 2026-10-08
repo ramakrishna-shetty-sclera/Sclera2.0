@@ -192,6 +192,16 @@ export function ItemEditor(props: ItemEditorProps) {
             Critical
           </label>
         )}
+        {!section && (
+          <label className="checkbox" title="An answer does not count until a photo or other evidence is attached">
+            <input
+              type="checkbox"
+              checked={item.evidenceRequired}
+              onChange={(e) => onPatch(item.uid, { evidenceRequired: e.target.checked })}
+            />
+            Evidence required
+          </label>
+        )}
       </div>
 
       {choice && (
