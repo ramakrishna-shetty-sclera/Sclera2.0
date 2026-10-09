@@ -1,5 +1,6 @@
 package com.sclera.applicationplane.procedure.authz;
 
+import com.sclera.applicationplane.procedure.controller.GlobalLibraryController;
 import com.sclera.applicationplane.procedure.controller.ProcedureTemplateController;
 import com.sclera.applicationplane.procedure.controller.ResultTypeController;
 import org.junit.jupiter.api.Test;
@@ -39,7 +40,10 @@ class ControllerAuthorizationTest {
 
     private static final String BASE_PACKAGE = "com.sclera.applicationplane.procedure";
 
-    private static final Pattern CHECK_ORG = Pattern.compile("@fga\\.checkOrg\\('([^']+)'\\)");
+    /** Controllers whose endpoints are open to any signed-in user, by decision; see the test that pins them. */
+    private static final Set<Class<?>> OPEN_TO_ANY_SIGNED_IN_USER = Set.of(GlobalLibraryController.class);
+
+    private static final Pattern CHECK_ORG =Pattern.compile("@fga\\.checkOrg\\('([^']+)'\\)");
     private static final Pattern CHECK = Pattern.compile("@fga\\.check\\('([^']+)'\\s*,[^,)]*,\\s*'([^']+)'\\)");
     /**
      * Content with no organization to scope a check against at all — Sclera's
@@ -56,10 +60,37 @@ class ControllerAuthorizationTest {
                 .contains(ProcedureTemplateController.class, ResultTypeController.class);
 
         // Internal endpoints are left out by path, not by class name, so a
-        // public endpoint that forgets its guard still fails here.
-        assertThat(endpoints).filteredOn(endpoint -> !isInternal(endpoint) && guard(endpoint) == null)
+        // public endpoint that forgets its guard still fails here. The few
+        // controllers deliberately open to any signed-in user are left out by
+        // name, which is what makes adding one a decision someone has to write down.
+        assertThat(endpoints).filteredOn(endpoint -> !isInternal(endpoint) && !isOpenToAnySignedInUser(endpoint)
+                        && guard(endpoint) == null)
                 .extracting(ControllerAuthorizationTest::name)
                 .as("endpoints with no @PreAuthorize")
+                .isEmpty();
+    }
+
+    /**
+     * The Sclera-wide library belongs to no organization, so there is no
+     * organization relation to check a read against; any signed-in user may
+     * browse it, and {@code SecurityConfig} already requires sign-in for
+     * everything that is not listed there.
+     *
+     * <p>As with {@code /internal/**} the exemption is checked from both sides:
+     * a controller named here must exist, have endpoints, and carry no guard. A
+     * guard added to it later is then a visible change of that decision, and an
+     * entry left behind after the controller is gone fails instead of quietly
+     * exempting nothing.
+     */
+    @Test
+    void openControllersCarryNoGuardBecauseTheyBelongToNoOrganization() {
+        List<Method> open = endpoints().stream().filter(ControllerAuthorizationTest::isOpenToAnySignedInUser).toList();
+
+        assertThat(open).extracting(Method::getDeclaringClass).containsOnly(OPEN_TO_ANY_SIGNED_IN_USER.toArray(new Class<?>[0]));
+        assertThat(open).isNotEmpty();
+        assertThat(open).filteredOn(endpoint -> guard(endpoint) != null)
+                .extracting(ControllerAuthorizationTest::name)
+                .as("open endpoints that gained an @PreAuthorize")
                 .isEmpty();
     }
 
@@ -180,6 +211,10 @@ class ControllerAuthorizationTest {
             paths.addAll(Arrays.asList(onMethod.path()));
         }
         return paths.stream().anyMatch(path -> path.startsWith("/internal/"));
+    }
+
+    private static boolean isOpenToAnySignedInUser(Method endpoint) {
+        return OPEN_TO_ANY_SIGNED_IN_USER.contains(endpoint.getDeclaringClass());
     }
 
     private static boolean isGet(Method endpoint) {

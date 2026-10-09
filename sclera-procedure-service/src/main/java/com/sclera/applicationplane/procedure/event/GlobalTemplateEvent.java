@@ -14,6 +14,11 @@ import java.util.UUID;
  * should know or guess at. A future notification service resolves that for
  * itself from this event's {@code globalTemplateId}; nothing does yet (see
  * {@code GlobalProcedureTemplateService}'s commit history).
+ *
+ * <p>The shape is fixed by the plan so that the branch that publishes it (the
+ * global authoring feature) and the branch that listens for it (the search
+ * index, below) could be written independently, each defining its own copy
+ * of this record until they merged.
  */
 public record GlobalTemplateEvent(
         UUID eventId,

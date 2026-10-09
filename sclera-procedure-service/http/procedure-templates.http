@@ -1148,3 +1148,50 @@ X-Sclera-Property: {{vdms001}}
 Content-Type: application/json
 
 { "globalTemplateId": "{{globalId}}", "name": "Should be refused" }
+
+###############################################################################
+# I — browsing the Sclera-wide library and its question bank
+#
+#   GET /api/v1/global-procedure-templates?search=&consumer=&page=&size=
+#   GET /api/v1/global-procedure-templates/{id}
+#   GET /api/v1/global-procedure-templates/questions?search=&standard=&page=&size=
+#
+# Any signed-in user may call these: the library belongs to no organization, so
+# there is no permission to check. Feature 11's H block, above, is what actually
+# authors and publishes global content now — run top to bottom and I2 finds the
+# NFPA 10 template H1 just created, with H6's reworded question searchable in
+# I3. Run this block on its own against a fresh database instead, and every
+# list below is EMPTY, which is the expected answer, not a failure.
+# GlobalLibraryBrowseIT, GlobalQuestionBankIT and GlobalQuestionIndexIT seed
+# rows directly and cover what comes back either way.
+#
+# The question bank is filled by a Kafka listener on
+# sclera.procedure.global-template-events.v1, so it also needs a broker and
+# whatever publishes that event.
+#
+# Not through the gateway yet: it has no route for /api/v1/global-procedure-templates/**.
+###############################################################################
+
+### I1. The library — 200, and the NFPA 10 template from H1 if that block already ran
+GET {{host}}/api/v1/global-procedure-templates
+Authorization: Bearer {{token}}
+
+### I2. Narrowed by a word and a consumer — both optional and independent
+GET {{host}}/api/v1/global-procedure-templates?search=extinguisher&consumer=inspection
+Authorization: Bearer {{token}}
+
+### I3. The question bank — a word inside a question, stemmed ("extinguishers" finds "extinguisher")
+GET {{host}}/api/v1/global-procedure-templates/questions?search=extinguishers
+Authorization: Bearer {{token}}
+
+### I4. The bank by the standard a question came from, with no search words
+GET {{host}}/api/v1/global-procedure-templates/questions?standard=NFPA%2010&page=0&size=20
+Authorization: Bearer {{token}}
+
+### I5. Input of any shape is fine — an unbalanced quote is an empty page, never a 500
+GET {{host}}/api/v1/global-procedure-templates/questions?search=%22unbalanced
+Authorization: Bearer {{token}}
+
+### I6. A template that does not exist → 404
+GET {{host}}/api/v1/global-procedure-templates/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{token}}
