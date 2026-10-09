@@ -39,6 +39,7 @@ import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.TemplateR
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.UpdateTemplateRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.VersionResponse;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.VersionSummary;
+import com.sclera.applicationplane.procedure.dto.UpdateDtos.UpdateStatus;
 import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluateRequest;
 import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluationResponse;
 import com.sclera.applicationplane.procedure.dto.EvaluationDtos.VersionRef;
@@ -662,6 +663,83 @@ public class ProcedureTemplateService {
             resultTypes.save(created);
             known.add(key);
         }
+    }
+
+    // --- update lifecycle: is a linked copy behind the global template? -----
+
+    /**
+     * Whether this template's link to the shared library is behind, derived
+     * fresh rather than stored: {@code appliedVersionNo < the global
+     * template's current published version number}. A template never
+     * imported from the shared library reports a null link state and
+     * {@code updateAvailable: false} — a normal state, not an error.
+     */
+    @Transactional(readOnly = true)
+    public UpdateStatus updateStatus(UUID id) {
+        ProcedureTemplate template = getOwned(id);
+        if (template.getGlobalTemplateId() == null) {
+            return new UpdateStatus(null, null, null, false);
+        }
+        GlobalTemplateOrgCopy copy = requireOrgCopy(template);
+        Integer currentVersionNo = globalCurrentVersionNo(template.getGlobalTemplateId());
+        boolean updateAvailable = copy.getLinkState() != LinkState.STANDALONE
+                && currentVersionNo != null && currentVersionNo > copy.getAppliedVersionNo();
+        return new UpdateStatus(copy.getLinkState(), copy.getAppliedVersionNo(), currentVersionNo, updateAvailable);
+    }
+
+    /**
+     * What changed between the version this copy last applied and the
+     * global template's current version — the same diff machinery
+     * {@link #diff} already uses between two versions of one template,
+     * reading from the global tables on one side instead.
+     */
+    @Transactional(readOnly = true)
+    public DiffResponse updateDiff(UUID id) {
+        ProcedureTemplate template = getOwned(id);
+        if (template.getGlobalTemplateId() == null) {
+            throw new BusinessRuleException("'" + template.getName()
+                    + "' was not imported from the shared library, so there is no update to diff");
+        }
+        GlobalTemplateOrgCopy copy = requireOrgCopy(template);
+        GlobalProcedureTemplate globalTemplate = globalTemplates.findById(template.getGlobalTemplateId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Global template " + template.getGlobalTemplateId() + " referenced by "
+                                + template.getId() + " does not exist"));
+        GlobalProcedureTemplateVersion applied = globalVersions.findByGlobalTemplateIdAndVersionNo(
+                        globalTemplate.getId(), copy.getAppliedVersionNo())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Applied version " + copy.getAppliedVersionNo() + " of global template "
+                                + globalTemplate.getId() + " does not exist"));
+        GlobalProcedureTemplateVersion current = Optional.ofNullable(globalTemplate.getCurrentPublishedVersionId())
+                .flatMap(globalVersions::findById)
+                .orElseThrow(() -> new BusinessRuleException(
+                        "'" + globalTemplate.getName() + "' has no published version to diff against"));
+
+        DefinitionDocument from = canonicalizer.parse(applied.getDefinitionJson());
+        DefinitionDocument to = canonicalizer.parse(current.getDefinitionJson());
+        return new DiffResponse(applied.getVersionNo(), current.getVersionNo(), DefinitionDiff.between(from, to));
+    }
+
+    private Integer globalCurrentVersionNo(UUID globalTemplateId) {
+        return globalTemplates.findById(globalTemplateId)
+                .map(GlobalProcedureTemplate::getCurrentPublishedVersionId)
+                .flatMap(globalVersions::findById)
+                .map(GlobalProcedureTemplateVersion::getVersionNo)
+                .orElse(null);
+    }
+
+    /**
+     * {@code template.getGlobalTemplateId()} being set and no matching copy
+     * existing cannot happen through this service's own write paths —
+     * {@code linkToGlobal} always writes one in the same call that sets the
+     * field — so this is an invariant check, not a graceful "not linked"
+     * fallback.
+     */
+    private GlobalTemplateOrgCopy requireOrgCopy(ProcedureTemplate template) {
+        return orgCopies.findByGlobalTemplateIdAndOrgId(template.getGlobalTemplateId(), template.getOrgId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Template " + template.getId() + " names global template " + template.getGlobalTemplateId()
+                                + " but has no org-copy link row"));
     }
 
     private void linkToGlobal(GlobalProcedureTemplate globalTemplate, ProcedureTemplate template, int appliedVersionNo) {

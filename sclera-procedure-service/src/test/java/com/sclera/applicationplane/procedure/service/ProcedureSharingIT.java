@@ -16,11 +16,15 @@ import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ExportedProce
 import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ExportedVersion;
 import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.FavouriteResponse;
 import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ImportRequest;
+import com.sclera.applicationplane.procedure.dto.GlobalProcedureTemplateDtos.GlobalVersionResponse;
+import com.sclera.applicationplane.procedure.dto.GlobalProcedureTemplateDtos.SaveGlobalDraftRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.CreateTemplateRequest;
+import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.DiffResponse;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.NewDraftRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.SaveDraftRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.TemplateResponse;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.VersionResponse;
+import com.sclera.applicationplane.procedure.dto.UpdateDtos.UpdateStatus;
 import com.sclera.applicationplane.procedure.repository.GlobalProcedureTemplateRepository;
 import com.sclera.applicationplane.procedure.repository.GlobalProcedureTemplateVersionRepository;
 import com.sclera.applicationplane.procedure.repository.GlobalTemplateOrgCopyRepository;
@@ -56,6 +60,9 @@ class ProcedureSharingIT extends PostgresIntegrationTest {
 
     @Autowired
     private ProcedureTemplateService service;
+
+    @Autowired
+    private GlobalProcedureTemplateService globalService;
 
     @Autowired
     private ProcedureDocumentRepository documents;
@@ -424,6 +431,109 @@ class ProcedureSharingIT extends PostgresIntegrationTest {
             assertThatCode(() -> service.saveDraft(id,
                     new SaveDraftRequest(draft.definition(), draft.rowVersion(), null)))
                     .doesNotThrowAnyException();
+        }
+    }
+
+    @Nested
+    class UpdateLifecycle {
+
+        @Test
+        void aFreshImportReportsNoUpdateAvailable() {
+            actAsNewOrg();
+            GlobalProcedureTemplate global = publishedGlobalTemplate("NFPA 10", null,
+                    opt("o2", "Yes", "PASS"), opt("o3", "No", "FAIL"));
+            TemplateResponse imported = service.importFromGlobal(
+                    new ImportRequest(global.getId(), null, null, "Fire walk"));
+
+            UpdateStatus status = service.updateStatus(imported.id());
+
+            assertThat(status.linkState()).isEqualTo(LinkState.LINKED);
+            assertThat(status.appliedVersionNo()).isEqualTo(1);
+            assertThat(status.currentVersionNo()).isEqualTo(1);
+            assertThat(status.updateAvailable()).isFalse();
+        }
+
+        @Test
+        void updateAvailableAfterTheGlobalTemplatePublishesAgain() {
+            actAsNewOrg();
+            GlobalProcedureTemplate global = publishedGlobalTemplate("NFPA 10", null,
+                    opt("o2", "Yes", "PASS"), opt("o3", "No", "FAIL"));
+            TemplateResponse imported = service.importFromGlobal(
+                    new ImportRequest(global.getId(), null, null, "Fire walk"));
+
+            publishASecondGlobalVersion(global.getId());
+
+            UpdateStatus status = service.updateStatus(imported.id());
+            assertThat(status.appliedVersionNo()).isEqualTo(1);
+            assertThat(status.currentVersionNo()).isEqualTo(2);
+            assertThat(status.updateAvailable()).isTrue();
+        }
+
+        @Test
+        void aTemplateNeverImportedReportsANullLinkStateAndNoUpdate() {
+            actAsNewOrg();
+            UUID id = service.create(request("Hand-authored")).id();
+
+            UpdateStatus status = service.updateStatus(id);
+
+            assertThat(status.linkState()).isNull();
+            assertThat(status.appliedVersionNo()).isNull();
+            assertThat(status.currentVersionNo()).isNull();
+            assertThat(status.updateAvailable()).isFalse();
+        }
+
+        @Test
+        void forkingStopsReportingAnUpdateAsAvailableEvenIfOneExists() {
+            actAsNewOrg();
+            GlobalProcedureTemplate global = publishedGlobalTemplate("NFPA 10", null,
+                    opt("o2", "Yes", "PASS"), opt("o3", "No", "FAIL"));
+            TemplateResponse imported = service.importFromGlobal(
+                    new ImportRequest(global.getId(), null, null, "Fire walk"));
+            publishASecondGlobalVersion(global.getId());
+
+            service.unlink(imported.id()); // explicit fork, no edit required
+
+            UpdateStatus status = service.updateStatus(imported.id());
+            assertThat(status.linkState()).isEqualTo(LinkState.STANDALONE);
+            assertThat(status.updateAvailable()).isFalse();
+        }
+
+        @Test
+        void theDiffShowsWhatTheGlobalTemplateChangedSinceTheAppliedVersion() {
+            actAsNewOrg();
+            GlobalProcedureTemplate global = publishedGlobalTemplate("NFPA 10", null,
+                    opt("o2", "Yes", "PASS"), opt("o3", "No", "FAIL"));
+            TemplateResponse imported = service.importFromGlobal(
+                    new ImportRequest(global.getId(), null, null, "Fire walk"));
+            publishASecondGlobalVersion(global.getId());
+
+            DiffResponse diff = service.updateDiff(imported.id());
+
+            assertThat(diff.fromVersionNo()).isEqualTo(1);
+            assertThat(diff.toVersionNo()).isEqualTo(2);
+            assertThat(diff.diff()).isNotNull();
+        }
+
+        @Test
+        void diffingATemplateNeverImportedIsRefused() {
+            actAsNewOrg();
+            UUID id = service.create(request("Hand-authored")).id();
+
+            assertThatThrownBy(() -> service.updateDiff(id)).isInstanceOf(BusinessRuleException.class);
+        }
+
+        /** Publishes v2 of the global template with genuinely different content. */
+        private void publishASecondGlobalVersion(UUID globalTemplateId) {
+            globalService.createDraft(globalTemplateId);
+            GlobalVersionResponse draft = globalService.getDraft(globalTemplateId);
+            Item original = draft.definition().items().get(0);
+            Item changed = Item.builder().key(original.key()).text(original.text() + " (updated)")
+                    .type(QuestionType.YES_NO).required(true).options(original.options()).build();
+            globalService.saveDraft(globalTemplateId, new SaveGlobalDraftRequest(
+                    new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
+                            List.of(changed), List.of(), List.of(), List.of()),
+                    "reworded"));
+            globalService.publish(globalTemplateId);
         }
     }
 

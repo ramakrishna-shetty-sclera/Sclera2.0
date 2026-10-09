@@ -19,6 +19,7 @@ import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.TemplateR
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.UpdateTemplateRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.VersionResponse;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.VersionSummary;
+import com.sclera.applicationplane.procedure.dto.UpdateDtos.UpdateStatus;
 import com.sclera.applicationplane.procedure.dto.UsageDtos.VersionUsageSummary;
 import com.sclera.applicationplane.procedure.service.ProcedureTemplateService;
 import com.sclera.applicationplane.procedure.service.ProcedureUsageService;
@@ -196,6 +197,20 @@ public class ProcedureTemplateController {
     @PreAuthorize("@fga.check('procedure_template', #id, 'can_edit')")
     public TemplateResponse unlink(@PathVariable UUID id) {
         return service.unlink(id);
+    }
+
+    /** Whether this copy's link to the shared library is behind — derived, never stored. */
+    @GetMapping("/{id}/update-status")
+    @PreAuthorize("@fga.check('procedure_template', #id, 'can_view')")
+    public UpdateStatus updateStatus(@PathVariable UUID id) {
+        return service.updateStatus(id);
+    }
+
+    /** What changed between the version this copy applied and the source's current version. */
+    @GetMapping("/{id}/update-diff")
+    @PreAuthorize("@fga.check('procedure_template', #id, 'can_view')")
+    public DiffResponse updateDiff(@PathVariable UUID id) {
+        return service.updateDiff(id);
     }
 
     @PostMapping("/{id}/favourite")
