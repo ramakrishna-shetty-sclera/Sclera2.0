@@ -185,6 +185,13 @@ public class ProcedureTemplateController {
         return service.importFromGlobal(request);
     }
 
+    /** Stops tracking a global template's updates, without requiring an edit first. */
+    @PostMapping("/{id}/unlink")
+    @PreAuthorize("@fga.check('procedure_template', #id, 'can_edit')")
+    public TemplateResponse unlink(@PathVariable UUID id) {
+        return service.unlink(id);
+    }
+
     // --- evaluation ---------------------------------------------------------
 
     /**

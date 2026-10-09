@@ -310,6 +310,13 @@ public class ProcedureTemplateService {
     /**
      * Replaces the draft's whole document. Keys the client sends back are
      * kept; items without a key are new and get one minted.
+     *
+     * <p>Fork-on-edit: an actual content change to a template still linked
+     * to a global source sets that link's state to {@code STANDALONE} — the
+     * organization no longer tracks the global template's future updates,
+     * because its own copy has diverged. An unchanged re-save is not an
+     * edit, matching the no-op-republish convention everywhere else in this
+     * service, so it does not fork.
      */
     public VersionResponse saveDraft(UUID id, SaveDraftRequest request) {
         ProcedureTemplate template = lockOwned(id);
@@ -317,11 +324,40 @@ public class ProcedureTemplateService {
         ProcedureTemplateVersion draft = requireDraft(template);
         requireRowVersion(draft, request.rowVersion());
 
+        String previousHash = draft.getDefinitionHash();
         Canonical canonical = assignKeysAndCanonicalize(template, request.definition());
+        if (template.getGlobalTemplateId() != null && !canonical.hash().equals(previousHash)) {
+            forkFromGlobal(template);
+        }
         draft.setDefinition(canonical.json(), canonical.hash());
         draft.setChangeNote(blankToNull(request.changeNote()));
         versions.saveAndFlush(draft);
         return mapper.toResponse(draft);
+    }
+
+    /** Sets the link to STANDALONE only if it still points at this template. */
+    private void forkFromGlobal(ProcedureTemplate template) {
+        orgCopies.findByGlobalTemplateIdAndOrgId(template.getGlobalTemplateId(), template.getOrgId())
+                .filter(copy -> copy.getTemplateId().equals(template.getId()))
+                .filter(copy -> copy.getLinkState() != LinkState.STANDALONE)
+                .ifPresent(copy -> {
+                    copy.setLinkState(LinkState.STANDALONE);
+                    orgCopies.saveAndFlush(copy);
+                });
+    }
+
+    /**
+     * Stops tracking a global template's future updates without requiring an
+     * edit first — the explicit counterpart to fork-on-edit.
+     */
+    public TemplateResponse unlink(UUID id) {
+        ProcedureTemplate template = getOwned(id);
+        if (template.getGlobalTemplateId() == null) {
+            throw new BusinessRuleException("'" + template.getName()
+                    + "' was not imported from the shared library, so there is nothing to unlink");
+        }
+        forkFromGlobal(template);
+        return toResponse(template);
     }
 
     /** Starts a new draft from any earlier version — the way to edit after publishing. */

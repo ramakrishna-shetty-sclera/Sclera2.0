@@ -39,6 +39,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
@@ -88,7 +89,7 @@ class ProcedureSharingIT extends PostgresIntegrationTest {
         t.setName(name);
         t.setDescription(description);
         t.setConsumerKey("INSPECTION");
-        t.setKeySeq(2);
+        t.setKeySeq(3); // q1, o2, o3 - the three keys the seeded question actually uses
         t = globalTemplates.saveAndFlush(t);
 
         DefinitionDocument document = new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
@@ -345,6 +346,77 @@ class ProcedureSharingIT extends PostgresIntegrationTest {
                     service.importFromGlobal(new ImportRequest(global.getId(), null, null, "Fire walk")));
 
             assertThat(imported.propertyId()).isEqualTo(property);
+        }
+    }
+
+    @Nested
+    class Linking {
+
+        @Test
+        void editingAnImportedDraftWithARealChangeForksIt() {
+            UUID org = actAsNewOrg();
+            GlobalProcedureTemplate global = publishedGlobalTemplate("NFPA 10", null,
+                    opt("o2", "Yes", "PASS"), opt("o3", "No", "FAIL"));
+            TemplateResponse imported = service.importFromGlobal(new ImportRequest(global.getId(), null, null, "Fire walk"));
+            VersionResponse draft = service.getDraft(imported.id());
+
+            service.saveDraft(imported.id(), new SaveDraftRequest(
+                    new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
+                            List.of(Item.builder().key("q1").text("Exit clear? (reworded)").type(QuestionType.YES_NO)
+                                    .required(true)
+                                    .options(List.of(opt("o2", "Yes", "PASS"), opt("o3", "No", "FAIL")))
+                                    .build()),
+                            List.of(), List.of(), List.of()),
+                    draft.rowVersion(), null));
+
+            var copy = orgCopies.findByGlobalTemplateIdAndOrgId(global.getId(), org).orElseThrow();
+            assertThat(copy.getLinkState()).isEqualTo(LinkState.STANDALONE);
+        }
+
+        @Test
+        void reSavingUnchangedContentDoesNotFork() {
+            UUID org = actAsNewOrg();
+            GlobalProcedureTemplate global = publishedGlobalTemplate("NFPA 10", null,
+                    opt("o2", "Yes", "PASS"), opt("o3", "No", "FAIL"));
+            TemplateResponse imported = service.importFromGlobal(new ImportRequest(global.getId(), null, null, "Fire walk"));
+            VersionResponse draft = service.getDraft(imported.id());
+
+            service.saveDraft(imported.id(), new SaveDraftRequest(draft.definition(), draft.rowVersion(), null));
+
+            var copy = orgCopies.findByGlobalTemplateIdAndOrgId(global.getId(), org).orElseThrow();
+            assertThat(copy.getLinkState()).isEqualTo(LinkState.LINKED);
+        }
+
+        @Test
+        void explicitUnlinkStopsTrackingWithoutRequiringAnEdit() {
+            UUID org = actAsNewOrg();
+            GlobalProcedureTemplate global = publishedGlobalTemplate("NFPA 10", null,
+                    opt("o2", "Yes", "PASS"), opt("o3", "No", "FAIL"));
+            TemplateResponse imported = service.importFromGlobal(new ImportRequest(global.getId(), null, null, "Fire walk"));
+
+            service.unlink(imported.id());
+
+            var copy = orgCopies.findByGlobalTemplateIdAndOrgId(global.getId(), org).orElseThrow();
+            assertThat(copy.getLinkState()).isEqualTo(LinkState.STANDALONE);
+        }
+
+        @Test
+        void unlinkingATemplateThatWasNeverImportedIsRefused() {
+            actAsNewOrg();
+            UUID id = service.create(request("Hand-authored")).id();
+
+            assertThatThrownBy(() -> service.unlink(id)).isInstanceOf(BusinessRuleException.class);
+        }
+
+        @Test
+        void editingAProcedureThatWasNeverLinkedDoesNothingToAnyLink() {
+            actAsNewOrg();
+            UUID id = service.create(request("Hand-authored")).id();
+            VersionResponse draft = service.getDraft(id);
+
+            assertThatCode(() -> service.saveDraft(id,
+                    new SaveDraftRequest(draft.definition(), draft.rowVersion(), null)))
+                    .doesNotThrowAnyException();
         }
     }
 }
