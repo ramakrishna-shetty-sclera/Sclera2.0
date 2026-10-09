@@ -1,6 +1,7 @@
 package com.sclera.applicationplane.procedure.repository;
 
 import com.sclera.applicationplane.procedure.domain.GlobalTemplateOrgCopy;
+import com.sclera.applicationplane.procedure.domain.LinkState;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;
@@ -17,4 +18,11 @@ public interface GlobalTemplateOrgCopyRepository
     Optional<GlobalTemplateOrgCopy> findByGlobalTemplateIdAndOrgId(UUID globalTemplateId, UUID orgId);
 
     Optional<GlobalTemplateOrgCopy> findByTemplateIdAndOrgId(UUID templateId, UUID orgId);
+
+    /**
+     * How many organizations currently track this global template's updates
+     * — the broadcast-visible count a publish reports, not org-scoped
+     * because the whole point is to count across every organization.
+     */
+    long countByGlobalTemplateIdAndLinkState(UUID globalTemplateId, LinkState linkState);
 }

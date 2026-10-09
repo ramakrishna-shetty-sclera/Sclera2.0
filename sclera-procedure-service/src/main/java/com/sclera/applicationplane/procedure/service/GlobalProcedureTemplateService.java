@@ -7,14 +7,18 @@ import com.sclera.applicationplane.procedure.definition.DefinitionValidator;
 import com.sclera.applicationplane.procedure.definition.KeyMinter;
 import com.sclera.applicationplane.procedure.domain.GlobalProcedureTemplate;
 import com.sclera.applicationplane.procedure.domain.GlobalProcedureTemplateVersion;
+import com.sclera.applicationplane.procedure.domain.LinkState;
 import com.sclera.applicationplane.procedure.domain.VersionState;
 import com.sclera.applicationplane.procedure.dto.GlobalProcedureTemplateDtos.CreateGlobalTemplateRequest;
 import com.sclera.applicationplane.procedure.dto.GlobalProcedureTemplateDtos.GlobalPublishResponse;
 import com.sclera.applicationplane.procedure.dto.GlobalProcedureTemplateDtos.GlobalTemplateResponse;
 import com.sclera.applicationplane.procedure.dto.GlobalProcedureTemplateDtos.GlobalVersionResponse;
 import com.sclera.applicationplane.procedure.dto.GlobalProcedureTemplateDtos.SaveGlobalDraftRequest;
+import com.sclera.applicationplane.procedure.event.GlobalTemplateEvent;
+import com.sclera.applicationplane.procedure.event.GlobalTemplateEventPublisher;
 import com.sclera.applicationplane.procedure.repository.GlobalProcedureTemplateRepository;
 import com.sclera.applicationplane.procedure.repository.GlobalProcedureTemplateVersionRepository;
+import com.sclera.applicationplane.procedure.repository.GlobalTemplateOrgCopyRepository;
 import com.sclera.controlplane.common.exception.BusinessRuleException;
 import com.sclera.controlplane.common.exception.ConflictException;
 import com.sclera.controlplane.common.exception.ResourceNotFoundException;
@@ -45,13 +49,19 @@ public class GlobalProcedureTemplateService {
     private final GlobalProcedureTemplateRepository templates;
     private final GlobalProcedureTemplateVersionRepository versions;
     private final DefinitionCanonicalizer canonicalizer;
+    private final GlobalTemplateEventPublisher events;
+    private final GlobalTemplateOrgCopyRepository orgCopies;
 
     public GlobalProcedureTemplateService(GlobalProcedureTemplateRepository templates,
                                           GlobalProcedureTemplateVersionRepository versions,
-                                          DefinitionCanonicalizer canonicalizer) {
+                                          DefinitionCanonicalizer canonicalizer,
+                                          GlobalTemplateEventPublisher events,
+                                          GlobalTemplateOrgCopyRepository orgCopies) {
         this.templates = templates;
         this.versions = versions;
         this.canonicalizer = canonicalizer;
+        this.events = events;
+        this.orgCopies = orgCopies;
     }
 
     /** Creates the global template and its first draft, v1. */
@@ -115,7 +125,8 @@ public class GlobalProcedureTemplateService {
     }
 
     /**
-     * Freezes the draft as the current version. Runs structure validation
+     * Freezes the draft as the current version and fires the event a future
+     * notification service will someday react to. Runs structure validation
      * only — {@link DefinitionValidator#publishBlockers} needs an
      * organization's own active result-type keys to check an option's result
      * mapping against, and a global template has no organization at all;
@@ -127,7 +138,13 @@ public class GlobalProcedureTemplateService {
      * <p>If the draft's content matches a version already published, nothing
      * new is created: the draft is discarded and that version becomes
      * current, the same no-op-republish behaviour every other publish path
-     * in this service has.
+     * in this service has — and the event still fires if that repoints
+     * current, since linked organizations' "update available" comparison
+     * depends on which version is current, not on a new row existing.
+     *
+     * <p>{@code linkedOrgCount} is read fresh on every call, never cached or
+     * stored: it is the only visible confirmation that the broadcast reached
+     * anyone, since the event itself carries no recipient.
      */
     public GlobalPublishResponse publish(UUID id) {
         GlobalProcedureTemplate template = lockOwned(id);
@@ -149,8 +166,9 @@ public class GlobalProcedureTemplateService {
             if (!existing.getId().equals(template.getCurrentPublishedVersionId())) {
                 template.setCurrentPublishedVersionId(existing.getId());
                 templates.flush();
+                events.publish(existing, GlobalTemplateEvent.EventType.PUBLISHED);
             }
-            return new GlobalPublishResponse(false, toResponse(existing));
+            return new GlobalPublishResponse(false, toResponse(existing), linkedOrgCount(template.getId()));
         }
 
         draft.setState(VersionState.PUBLISHED);
@@ -159,7 +177,12 @@ public class GlobalProcedureTemplateService {
         versions.saveAndFlush(draft);
         template.setCurrentPublishedVersionId(draft.getId());
         templates.flush();
-        return new GlobalPublishResponse(true, toResponse(draft));
+        events.publish(draft, GlobalTemplateEvent.EventType.PUBLISHED);
+        return new GlobalPublishResponse(true, toResponse(draft), linkedOrgCount(template.getId()));
+    }
+
+    private long linkedOrgCount(UUID globalTemplateId) {
+        return orgCopies.countByGlobalTemplateIdAndLinkState(globalTemplateId, LinkState.LINKED);
     }
 
     // --- helpers --------------------------------------------------------------

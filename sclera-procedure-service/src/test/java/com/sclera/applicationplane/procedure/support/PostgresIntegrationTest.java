@@ -1,5 +1,6 @@
 package com.sclera.applicationplane.procedure.support;
 
+import com.sclera.applicationplane.procedure.event.GlobalTemplateEventPublisher;
 import com.sclera.applicationplane.procedure.event.TemplateEventPublisher;
 import com.sclera.applicationplane.procedure.tenancy.PropertyContext;
 import com.sclera.applicationplane.procedure.tenancy.TenantRegistryService;
@@ -76,6 +77,9 @@ public abstract class PostgresIntegrationTest {
 
     @MockBean
     protected TemplateEventPublisher events;
+
+    @MockBean
+    protected GlobalTemplateEventPublisher globalEvents;
 
     @Autowired
     protected TenantRegistryService tenantRegistry;

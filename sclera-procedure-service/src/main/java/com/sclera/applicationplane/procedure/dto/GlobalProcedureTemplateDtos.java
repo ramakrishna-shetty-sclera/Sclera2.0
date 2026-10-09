@@ -67,5 +67,14 @@ public final class GlobalProcedureTemplateDtos {
             OffsetDateTime publishedAt,
             DefinitionDocument definition) {}
 
-    public record GlobalPublishResponse(boolean newVersion, GlobalVersionResponse version) {}
+    /**
+     * {@code linkedOrgCount} — how many organizations currently track this
+     * global template's updates ({@code link_state = LINKED}) at the moment
+     * of publish. The only visible confirmation that the broadcast reached
+     * anyone: the Kafka event itself carries no recipient (see
+     * {@code GlobalTemplateEvent}), so without this count a platform admin
+     * publishing a new version would have no way to tell that anything
+     * happened. Derived fresh at publish time, never stored.
+     */
+    public record GlobalPublishResponse(boolean newVersion, GlobalVersionResponse version, long linkedOrgCount) {}
 }
