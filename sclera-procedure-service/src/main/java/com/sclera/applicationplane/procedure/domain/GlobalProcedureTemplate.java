@@ -66,6 +66,11 @@ public class GlobalProcedureTemplate {
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
+    /** Returns the next unused key number. Callers must hold a lock on this row. */
+    public int nextKeyNumber() {
+        return ++keySeq;
+    }
+
     public UUID getId() { return id; }
 
     public String getName() { return name; }

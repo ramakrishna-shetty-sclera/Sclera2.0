@@ -85,6 +85,19 @@ public class FgaAuthorizationService {
     }
 
     /**
+     * True for the platform-admin JWT claim, same bypass {@link #checkInternal}
+     * already special-cases ahead of every object/org check. Exposed as its own
+     * method for content with no organization to scope a check against at all —
+     * authoring Sclera's own shared library, not any one organization's data —
+     * so {@code @PreAuthorize("@fga.isPlatformAdmin()")} reads the same way
+     * every other guard in this service does, rather than every caller
+     * reaching into {@code OrgContext} directly.
+     */
+    public boolean isPlatformAdmin() {
+        return OrgContext.isPlatformAdmin();
+    }
+
+    /**
      * Every object of {@code objectType} that belongs to the current
      * organization, read from its {@code org} tuples. Properties have no table
      * of their own yet, so the tuple linking a property to its organization is

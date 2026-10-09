@@ -41,6 +41,12 @@ class ControllerAuthorizationTest {
 
     private static final Pattern CHECK_ORG = Pattern.compile("@fga\\.checkOrg\\('([^']+)'\\)");
     private static final Pattern CHECK = Pattern.compile("@fga\\.check\\('([^']+)'\\s*,[^,)]*,\\s*'([^']+)'\\)");
+    /**
+     * Content with no organization to scope a check against at all — Sclera's
+     * own shared library, not any one organization's data — so this names no
+     * relation and has nothing to hold up against the model.
+     */
+    private static final Pattern IS_PLATFORM_ADMIN = Pattern.compile("@fga\\.isPlatformAdmin\\(\\)");
     private static final Pattern ANY_FGA_CALL = Pattern.compile("@fga\\.");
 
     @Test
@@ -103,6 +109,7 @@ class ControllerAuthorizationTest {
                 read++;
                 require(model, object.group(1), object.group(2), endpoint, problems);
             }
+            read += count(IS_PLATFORM_ADMIN, expression);
             if (read != count(ANY_FGA_CALL, expression)) {
                 problems.add(name(endpoint) + " calls @fga in a form this test cannot read: " + expression);
             }
