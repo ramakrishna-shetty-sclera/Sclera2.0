@@ -42,7 +42,8 @@ public class GlobalTemplateOrgCopy {
     @Column(name = "org_id", updatable = false)
     private UUID orgId;
 
-    @Column(name = "template_id", nullable = false, updatable = false)
+    /** Updatable: importing again, as a new template, repoints this to it. */
+    @Column(name = "template_id", nullable = false)
     private UUID templateId;
 
     @Column(name = "applied_version_no", nullable = false)
@@ -78,6 +79,8 @@ public class GlobalTemplateOrgCopy {
     public UUID getOrgId() { return orgId; }
 
     public UUID getTemplateId() { return templateId; }
+    /** One link slot per (global template, org): re-importing as new repoints it here. */
+    public void setTemplateId(UUID templateId) { this.templateId = templateId; }
 
     public int getAppliedVersionNo() { return appliedVersionNo; }
     public void setAppliedVersionNo(int appliedVersionNo) { this.appliedVersionNo = appliedVersionNo; }

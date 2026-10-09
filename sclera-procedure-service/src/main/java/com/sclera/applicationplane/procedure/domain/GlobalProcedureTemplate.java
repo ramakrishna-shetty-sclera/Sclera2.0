@@ -47,6 +47,10 @@ public class GlobalProcedureTemplate {
     @Column(name = "current_published_version_id")
     private UUID currentPublishedVersionId;
 
+    /** Counter behind every question key, carried forward into an org's imported copy. */
+    @Column(name = "key_seq", nullable = false)
+    private int keySeq;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private TemplateStatus status = TemplateStatus.ACTIVE;
@@ -75,6 +79,9 @@ public class GlobalProcedureTemplate {
 
     public UUID getCurrentPublishedVersionId() { return currentPublishedVersionId; }
     public void setCurrentPublishedVersionId(UUID id) { this.currentPublishedVersionId = id; }
+
+    public int getKeySeq() { return keySeq; }
+    public void setKeySeq(int keySeq) { this.keySeq = keySeq; }
 
     public TemplateStatus getStatus() { return status; }
     public void setStatus(TemplateStatus status) { this.status = status; }

@@ -13,9 +13,14 @@ import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Targe
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetType;
 import com.sclera.applicationplane.procedure.definition.DefinitionValidator;
 import com.sclera.applicationplane.procedure.definition.KeyMinter;
+import com.sclera.applicationplane.procedure.domain.GlobalProcedureTemplate;
+import com.sclera.applicationplane.procedure.domain.GlobalProcedureTemplateVersion;
+import com.sclera.applicationplane.procedure.domain.GlobalTemplateOrgCopy;
+import com.sclera.applicationplane.procedure.domain.LinkState;
 import com.sclera.applicationplane.procedure.domain.ProcedureConsumer;
 import com.sclera.applicationplane.procedure.domain.ProcedureTemplate;
 import com.sclera.applicationplane.procedure.domain.ProcedureTemplateVersion;
+import com.sclera.applicationplane.procedure.domain.ResultType;
 import com.sclera.applicationplane.procedure.domain.TemplateScope;
 import com.sclera.applicationplane.procedure.domain.TemplateStatus;
 import com.sclera.applicationplane.procedure.domain.VersionDocumentRef;
@@ -38,6 +43,7 @@ import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluationRespon
 import com.sclera.applicationplane.procedure.dto.EvaluationDtos.VersionRef;
 import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ExportedProcedure;
 import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ExportedVersion;
+import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ImportRequest;
 import com.sclera.applicationplane.procedure.evaluation.Answers;
 import com.sclera.applicationplane.procedure.evaluation.Evaluator;
 import com.sclera.applicationplane.procedure.evaluation.ResultRanks;
@@ -46,6 +52,9 @@ import com.sclera.applicationplane.procedure.event.ProcedureTemplateEvent;
 import com.sclera.applicationplane.procedure.event.TemplateEventPublisher;
 import com.sclera.applicationplane.procedure.mapper.ProcedureTemplateMapper;
 import com.sclera.applicationplane.procedure.repository.ProcedureConsumerRepository;
+import com.sclera.applicationplane.procedure.repository.GlobalProcedureTemplateRepository;
+import com.sclera.applicationplane.procedure.repository.GlobalProcedureTemplateVersionRepository;
+import com.sclera.applicationplane.procedure.repository.GlobalTemplateOrgCopyRepository;
 import com.sclera.applicationplane.procedure.repository.ProcedureDocumentRepository;
 import com.sclera.applicationplane.procedure.repository.ProcedureTemplateRepository;
 import com.sclera.applicationplane.procedure.repository.ProcedureTemplateVersionRepository;
@@ -105,6 +114,9 @@ public class ProcedureTemplateService {
     private final CachedVocabulary vocabulary;
     private final ProcedureDocumentRepository documents;
     private final VersionDocumentRefRepository documentRefs;
+    private final GlobalProcedureTemplateRepository globalTemplates;
+    private final GlobalProcedureTemplateVersionRepository globalVersions;
+    private final GlobalTemplateOrgCopyRepository orgCopies;
 
     public ProcedureTemplateService(ProcedureTemplateRepository templates,
                                     ProcedureTemplateVersionRepository versions,
@@ -118,7 +130,10 @@ public class ProcedureTemplateService {
                                     ProcedureConsumerRepository consumers,
                                     CachedVocabulary vocabulary,
                                     ProcedureDocumentRepository documents,
-                                    VersionDocumentRefRepository documentRefs) {
+                                    VersionDocumentRefRepository documentRefs,
+                                    GlobalProcedureTemplateRepository globalTemplates,
+                                    GlobalProcedureTemplateVersionRepository globalVersions,
+                                    GlobalTemplateOrgCopyRepository orgCopies) {
         this.templates = templates;
         this.versions = versions;
         this.canonicalizer = canonicalizer;
@@ -132,6 +147,9 @@ public class ProcedureTemplateService {
         this.vocabulary = vocabulary;
         this.documents = documents;
         this.documentRefs = documentRefs;
+        this.globalTemplates = globalTemplates;
+        this.globalVersions = globalVersions;
+        this.orgCopies = orgCopies;
     }
 
     // --- template identity --------------------------------------------------
@@ -465,6 +483,139 @@ public class ProcedureTemplateService {
                 document.thresholds(), document.targetTypes(), List.of());
         Canonical canonical = canonicalizer.canonicalize(stripped);
         return new ExportedVersion(version.getVersionNo(), canonical.json(), canonical.hash(), version.getChangeNote());
+    }
+
+    /**
+     * Pulls one published version of a global template into this
+     * organization — a new template ({@code templateId} absent) or a new
+     * draft of an existing one ({@code templateId} set). Either way, a
+     * {@link GlobalTemplateOrgCopy} row is written or updated with
+     * {@code link_state = LINKED}, so the organization starts out tracking
+     * the global template's future updates.
+     *
+     * <p>Lands as a draft, never auto-published: the organization reviews
+     * and publishes it like any other draft, the same as every other
+     * version-creating action in this service.
+     */
+    public TemplateResponse importFromGlobal(ImportRequest request) {
+        GlobalProcedureTemplate globalTemplate = globalTemplates.findById(request.globalTemplateId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Global template not found: " + request.globalTemplateId()));
+        GlobalProcedureTemplateVersion source = resolveGlobalVersion(globalTemplate, request.versionNo());
+
+        createMissingResultTypes(canonicalizer.parse(source.getDefinitionJson()).resultTypeKeys());
+
+        ProcedureTemplate template;
+        int versionNo;
+        if (request.templateId() == null) {
+            if (isBlank(request.name())) {
+                throw new ValidationException("A name is required when importing as a new procedure");
+            }
+            template = newTemplateFromGlobal(globalTemplate, request.name().strip());
+            versionNo = 1;
+            versions.saveAndFlush(newVersion(template, versionNo, source.getDefinitionJson(), source.getDefinitionHash()));
+            fga.grantCreated(FGA_TYPE, template.getId(), template.getCreatedBy(), null);
+        } else {
+            template = lockOwned(request.templateId());
+            requireActive(template);
+            versions.findByTemplateIdAndState(template.getId(), VersionState.DRAFT).ifPresent(existing -> {
+                throw new ConflictException("This procedure already has a draft (v" + existing.getVersionNo()
+                        + "); publish or discard it first");
+            });
+            // Carries the global template's own key counter forward, exactly as
+            // cloneTemplate does - the imported content's keys must never land
+            // outside the range this template has issued, or a later edit
+            // would have KeyMinter refuse them as forged.
+            template.setKeySeq(Math.max(template.getKeySeq(), globalTemplate.getKeySeq()));
+            versionNo = versions.maxVersionNo(template.getId()) + 1;
+            versions.saveAndFlush(newVersion(template, versionNo, source.getDefinitionJson(), source.getDefinitionHash()));
+        }
+
+        linkToGlobal(globalTemplate, template, source.getVersionNo());
+        return mapper.toResponse(template, currentVersion(template).map(ProcedureTemplateVersion::getVersionNo)
+                .orElse(null), versionNo);
+    }
+
+    private GlobalProcedureTemplateVersion resolveGlobalVersion(GlobalProcedureTemplate globalTemplate, Integer versionNo) {
+        GlobalProcedureTemplateVersion version = versionNo != null
+                ? globalVersions.findByGlobalTemplateIdAndVersionNo(globalTemplate.getId(), versionNo)
+                        .orElseThrow(() -> new ResourceNotFoundException(
+                                "Global template " + globalTemplate.getId() + " has no version " + versionNo))
+                : Optional.ofNullable(globalTemplate.getCurrentPublishedVersionId())
+                        .flatMap(globalVersions::findById)
+                        .orElseThrow(() -> new BusinessRuleException("'" + globalTemplate.getName()
+                                + "' has never been published, so there is nothing to import"));
+        if (version.getState() != VersionState.PUBLISHED) {
+            throw new BusinessRuleException("Version " + version.getVersionNo() + " of '" + globalTemplate.getName()
+                    + "' is not published");
+        }
+        return version;
+    }
+
+    private ProcedureTemplate newTemplateFromGlobal(GlobalProcedureTemplate globalTemplate, String name) {
+        UUID orgId = OrgContext.getOrgId();
+        requireNameFree(orgId, name, null);
+
+        ProcedureTemplate template = new ProcedureTemplate();
+        template.setOrgId(orgId);
+        List<UUID> scope = PropertyContext.current();
+        template.setPropertyId(scope.size() == 1 ? scope.get(0) : null);
+        template.setName(name);
+        template.setDescription(globalTemplate.getDescription());
+        if (!isBlank(globalTemplate.getConsumerKey())) {
+            template.setConsumerKey(requireActiveConsumer(globalTemplate.getConsumerKey()));
+        }
+        template.setGlobalTemplateId(globalTemplate.getId());
+        template.setKeySeq(globalTemplate.getKeySeq());
+        template.setCreatedBy(OrgContext.getUserId());
+        templates.saveAndFlush(template);
+        return template;
+    }
+
+    /**
+     * Maps the imported document's result keys against this organization's
+     * vocabulary; a key it does not have is created rather than dropped or
+     * refused. Appended as the least severe rank, since an auto-created
+     * type's actual severity relative to what the organization already
+     * defined is unknown, and appending can never silently outrank
+     * anything existing. An admin can rename, recolour and reorder it
+     * afterwards like any other result type.
+     */
+    private void createMissingResultTypes(Set<String> keys) {
+        UUID orgId = OrgContext.getOrgId();
+        List<ResultType> existing = resultTypes.findAllByOrgIdOrderBySeverityOrderAsc(orgId);
+        Set<String> known = existing.stream().map(ResultType::getKey).collect(Collectors.toSet());
+        int nextSeverity = existing.size();
+        for (String key : keys) {
+            if (known.contains(key)) {
+                continue;
+            }
+            nextSeverity++;
+            ResultType created = new ResultType();
+            created.setOrgId(orgId);
+            created.setKey(key);
+            created.setName(key);
+            created.setColor("#9E9E9E");
+            created.setSeverityOrder(nextSeverity);
+            created.setSystem(false);
+            resultTypes.save(created);
+            known.add(key);
+        }
+    }
+
+    private void linkToGlobal(GlobalProcedureTemplate globalTemplate, ProcedureTemplate template, int appliedVersionNo) {
+        UUID orgId = OrgContext.getOrgId();
+        GlobalTemplateOrgCopy copy = orgCopies.findByGlobalTemplateIdAndOrgId(globalTemplate.getId(), orgId)
+                .orElseGet(() -> new GlobalTemplateOrgCopy(globalTemplate.getId(), orgId, template.getId(),
+                        appliedVersionNo, OffsetDateTime.now()));
+        // One link slot per (global template, org): importing again, as a new
+        // template, repoints it rather than failing or leaving it stale.
+        copy.setTemplateId(template.getId());
+        copy.setAppliedVersionNo(appliedVersionNo);
+        copy.setLinkState(LinkState.LINKED);
+        copy.setDeferredVersionNo(null);
+        copy.setDeferredAt(null);
+        orgCopies.saveAndFlush(copy);
     }
 
     // --- evaluation ---------------------------------------------------------
