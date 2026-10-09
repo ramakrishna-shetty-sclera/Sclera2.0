@@ -36,6 +36,8 @@ import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.VersionSu
 import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluateRequest;
 import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluationResponse;
 import com.sclera.applicationplane.procedure.dto.EvaluationDtos.VersionRef;
+import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ExportedProcedure;
+import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ExportedVersion;
 import com.sclera.applicationplane.procedure.evaluation.Answers;
 import com.sclera.applicationplane.procedure.evaluation.Evaluator;
 import com.sclera.applicationplane.procedure.evaluation.ResultRanks;
@@ -417,6 +419,52 @@ public class ProcedureTemplateService {
         DefinitionDocument from = canonicalizer.parse(requireVersion(template, fromVersionNo).getDefinitionJson());
         DefinitionDocument to = canonicalizer.parse(requireVersion(template, toVersionNo).getDefinitionJson());
         return new DiffResponse(fromVersionNo, toVersionNo, DefinitionDiff.between(from, to));
+    }
+
+    // --- sharing: export, import, linking ------------------------------------
+
+    /**
+     * Packages one or more of this template's versions for sharing. Never
+     * carries an org id, a property id or anything FGA-related — none of
+     * that travels with a procedure once it leaves this organization.
+     *
+     * @param versionNumbers which versions to include; null or empty means
+     *                       just the current published one
+     * @param includeDocuments whether a version's cited library documents
+     *                          ride along as bare references. False strips
+     *                          them entirely rather than just omitting
+     *                          bytes (which this service never held in the
+     *                          first place) — a document id from this
+     *                          organization means nothing wherever the
+     *                          export ends up, so the safer default is no
+     *                          dangling reference at all.
+     */
+    @Transactional(readOnly = true)
+    public ExportedProcedure export(UUID id, List<Integer> versionNumbers, boolean includeDocuments) {
+        ProcedureTemplate template = getOwned(id);
+        List<ProcedureTemplateVersion> toExport = (versionNumbers == null || versionNumbers.isEmpty())
+                ? List.of(currentVersion(template).orElseThrow(() -> new BusinessRuleException(
+                        "Procedure '" + template.getName() + "' has never been published, so there is nothing to export")))
+                : versionNumbers.stream().map(no -> requireVersion(template, no)).toList();
+
+        List<ExportedVersion> exported = toExport.stream().map(v -> exportVersion(v, includeDocuments)).toList();
+        return new ExportedProcedure(template.getName(), template.getDescription(), template.getConsumerKey(), exported);
+    }
+
+    private ExportedVersion exportVersion(ProcedureTemplateVersion version, boolean includeDocuments) {
+        if (includeDocuments) {
+            return new ExportedVersion(version.getVersionNo(), version.getDefinitionJson(),
+                    version.getDefinitionHash(), version.getChangeNote());
+        }
+        DefinitionDocument document = canonicalizer.parse(version.getDefinitionJson());
+        if (document.documents().isEmpty()) {
+            return new ExportedVersion(version.getVersionNo(), version.getDefinitionJson(),
+                    version.getDefinitionHash(), version.getChangeNote());
+        }
+        DefinitionDocument stripped = new DefinitionDocument(document.schema(), document.items(),
+                document.thresholds(), document.targetTypes(), List.of());
+        Canonical canonical = canonicalizer.canonicalize(stripped);
+        return new ExportedVersion(version.getVersionNo(), canonical.json(), canonical.hash(), version.getChangeNote());
     }
 
     // --- evaluation ---------------------------------------------------------

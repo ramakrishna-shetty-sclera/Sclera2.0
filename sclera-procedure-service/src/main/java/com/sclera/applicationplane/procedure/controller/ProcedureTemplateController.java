@@ -5,6 +5,7 @@ import com.sclera.applicationplane.procedure.domain.TemplateScope;
 import com.sclera.applicationplane.procedure.domain.TemplateStatus;
 import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluateRequest;
 import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluationResponse;
+import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ExportedProcedure;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.CloneRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.CreateTemplateRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.DiffResponse;
@@ -158,6 +159,16 @@ public class ProcedureTemplateController {
     @PreAuthorize("@fga.check('procedure_template', #id, 'can_view')")
     public DiffResponse diff(@PathVariable UUID id, @RequestParam int from, @RequestParam int to) {
         return service.diff(id, from, to);
+    }
+
+    // --- sharing --------------------------------------------------------------
+
+    @GetMapping("/{id}/export")
+    @PreAuthorize("@fga.check('procedure_template', #id, 'can_view')")
+    public ExportedProcedure export(@PathVariable UUID id,
+                                    @RequestParam(required = false) List<Integer> versions,
+                                    @RequestParam(defaultValue = "false") boolean includeDocuments) {
+        return service.export(id, versions, includeDocuments);
     }
 
     // --- evaluation ---------------------------------------------------------
