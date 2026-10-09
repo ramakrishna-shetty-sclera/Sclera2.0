@@ -19,7 +19,9 @@ import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.TemplateR
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.UpdateTemplateRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.VersionResponse;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.VersionSummary;
+import com.sclera.applicationplane.procedure.dto.UsageDtos.VersionUsageSummary;
 import com.sclera.applicationplane.procedure.service.ProcedureTemplateService;
+import com.sclera.applicationplane.procedure.service.ProcedureUsageService;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -49,9 +51,11 @@ import java.util.UUID;
 public class ProcedureTemplateController {
 
     private final ProcedureTemplateService service;
+    private final ProcedureUsageService usage;
 
-    public ProcedureTemplateController(ProcedureTemplateService service) {
+    public ProcedureTemplateController(ProcedureTemplateService service, ProcedureUsageService usage) {
         this.service = service;
+        this.usage = usage;
     }
 
     // --- template identity --------------------------------------------------
@@ -204,6 +208,18 @@ public class ProcedureTemplateController {
     @PreAuthorize("@fga.check('procedure_template', #id, 'can_view')")
     public FavouriteResponse unfavourite(@PathVariable UUID id) {
         return service.unfavourite(id);
+    }
+
+    // --- usage --------------------------------------------------------------
+
+    /**
+     * Which versions of this procedure consumers report being on, oldest first:
+     * the impact preview before publishing or deprecating a version.
+     */
+    @GetMapping("/{id}/usage")
+    @PreAuthorize("@fga.check('procedure_template', #id, 'can_view')")
+    public List<VersionUsageSummary> usage(@PathVariable UUID id) {
+        return usage.usageOf(id);
     }
 
     // --- evaluation ---------------------------------------------------------

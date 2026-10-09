@@ -946,3 +946,54 @@ Authorization: Bearer {{token}}
 ### F12. Tidy up
 POST {{host}}/api/v1/procedure-templates/{{shareId}}/archive
 Authorization: Bearer {{token}}
+
+###############################################################################
+# G — which versions are still in use (the usage registry's read side)
+#
+#   GET /api/v1/procedure-templates/{id}/usage
+#
+# Returns one summary per version that has consumers, oldest first:
+#   [ { "versionNo": 3, "consumerCount": 3 }, { "versionNo": 4, "consumerCount": 1 } ]
+# It is the "before you publish v4, here are the configurations still on v3"
+# preview. An empty list is the normal answer for a procedure nobody downstream
+# reports about yet, and no consumer does today.
+#
+# The write side is not here:
+#   POST /internal/api/v1/procedure-usage/orgs/{orgId}/report
+# It is reached over Dapr with an HMAC signature, never through the gateway, so
+# a request from this file could not pass its filter. InternalUsageIT covers it
+# and VersionUsageIT covers what this endpoint returns once rows exist.
+###############################################################################
+
+### G1. A published procedure — nothing has reported against it
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Usage check {{$random.integer(1000, 9999)}}",
+  "definition": {
+    "items": [
+      { "text": "Present?", "type": "YES_NO",
+        "options": [
+          { "label": "Yes", "result": "PASS" },
+          { "label": "No",  "result": "FAIL" }
+        ]
+      }
+    ]
+  }
+}
+
+> {% client.global.set("usageId", response.body.data.id); %}
+
+###
+POST {{host}}/api/v1/procedure-templates/{{usageId}}/publish
+Authorization: Bearer {{token}}
+
+### G2. Its usage → 200, an empty list, not an error
+GET {{host}}/api/v1/procedure-templates/{{usageId}}/usage
+Authorization: Bearer {{token}}
+
+### G3. Tidy up
+POST {{host}}/api/v1/procedure-templates/{{usageId}}/archive
+Authorization: Bearer {{token}}
