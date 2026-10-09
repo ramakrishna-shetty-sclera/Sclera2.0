@@ -16,6 +16,7 @@ import com.sclera.applicationplane.procedure.definition.KeyMinter;
 import com.sclera.applicationplane.procedure.domain.ProcedureConsumer;
 import com.sclera.applicationplane.procedure.domain.ProcedureTemplate;
 import com.sclera.applicationplane.procedure.domain.ProcedureTemplateVersion;
+import com.sclera.applicationplane.procedure.domain.TemplateScope;
 import com.sclera.applicationplane.procedure.domain.TemplateStatus;
 import com.sclera.applicationplane.procedure.domain.VersionDocumentRef;
 import com.sclera.applicationplane.procedure.domain.VersionResultTypeRef;
@@ -201,11 +202,9 @@ public class ProcedureTemplateService {
     }
 
     @Transactional(readOnly = true)
-    public Page<TemplateResponse> list(TemplateStatus status, Pageable pageable) {
-        UUID orgId = OrgContext.getOrgId();
-        Page<ProcedureTemplate> page = status == null
-                ? templates.findAllByOrgId(orgId, pageable)
-                : templates.findAllByOrgIdAndStatus(orgId, status, pageable);
+    public Page<TemplateResponse> list(TemplateStatus status, TemplateScope scope, Pageable pageable) {
+        Boolean propertyScoped = scope == null ? null : scope == TemplateScope.PROPERTY;
+        Page<ProcedureTemplate> page = templates.findAllByOrgId(OrgContext.getOrgId(), status, propertyScoped, pageable);
         return withVersionNumbers(page);
     }
 
@@ -260,6 +259,12 @@ public class ProcedureTemplateService {
 
         ProcedureTemplate copy = new ProcedureTemplate();
         copy.setOrgId(source.getOrgId());
+        // Same rule as create(): where the caller is standing decides the
+        // scope, not the source's own scope. Cloning an organization-wide
+        // procedure from inside a property must produce a property-scoped
+        // copy, not silently widen it back to organization level.
+        List<UUID> scope = PropertyContext.current();
+        copy.setPropertyId(scope.size() == 1 ? scope.get(0) : null);
         copy.setName(name);
         copy.setDescription(source.getDescription());
         copy.setConsumerKey(source.getConsumerKey());

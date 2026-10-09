@@ -26,9 +26,32 @@ public interface ProcedureTemplateRepository extends JpaRepository<ProcedureTemp
     @Query("select t from ProcedureTemplate t where t.id = :id and t.orgId = :orgId")
     Optional<ProcedureTemplate> lockByIdAndOrgId(UUID id, UUID orgId);
 
-    Page<ProcedureTemplate> findAllByOrgId(UUID orgId, Pageable pageable);
-
-    Page<ProcedureTemplate> findAllByOrgIdAndStatus(UUID orgId, TemplateStatus status, Pageable pageable);
+    /**
+     * Status and scope are independent, optional filters — either, both or
+     * neither. {@code propertyScoped} is the service's translation of
+     * {@code TemplateScope} into the one thing the column actually holds:
+     * {@code true} means scoped to some property ({@code property_id} is
+     * set), {@code false} means organization-wide, {@code null} means no
+     * filter. Passed as a {@code Boolean} rather than the enum itself —
+     * comparing a nullable named parameter against an enum literal in JPQL
+     * left Hibernate unable to infer the parameter's type when it was null.
+     *
+     * <p>Standing inside a property, {@code false} narrows to the shared
+     * rows that property can also see, {@code true} narrows to that
+     * property's own rows. At organization level with no property selected,
+     * row-level security has already hidden every property-scoped row before
+     * this filter runs, so {@code true} there returns nothing rather than
+     * "every property's rows".
+     */
+    @Query("""
+            select t from ProcedureTemplate t
+            where t.orgId = :orgId
+              and (:status is null or t.status = :status)
+              and (:propertyScoped is null
+                   or (:propertyScoped = true and t.propertyId is not null)
+                   or (:propertyScoped = false and t.propertyId is null))
+            """)
+    Page<ProcedureTemplate> findAllByOrgId(UUID orgId, TemplateStatus status, Boolean propertyScoped, Pageable pageable);
 
     /**
      * The active procedures whose current published version applies to a target.

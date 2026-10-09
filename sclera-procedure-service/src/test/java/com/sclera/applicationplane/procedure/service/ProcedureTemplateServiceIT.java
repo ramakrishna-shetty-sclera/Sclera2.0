@@ -5,6 +5,7 @@ import com.sclera.applicationplane.procedure.definition.DefinitionDocument;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Item;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Option;
 import com.sclera.applicationplane.procedure.domain.QuestionType;
+import com.sclera.applicationplane.procedure.domain.TemplateScope;
 import com.sclera.applicationplane.procedure.domain.TemplateStatus;
 import com.sclera.applicationplane.procedure.domain.VersionState;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.CloneRequest;
@@ -191,6 +192,56 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
             service.archive(first);
             assertThat(service.create(create("Fire walk")).id()).isNotEqualTo(first);
         }
+
+        @Test
+        void theScopeFilterAndTheStatusFilterCombineIndependently() {
+            UUID org = actAsNewOrg();
+            UUID property = UUID.randomUUID();
+            UUID orgWide = service.create(create("Organization-wide")).id();
+            UUID propertyScoped = asProperty(org, property, () -> service.create(create("Property-scoped"))).id();
+            asProperty(org, property, () -> service.archive(propertyScoped));
+
+            // Standing inside the property: row-level security admits both
+            // rows (organization-wide, plus this property's own), so the
+            // filter is the only thing telling them apart.
+            asProperty(org, property, () -> {
+                assertThat(service.list(null, TemplateScope.ORGANIZATION, PageRequest.of(0, 20)).getContent())
+                        .extracting(TemplateResponse::id).containsExactly(orgWide);
+                assertThat(service.list(null, TemplateScope.PROPERTY, PageRequest.of(0, 20)).getContent())
+                        .extracting(TemplateResponse::id).containsExactly(propertyScoped);
+                assertThat(service.list(TemplateStatus.ACTIVE, null, PageRequest.of(0, 20)).getContent())
+                        .extracting(TemplateResponse::id).containsExactly(orgWide);
+                assertThat(service.list(TemplateStatus.ARCHIVED, null, PageRequest.of(0, 20)).getContent())
+                        .extracting(TemplateResponse::id).containsExactly(propertyScoped);
+                assertThat(service.list(TemplateStatus.ARCHIVED, TemplateScope.ORGANIZATION, PageRequest.of(0, 20))
+                        .getContent()).isEmpty();
+                assertThat(service.list(TemplateStatus.ARCHIVED, TemplateScope.PROPERTY, PageRequest.of(0, 20))
+                        .getContent()).extracting(TemplateResponse::id).containsExactly(propertyScoped);
+                assertThat(service.list(null, null, PageRequest.of(0, 20)).getContent())
+                        .extracting(TemplateResponse::id).containsExactlyInAnyOrder(orgWide, propertyScoped);
+            });
+
+            // From organization level (no property selected), the
+            // property-scoped row is invisible full stop - row-level security
+            // hides it before the scope filter ever runs, so scope=PROPERTY
+            // here returns nothing rather than "every property's rows".
+            assertThat(service.list(null, TemplateScope.PROPERTY, PageRequest.of(0, 20)).getContent()).isEmpty();
+        }
+
+        @Test
+        void propertyResponseReportsItsOwnScope() {
+            UUID org = actAsNewOrg();
+            UUID property = UUID.randomUUID();
+
+            TemplateResponse propertyScoped = asProperty(org, property, () -> service.create(create("Fire walk")));
+            // asProperty clears OrgContext afterwards, so this second call
+            // needs its own context restored - it is a separate act, standing
+            // at organization level rather than inside the property.
+            TemplateResponse orgWide = asOrg(org, () -> service.create(create("Organization-wide")));
+
+            assertThat(propertyScoped.propertyId()).isEqualTo(property);
+            assertThat(orgWide.propertyId()).isNull();
+        }
     }
 
     @Nested
@@ -349,6 +400,23 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
         }
 
         @Test
+        void cloningFromInsideAPropertyProducesAPropertyScopedCopyRegardlessOfTheSourcesOwnScope() {
+            // The bug this guards against: cloning an organization-wide
+            // procedure from inside a property used to silently widen it back
+            // to organization level, because cloneTemplate never set
+            // propertyId at all. The rule is the same one create() already
+            // follows - where the caller is standing decides the scope.
+            UUID org = actAsNewOrg();
+            UUID source = publishedTemplate("Fire walk");
+            UUID property = UUID.randomUUID();
+
+            TemplateResponse copy = asProperty(org, property,
+                    () -> service.cloneTemplate(source, new CloneRequest("Fire walk copy", 1)));
+
+            assertThat(copy.propertyId()).isEqualTo(property);
+        }
+
+        @Test
         void archiveStopsChangesKeepsHistoryAndIsIdempotent() {
             actAsNewOrg();
             UUID id = publishedTemplate("Fire walk");
@@ -428,7 +496,7 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
             UUID id = publishedTemplate("Fire walk");
 
             UUID orgB = actAsNewOrg();
-            assertThat(service.list(null, PageRequest.of(0, 20)).getContent()).isEmpty();
+            assertThat(service.list(null, null, PageRequest.of(0, 20)).getContent()).isEmpty();
             assertThatThrownBy(() -> service.get(id)).isInstanceOf(ResourceNotFoundException.class);
             assertThatThrownBy(() -> service.getVersion(id, 1)).isInstanceOf(ResourceNotFoundException.class);
             assertThatThrownBy(() -> service.createDraft(id, new NewDraftRequest(1)))

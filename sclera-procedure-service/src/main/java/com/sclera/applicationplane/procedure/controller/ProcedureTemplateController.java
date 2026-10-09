@@ -1,6 +1,7 @@
 package com.sclera.applicationplane.procedure.controller;
 
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetKind;
+import com.sclera.applicationplane.procedure.domain.TemplateScope;
 import com.sclera.applicationplane.procedure.domain.TemplateStatus;
 import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluateRequest;
 import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluationResponse;
@@ -62,8 +63,9 @@ public class ProcedureTemplateController {
     @GetMapping
     @PreAuthorize("@fga.checkOrg('can_view')")
     public Page<TemplateResponse> list(@RequestParam(required = false) TemplateStatus status,
+                                       @RequestParam(required = false) TemplateScope scope,
                                        @PageableDefault(size = 20) Pageable pageable) {
-        return service.list(status, pageable);
+        return service.list(status, scope, pageable);
     }
 
     /**
