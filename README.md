@@ -235,7 +235,7 @@ for the application-plane services:
 
 | Route id | Path predicate | Downstream (env var) |
 |---|---|---|
-| `procedure-service` | `/api/v1/procedure-templates/**,/api/v1/result-types/**,/api/v1/procedure-documents/**,/api/v1/me/properties,/api/v1/me/permissions` | `PROCEDURE_SERVICE_URL` (`:8095`) |
+| `procedure-service` | `/api/v1/procedure-templates/**,/api/v1/result-types/**,/api/v1/procedure-documents/**,/api/v1/global-procedure-templates/**,/api/v1/me/properties,/api/v1/me/permissions` | `PROCEDURE_SERVICE_URL` (`:8095`) |
 | `inspection-service` | `/api/v1/inspections/**,/api/v1/inspection-configs/**,/api/v1/checklists/**,/api/v1/tagged-procedures/**,/api/v1/reactive-services/**` | `INSPECTION_SERVICE_URL` (`:8096`) |
 
 **CORS allowed headers must also include `X-Sclera-Property`** — the header that
@@ -352,6 +352,7 @@ gateway — including the calls that are meant to fail.
 | Topic | Producer | Consumers | Payload |
 |---|---|---|---|
 | `sclera.procedure.template-events.v1` | procedure-service | inspection-service (`TemplateEventListener`) | `ProcedureTemplateEvent` (PUBLISHED / ARCHIVED) |
+| `sclera.procedure.global-template-events.v1` | procedure-service | (feature 12: the search index) | `GlobalTemplateEvent` (PUBLISHED) |
 | `sclera.inspection.events.v1` | inspection-service | (future: metrics, notification) | `InspectionCompletedEvent` |
 
 ## Key environment variables

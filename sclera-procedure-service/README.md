@@ -107,8 +107,15 @@ Ten tables, all inside the per-tenant schema except the global library.
 | `current_published_version_id` | the moving pointer |
 | `key_seq` | per-template counter for minting question keys. Lives here, not on the version, because a key must never be reused across **any** version. |
 | `global_template_id` | an immutable breadcrumb to the global copy. The **link state is not here** — it lives once, on `global_template_org_copy`, because the global side has to find who is linked without scanning every tenant schema. |
+| `forked_from_template_id`, `applied_version_no`, `link_state`, `deferred_version_no`, `deferred_at` | **feature 11.** The org → property half of the same pattern, one level down. Unlike `global_template_id`, the link state lives **directly on this row** rather than a separate table: a property's fork is its own row from the moment it exists, and nothing repoints which row a fork "is" (the repoint scenario `global_template_org_copy` exists for has no equivalent here). `link_state` reuses `LinkState` unmodified. At most one of `global_template_id` or `forked_from_template_id` is ever set on a given row — importing happens at organization level, forking at property level, onto different rows. |
 | `legacy_id` | provenance from 1.0. `UNIQUE(org_id, legacy_id)` |
 | `created_by`, `created_at`, `updated_at` | |
+
+Name uniqueness (`uq_procedure_template_org_name_active`) is scoped by **`(org_id, property_id, name)`**,
+not just `(org_id, name)` — a real gap found while building fork, where a property's fork keeping its
+org-wide source's exact name would otherwise collide with the source itself. `NULLS NOT DISTINCT` keeps
+two org-wide templates (`property_id IS NULL` on both) colliding as before; two different properties,
+or a property and the organization, never collide on the same name.
 
 ### `procedure_template_version` — the definition
 
@@ -285,8 +292,8 @@ Held outside any single tenant:
 
 `link_state ∈ LINKED, DEFERRED, STANDALONE`. **"Update available" is derived**, by comparing
 `applied_version_no` against the global template's current version — never stored, so it cannot go
-stale. `DEFERRED` and `deferred_version_no`/`deferred_at` are written by nothing yet — reserved for
-the update-notification feature, not this one.
+stale. `DEFERRED` and `deferred_version_no`/`deferred_at` are written by `POST .../{id}/defer-update`
+(feature 11) — see *The update lifecycle*, below.
 
 **All three tables live in `public`, written once** — not twice like every tenant table, because
 there is no tenant to scope them to. A per-request connection's `search_path` is pinned to the
@@ -575,8 +582,9 @@ publicly.
 | Evaluation | evaluate answers against any version, draft included (public); against a published version by id (internal, for the inspection service) |
 | Discovery | `GET /api/v1/procedure-templates/discover?consumer=&kind=&key=` — the active procedures that apply to a target; see *Discovery* below |
 | Documents | create (upload already done via helper), list, get, activate, deactivate, delete (conditional) |
-| Sharing | export a version or several (`GET .../{id}/export`); import from the Sclera-wide library by id, creating new or updating existing (`POST .../import`); explicit unlink (`POST .../{id}/unlink` — fork-on-edit happens automatically on `saveDraft`); favourite/unfavourite |
-| Updates *(planned — feature 11)* | check availability, view diff, apply, defer |
+| Sharing | export a version or several (`GET .../{id}/export`); import from the Sclera-wide library by id, organization level only, creating new or updating existing (`POST .../import`); fork an organization-wide procedure into a property's own copy (`POST .../{id}/fork`); explicit unlink for either (`POST .../{id}/unlink` — fork-on-edit also happens automatically on `saveDraft`); favourite/unfavourite |
+| Global authoring | platform-admin only: create, save draft, start a new draft from the current published version, publish (`/api/v1/global-procedure-templates/**`) |
+| Updates | `GET .../{id}/update-status`, `GET .../{id}/update-diff`, `POST .../{id}/apply-update`, `POST .../{id}/defer-update` — generalised to serve a global import or a property's own fork, whichever the template has |
 | Usage | `GET /api/v1/procedure-templates/{id}/usage` — how many consumers are on each version, oldest first (public, `can_view`); `POST /internal/api/v1/procedure-usage/orgs/{orgId}/report` — a consumer reports the version it is on (internal); see the procedure_usage section above |
 
 **Publish does not return a boolean.** It returns the list of reasons a version cannot be published —
@@ -886,17 +894,15 @@ Consumers read the JSON shape rather than a shared Java class, so adding a field
 
 ## Sharing across organizations
 
-**Built, feature 10.** Every organization can copy a procedure out of the Sclera-wide library — its
+**Feature 10, built.** Every organization can copy a procedure out of the Sclera-wide library — its
 own tables, held outside any tenant schema (see *Global library*, above). Importing one
 (`POST /api/v1/procedure-templates/import`) creates an **organization copy**, linked back to the
 global source: the link records which global version that copy has applied, and starts out
-`LINKED`.
-
-Two ways a copy stops tracking the global one, both built: **explicit unlink**
-(`POST .../{id}/unlink`), and **fork on edit** — the first real content change to a linked copy's
-draft sets it `STANDALONE`, because a local change and an incoming global change cannot both be
-true of the same version. The global template id survives either way, so nothing about a fork or an
-unlink is undone automatically; relinking, if ever wanted, is a fresh import.
+`LINKED`. **Organization level only** — a property cannot import directly; its path to the same
+content is to have its organization import it, then fork the organization's own copy (below). This
+closed a real bug: `global_template_org_copy`'s key is `(global_template_id, org_id)` with no
+property dimension, so a second property importing the same global template would have silently
+stolen the first property's link-tracking row.
 
 **Export** (`GET .../{id}/export?versions=&includeDocuments=`) takes a version selection, defaulting
 to the current published one, with a toggle for whether a version's cited documents travel with it
@@ -908,16 +914,83 @@ least severe, never guessed at).
 **Favourites** (`POST`/`DELETE .../{id}/favourite`, and `?favouritesOnly=true` on the list) are a
 plain per-user star, independent of any of the above.
 
-**Not yet built — later features, not this one:**
+### Authoring the Sclera-wide library — feature 11, built
 
-- **Update notification and apply/defer.** Publishing a new global version does not yet notify a
-  linked organization, and nothing derives an "update available" badge. `link_state` already has a
-  `DEFERRED` value and `global_template_org_copy` already carries `deferred_version_no`/
-  `deferred_at`, reserved for this, but nothing writes them yet.
+Platform-admin only (`@fga.isPlatformAdmin()`), and deliberately minimal:
+`POST /api/v1/global-procedure-templates` (create + draft v1), `GET`/`PUT .../{id}/draft`,
+`POST .../{id}/draft` (start v2+ from the current published version — the only way to produce a
+second version, since there is no version-history browsing to pick an earlier one from), and
+`POST .../{id}/publish`. No update, archive, clone or version listing — a small, infrequent action
+for Sclera staff, not a second full authoring surface; feature 12 is what makes this content
+genuinely browsable.
+
+Publishing fires `GlobalTemplateEvent` on `sclera.procedure.global-template-events.v1`. No consumer
+exists yet — feature 12 builds one, reacting to this exact shape — and the event carries no
+recipient, deliberately: "which organizations care" is a one-to-many fact derivable from
+`global_template_org_copy`'s `link_state`, not something the publisher should know or guess at.
+Because the event is otherwise invisible, the publish response carries `linkedOrgCount` — how many
+organizations currently track this template (`link_state = LINKED`), read fresh, never stored — the
+only visible confirmation a platform admin gets that anything happened.
+
+### The update lifecycle, and the fork one level down — feature 11, built
+
+Four endpoints, generalised to serve **either** of two "parent" relationships a template can have —
+never both on the same row, since importing happens at organization level and forking at property
+level, onto different rows:
+
+```
+GET  /api/v1/procedure-templates/{id}/update-status   can_view
+GET  /api/v1/procedure-templates/{id}/update-diff      can_view
+POST /api/v1/procedure-templates/{id}/apply-update     can_edit
+POST /api/v1/procedure-templates/{id}/defer-update     can_edit
+```
+
+`update-status` returns `{linkState, appliedVersionNo, currentVersionNo, updateAvailable}`.
+`updateAvailable` is derived fresh on every read — `appliedVersionNo < currentVersionNo`, true for
+both `LINKED` and `DEFERRED` (deferring records that an update was seen and passed over once; it
+does not hide that one is still there), false once `STANDALONE` (a forked copy has stopped tracking
+its source, and comparing it against one it no longer follows would mislead). A template with
+neither parent reference set reports a null link state and `updateAvailable: false` — a normal
+state, not an error. `update-diff` reuses the same version-to-version diff `GET .../diff` already
+does; `apply-update` pulls the source's current version in as a new draft (for a global import this
+is `importFromGlobal` reached through a clearer verb — same refusal when a draft already exists);
+`defer-update` records `DEFERRED` plus `deferredVersionNo`/`deferredAt` and is refused when there is
+nothing to defer.
+
+**The fork itself** — the org → property half of the pattern, new in this feature:
+
+```
+POST /api/v1/procedure-templates/{id}/fork   can_view on the source, can_manage_templates on the org
+```
+
+`{id}` must be organization-wide (`propertyId IS NULL`); the caller must be standing inside exactly
+one property. Creates a new property-scoped template — same name as the source (name uniqueness is
+now scoped by property too, see above), its current published-or-draft content as a fresh v1 draft,
+`forkedFromTemplateId` set to the source, `linkState = LINKED`. From there it is edited through the
+ordinary draft/publish path like any other template; nothing about that path changes. **Explicit
+action, not automatic**: an earlier framing had editing an org-wide procedure from inside a property
+fork it transparently, but that means a save silently redirecting the caller to a different
+template id mid-call, which was judged worse than one extra click. Nothing forecloses adding that as
+a later UX layer — the data model does not change either way.
+
+**Fork-on-edit and unlink both extend to a fork's own row.** The first real content change to a
+linked copy's draft sets `STANDALONE` — for a global import, on its `global_template_org_copy` row
+as before; for a property's fork, directly on its own row, since there is no separate link table at
+this level (a fork is its own row from the moment it exists; nothing repoints which row a fork "is",
+unlike re-importing as new one level up). `POST .../{id}/unlink` is the explicit counterpart for
+either case, without requiring an edit first.
+
+Publishing an org-wide template that properties have forked from reports `linkedForkCount` on the
+publish response — the same broadcast-visible courtesy `linkedOrgCount` gives a global publish,
+counting only forks still `LINKED` and always zero for a property-scoped template's own publish,
+since nothing forks from a fork.
+
+**Not yet built — feature 12, not this one:**
+
 - **The Sclera reference library and question bank** — browsing generic templates and per-category
-  question sets, copying a whole template or pulling individual questions out of one. Nothing
-  populates `global_procedure_template` yet; what exists today is the import/export/link machinery
-  this feature built and tested, against rows written directly for now.
+  question sets, copying a whole template or pulling individual questions out of one. What exists
+  today is the authoring, sharing and update-lifecycle machinery this and feature 10 built and
+  tested, against rows written directly or authored through the API.
 
 ---
 

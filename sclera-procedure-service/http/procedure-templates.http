@@ -997,3 +997,154 @@ Authorization: Bearer {{token}}
 ### G3. Tidy up
 POST {{host}}/api/v1/procedure-templates/{{usageId}}/archive
 Authorization: Bearer {{token}}
+
+###############################################################################
+# H — feature 11: authoring the shared library, the update lifecycle (both
+# levels), and the org -> property fork.
+#
+# Global authoring lives at /api/v1/global-procedure-templates, separate from
+# /api/v1/procedure-templates, and is platform-admin only: testuser is an
+# organization admin, not a platform admin, so this block signs in as
+# demo-superadmin instead (setup-demo-users.ps1 seeds it with no tuples at
+# all — the is_platform_admin claim bypasses every check on its own).
+#
+# update-status/update-diff/apply-update/defer-update are generalised: the
+# same four endpoints serve a global import (H3-H8) and a property's fork of
+# an org-wide template (H9-H10), branching on whichever parent reference the
+# template actually has.
+###############################################################################
+
+### demo-superadmin — platform admin, no org tuples needed
+POST {{keycloak}}/realms/sclera/protocol/openid-connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=password&client_id=sclera-app&username=demo-superadmin&password=demo-superadmin
+
+> {% client.global.set("superadminToken", response.body.access_token); %}
+
+### H1. Author a global template — creates it and its first draft, v1
+POST {{host}}/api/v1/global-procedure-templates
+Authorization: Bearer {{superadminToken}}
+Content-Type: application/json
+
+{
+  "name": "NFPA 10 — Fire extinguisher inspection {{$random.integer(1000, 9999)}}",
+  "description": "Monthly check per NFPA 10",
+  "consumerKey": "INSPECTION",
+  "definition": { "items": [
+    { "text": "Is the extinguisher present?", "type": "YES_NO", "required": true,
+      "options": [
+        { "label": "Yes", "result": "PASS" },
+        { "label": "No",  "result": "FAIL" }
+      ]
+    }
+  ] }
+}
+
+> {% client.global.set("globalId", response.body.data.id); %}
+
+### H2. Publish it — linkedOrgCount is 0, nothing has imported it yet
+POST {{host}}/api/v1/global-procedure-templates/{{globalId}}/publish
+Authorization: Bearer {{superadminToken}}
+
+### H3. An organization imports it
+POST {{host}}/api/v1/procedure-templates/import
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "globalTemplateId": "{{globalId}}", "name": "Fire extinguisher walk {{$random.integer(1000, 9999)}}" }
+
+> {% client.global.set("importedId", response.body.data.id); %}
+
+###
+POST {{host}}/api/v1/procedure-templates/{{importedId}}/publish
+Authorization: Bearer {{token}}
+
+### H4. update-status — nothing new published since the import, so no update available
+GET {{host}}/api/v1/procedure-templates/{{importedId}}/update-status
+Authorization: Bearer {{token}}
+
+### H5. Sclera opens a second global draft and reworks the question
+POST {{host}}/api/v1/global-procedure-templates/{{globalId}}/draft
+Authorization: Bearer {{superadminToken}}
+
+###
+PUT {{host}}/api/v1/global-procedure-templates/{{globalId}}/draft
+Authorization: Bearer {{superadminToken}}
+Content-Type: application/json
+
+{ "definition": { "items": [
+  { "key": "q1", "text": "Is the extinguisher present and in date?", "type": "YES_NO", "required": true,
+    "options": [
+      { "key": "o2", "label": "Yes", "result": "PASS" },
+      { "key": "o3", "label": "No",  "result": "FAIL" }
+    ]
+  }
+] } }
+
+### H6. Publish v2 — linkedOrgCount is now 1, the import above
+POST {{host}}/api/v1/global-procedure-templates/{{globalId}}/publish
+Authorization: Bearer {{superadminToken}}
+
+### H7. The organization's copy now reports an update is available
+GET {{host}}/api/v1/procedure-templates/{{importedId}}/update-status
+Authorization: Bearer {{token}}
+
+### H8. View the diff, then apply it — pulls v2 in as a new draft
+GET {{host}}/api/v1/procedure-templates/{{importedId}}/update-diff
+Authorization: Bearer {{token}}
+
+###
+POST {{host}}/api/v1/procedure-templates/{{importedId}}/apply-update
+Authorization: Bearer {{token}}
+
+###
+POST {{host}}/api/v1/procedure-templates/{{importedId}}/publish
+Authorization: Bearer {{token}}
+
+### H9. Fork the organization's own copy into VDMS001
+POST {{host}}/api/v1/procedure-templates/{{importedId}}/fork
+Authorization: Bearer {{adminToken}}
+X-Sclera-Property: {{vdms001}}
+
+> {% client.global.set("forkId", response.body.data.id); %}
+
+### H10. The fork's update-status compares against its parent — the organization's own copy, not the global template
+GET {{host}}/api/v1/procedure-templates/{{forkId}}/update-status
+Authorization: Bearer {{adminToken}}
+X-Sclera-Property: {{vdms001}}
+
+### H11. Editing the fork forks it (STANDALONE) — same mechanism as a linked import, on the fork's own row
+GET {{host}}/api/v1/procedure-templates/{{forkId}}/draft
+Authorization: Bearer {{adminToken}}
+X-Sclera-Property: {{vdms001}}
+
+> {% client.global.set("forkRowVersion", response.body.data.rowVersion); %}
+
+###
+PUT {{host}}/api/v1/procedure-templates/{{forkId}}/draft
+Authorization: Bearer {{adminToken}}
+X-Sclera-Property: {{vdms001}}
+Content-Type: application/json
+
+{ "rowVersion": {{forkRowVersion}}, "definition": { "items": [
+  { "key": "q1", "text": "Is the extinguisher present, in date and unobstructed?", "type": "YES_NO", "required": true,
+    "options": [
+      { "key": "o2", "label": "Yes", "result": "PASS" },
+      { "key": "o3", "label": "No",  "result": "FAIL" }
+    ]
+  }
+] } }
+
+###
+GET {{host}}/api/v1/procedure-templates/{{forkId}}/update-status
+Authorization: Bearer {{adminToken}}
+X-Sclera-Property: {{vdms001}}
+
+### H12. Importing directly from inside a property is refused — the fix this feature made
+POST {{host}}/api/v1/procedure-templates/import
+Authorization: Bearer {{adminToken}}
+X-Sclera-Property: {{vdms001}}
+Content-Type: application/json
+
+{ "globalTemplateId": "{{globalId}}", "name": "Should be refused" }
