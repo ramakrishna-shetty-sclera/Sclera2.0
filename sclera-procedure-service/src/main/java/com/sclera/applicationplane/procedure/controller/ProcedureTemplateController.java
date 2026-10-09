@@ -213,6 +213,20 @@ public class ProcedureTemplateController {
         return service.updateDiff(id);
     }
 
+    /** Pulls the global template's current version into this copy as a new draft. */
+    @PostMapping("/{id}/apply-update")
+    @PreAuthorize("@fga.check('procedure_template', #id, 'can_edit')")
+    public TemplateResponse applyUpdate(@PathVariable UUID id) {
+        return service.applyUpdate(id);
+    }
+
+    /** Records that an available update was seen and passed over, without applying it. */
+    @PostMapping("/{id}/defer-update")
+    @PreAuthorize("@fga.check('procedure_template', #id, 'can_edit')")
+    public UpdateStatus deferUpdate(@PathVariable UUID id) {
+        return service.deferUpdate(id);
+    }
+
     @PostMapping("/{id}/favourite")
     @PreAuthorize("@fga.check('procedure_template', #id, 'can_view')")
     public FavouriteResponse favourite(@PathVariable UUID id) {

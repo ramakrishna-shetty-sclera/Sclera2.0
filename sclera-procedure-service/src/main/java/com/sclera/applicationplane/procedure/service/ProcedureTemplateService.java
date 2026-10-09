@@ -720,6 +720,46 @@ public class ProcedureTemplateService {
         return new DiffResponse(applied.getVersionNo(), current.getVersionNo(), DefinitionDiff.between(from, to));
     }
 
+    /**
+     * Pulls the global template's current version into this copy as a new
+     * draft — the update-lifecycle's own name for exactly what importing
+     * again, into this same existing template, already does. Same refusal
+     * as import when a draft is already in progress; reached through a
+     * clearer verb, not different behaviour.
+     */
+    public TemplateResponse applyUpdate(UUID id) {
+        ProcedureTemplate template = getOwned(id);
+        if (template.getGlobalTemplateId() == null) {
+            throw new BusinessRuleException("'" + template.getName()
+                    + "' was not imported from the shared library, so there is no update to apply");
+        }
+        return importFromGlobal(new ImportRequest(template.getGlobalTemplateId(), null, template.getId(), null));
+    }
+
+    /**
+     * Records that an update was seen and explicitly passed over, without
+     * applying it. {@code update-status} still reports {@code
+     * updateAvailable: true} afterwards — deferring records the choice, it
+     * does not hide that the update is still there to apply later.
+     */
+    public UpdateStatus deferUpdate(UUID id) {
+        ProcedureTemplate template = getOwned(id);
+        if (template.getGlobalTemplateId() == null) {
+            throw new BusinessRuleException("'" + template.getName()
+                    + "' was not imported from the shared library, so there is no update to defer");
+        }
+        GlobalTemplateOrgCopy copy = requireOrgCopy(template);
+        Integer currentVersionNo = globalCurrentVersionNo(template.getGlobalTemplateId());
+        if (currentVersionNo == null || currentVersionNo <= copy.getAppliedVersionNo()) {
+            throw new BusinessRuleException("'" + template.getName() + "' has no update available to defer");
+        }
+        copy.setLinkState(LinkState.DEFERRED);
+        copy.setDeferredVersionNo(currentVersionNo);
+        copy.setDeferredAt(OffsetDateTime.now());
+        orgCopies.saveAndFlush(copy);
+        return updateStatus(id);
+    }
+
     private Integer globalCurrentVersionNo(UUID globalTemplateId) {
         return globalTemplates.findById(globalTemplateId)
                 .map(GlobalProcedureTemplate::getCurrentPublishedVersionId)

@@ -522,6 +522,104 @@ class ProcedureSharingIT extends PostgresIntegrationTest {
             assertThatThrownBy(() -> service.updateDiff(id)).isInstanceOf(BusinessRuleException.class);
         }
 
+        @Test
+        void applyingAnUpdatePullsTheCurrentGlobalVersionIntoANewDraft() {
+            actAsNewOrg();
+            GlobalProcedureTemplate global = publishedGlobalTemplate("NFPA 10", null,
+                    opt("o2", "Yes", "PASS"), opt("o3", "No", "FAIL"));
+            TemplateResponse imported = service.importFromGlobal(
+                    new ImportRequest(global.getId(), null, null, "Fire walk"));
+            service.publish(imported.id(), null);
+            publishASecondGlobalVersion(global.getId());
+
+            TemplateResponse applied = service.applyUpdate(imported.id());
+
+            assertThat(applied.id()).isEqualTo(imported.id());
+            assertThat(applied.draftVersionNo()).isEqualTo(2);
+            UpdateStatus status = service.updateStatus(imported.id());
+            assertThat(status.appliedVersionNo()).isEqualTo(2);
+            assertThat(status.linkState()).isEqualTo(LinkState.LINKED);
+            assertThat(status.updateAvailable()).isFalse();
+        }
+
+        @Test
+        void applyingAnUpdateOnATemplateNeverImportedIsRefused() {
+            actAsNewOrg();
+            UUID id = service.create(request("Hand-authored")).id();
+
+            assertThatThrownBy(() -> service.applyUpdate(id)).isInstanceOf(BusinessRuleException.class);
+        }
+
+        @Test
+        void applyingAnUpdateWhileADraftAlreadyExistsIsRefused() {
+            actAsNewOrg();
+            GlobalProcedureTemplate global = publishedGlobalTemplate("NFPA 10", null,
+                    opt("o2", "Yes", "PASS"), opt("o3", "No", "FAIL"));
+            TemplateResponse imported = service.importFromGlobal(
+                    new ImportRequest(global.getId(), null, null, "Fire walk"));
+            // The import itself left v1 as an unpublished draft.
+            publishASecondGlobalVersion(global.getId());
+
+            assertThatThrownBy(() -> service.applyUpdate(imported.id())).isInstanceOf(ConflictException.class);
+        }
+
+        @Test
+        void deferringRecordsTheChoiceButStillReportsAnUpdateAvailable() {
+            actAsNewOrg();
+            GlobalProcedureTemplate global = publishedGlobalTemplate("NFPA 10", null,
+                    opt("o2", "Yes", "PASS"), opt("o3", "No", "FAIL"));
+            TemplateResponse imported = service.importFromGlobal(
+                    new ImportRequest(global.getId(), null, null, "Fire walk"));
+            service.publish(imported.id(), null);
+            publishASecondGlobalVersion(global.getId());
+
+            UpdateStatus deferred = service.deferUpdate(imported.id());
+
+            assertThat(deferred.linkState()).isEqualTo(LinkState.DEFERRED);
+            assertThat(deferred.appliedVersionNo()).isEqualTo(1);
+            assertThat(deferred.updateAvailable()).isTrue();
+            var copy = orgCopies.findByGlobalTemplateIdAndOrgId(global.getId(), OrgContext.getOrgId()).orElseThrow();
+            assertThat(copy.getDeferredVersionNo()).isEqualTo(2);
+            assertThat(copy.getDeferredAt()).isNotNull();
+        }
+
+        @Test
+        void deferringOnATemplateNeverImportedIsRefused() {
+            actAsNewOrg();
+            UUID id = service.create(request("Hand-authored")).id();
+
+            assertThatThrownBy(() -> service.deferUpdate(id)).isInstanceOf(BusinessRuleException.class);
+        }
+
+        @Test
+        void deferringWithNothingToDeferIsRefused() {
+            actAsNewOrg();
+            GlobalProcedureTemplate global = publishedGlobalTemplate("NFPA 10", null,
+                    opt("o2", "Yes", "PASS"), opt("o3", "No", "FAIL"));
+            TemplateResponse imported = service.importFromGlobal(
+                    new ImportRequest(global.getId(), null, null, "Fire walk"));
+
+            assertThatThrownBy(() -> service.deferUpdate(imported.id())).isInstanceOf(BusinessRuleException.class);
+        }
+
+        @Test
+        void applyingAnUpdateResetsADeferredLinkBackToLinked() {
+            actAsNewOrg();
+            GlobalProcedureTemplate global = publishedGlobalTemplate("NFPA 10", null,
+                    opt("o2", "Yes", "PASS"), opt("o3", "No", "FAIL"));
+            TemplateResponse imported = service.importFromGlobal(
+                    new ImportRequest(global.getId(), null, null, "Fire walk"));
+            service.publish(imported.id(), null);
+            publishASecondGlobalVersion(global.getId());
+            service.deferUpdate(imported.id());
+
+            service.applyUpdate(imported.id());
+
+            UpdateStatus status = service.updateStatus(imported.id());
+            assertThat(status.linkState()).isEqualTo(LinkState.LINKED);
+            assertThat(status.appliedVersionNo()).isEqualTo(2);
+        }
+
         /** Publishes v2 of the global template with genuinely different content. */
         private void publishASecondGlobalVersion(UUID globalTemplateId) {
             globalService.createDraft(globalTemplateId);
