@@ -251,6 +251,26 @@ see the impact before publishing. `UNIQUE(consumer_key, consumer_ref_id, templat
 re-reporting idempotent. Note it deliberately records the version a consumer is *on*, not the current
 one — that is what makes "before you publish v4, here are the 12 configurations still on v3" possible.
 
+It is **built**, in two halves, and **no consumer calls the write half yet** — the inspection
+integration is what will.
+
+- **Report** — `POST /internal/api/v1/procedure-usage/orgs/{orgId}/report`, Dapr and HMAC, body
+  `{templateId, versionId, consumerKey, consumerRefId, targetTypeKey?}`. A find-or-create on the unique
+  triple: the first report inserts, a later one for the same triple updates `version_id`,
+  `target_type_key` and `recorded_at` in place, and the response says whether it was new. It is
+  checked against the **version**, never the template (a Dapr call has no property, so row-level
+  security would hide a property's template): the version must exist, belong to the stated template
+  and be published. The consumer key must exist in `procedure_consumer`, but a retired one is still
+  accepted. A blank target type means none.
+- **Read** — `GET /api/v1/procedure-templates/{id}/usage`, `can_view`. One summary per version that
+  has consumers, `[{versionNo, consumerCount}]`, oldest first, from a single join. A procedure with no
+  reports returns `[]`.
+
+The table has **no foreign keys and no row-level security**: the ids come from other services, and an
+organization admin needs the count across every property's consumers, so a property's procedure is
+counted from organization level too. `ProcedureUsageIT`, `InternalUsageIT` and `VersionUsageIT` hold
+this.
+
 `procedure_favourite(user_id, template_id, created_at)` — the library's star. A join table, nothing more.
 
 ### Global library
@@ -546,7 +566,7 @@ publicly.
 | Documents | create (upload already done via helper), list, get, activate, deactivate, delete (conditional) |
 | Library | browse, search and filter global templates; favourite; import; export; link, unlink |
 | Updates | check availability, view diff, apply, defer |
-| Usage | record and query which consumers use which version |
+| Usage | `GET /api/v1/procedure-templates/{id}/usage` — how many consumers are on each version, oldest first (public, `can_view`); `POST /internal/api/v1/procedure-usage/orgs/{orgId}/report` — a consumer reports the version it is on (internal); see the procedure_usage section above |
 
 **Publish does not return a boolean.** It returns the list of reasons a version cannot be published —
 answer options not yet mapped to a result type, number bands with a gap or an overlap, thresholds
