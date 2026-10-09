@@ -67,6 +67,20 @@ spring:
       properties:
         enable.idempotence: true
         spring.json.add.type.headers: false
+    # Reads the global-template-events topic (the question bank's indexer). The
+    # producer above sends no type headers, so the payload type is named here and
+    # not taken from the message. ErrorHandlingDeserializer turns an unreadable
+    # message into a logged skip instead of a consumer that loops on it forever.
+    consumer:
+      group-id: ${spring.application.name}-question-index
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        spring.json.value.default.type: com.sclera.applicationplane.procedure.event.GlobalTemplateEvent
+        spring.json.use.type.headers: false
+        spring.json.trusted.packages: com.sclera.applicationplane.procedure.event
 
 server:
   port: ${SERVER_PORT:8095}

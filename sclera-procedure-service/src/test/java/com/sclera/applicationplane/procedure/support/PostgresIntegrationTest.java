@@ -70,6 +70,8 @@ public abstract class PostgresIntegrationTest {
         registry.add("sclera.fga.enabled", () -> "false");
         // No broker needed: nothing is sent, and topic creation is skipped.
         registry.add("spring.kafka.admin.auto-create", () -> "false");
+        // ...and no broker to listen to either: the question-index consumer stays off.
+        registry.add("sclera.library.index-listener.enabled", () -> "false");
         registry.add("logging.level.com.sclera", () -> "INFO");
         registry.add("logging.level.org.springframework.security", () -> "WARN");
     }
