@@ -259,13 +259,24 @@ Held outside any single tenant:
 
 | Table | Key columns |
 |---|---|
-| `global_procedure_template` | `id, name, description, consumer_key, current_published_version_id, status, created_by, created_at, updated_at` |
+| `global_procedure_template` | `id, name, description, consumer_key, current_published_version_id, status, key_seq, created_by, created_at, updated_at` |
 | `global_procedure_template_version` | `id, global_template_id, version_no, state, definition_json, definition_hash, change_note, published_by, published_at` |
 | `global_template_org_copy` | `global_template_id, org_id, template_id, applied_version_no, link_state, deferred_version_no, deferred_at, linked_at` |
 
 `link_state ∈ LINKED, DEFERRED, STANDALONE`. **"Update available" is derived**, by comparing
 `applied_version_no` against the global template's current version — never stored, so it cannot go
-stale.
+stale. `DEFERRED` and `deferred_version_no`/`deferred_at` are written by nothing yet — reserved for
+the update-notification feature, not this one.
+
+**All three tables live in `public`, written once** — not twice like every tenant table, because
+there is no tenant to scope them to. A per-request connection's `search_path` is pinned to the
+caller's own tenant schema with no `public` fallback, so their entities are schema-qualified
+explicitly (`@Table(schema = "public", ...)`) rather than relying on search_path to find them —
+Hibernate always emits `public.<table>` in its SQL regardless of which schema is active. This is
+the only place in the service a JPA entity is read through the ordinary per-request connection from
+outside the caller's own schema; `global_template_org_copy` is also the only table here with no
+row-level security and no schema wall protecting it, so every query against it filters `org_id`
+explicitly in the repository layer — that filter is the whole boundary.
 
 ---
 
@@ -538,14 +549,14 @@ publicly.
 
 | Area | Endpoints |
 |---|---|
-| Templates | create, list, get, duplicate, archive; list versions |
+| Templates | create, list (filterable by status, scope and favouritesOnly), get, duplicate, archive; list versions |
 | Versions | get, save draft, publish, new draft from version, diff two versions |
 | Result types | create, list, get, update, reorder, activate, deactivate, delete (conditional) |
 | Evaluation | evaluate answers against any version, draft included (public); against a published version by id (internal, for the inspection service) |
 | Discovery | `GET /api/v1/procedure-templates/discover?consumer=&kind=&key=` — the active procedures that apply to a target; see *Discovery* below |
 | Documents | create (upload already done via helper), list, get, activate, deactivate, delete (conditional) |
-| Library | browse, search and filter global templates; favourite; import; export; link, unlink |
-| Updates | check availability, view diff, apply, defer |
+| Sharing | export a version or several (`GET .../{id}/export`); import from the Sclera-wide library by id, creating new or updating existing (`POST .../import`); explicit unlink (`POST .../{id}/unlink` — fork-on-edit happens automatically on `saveDraft`); favourite/unfavourite |
+| Updates *(planned — feature 11)* | check availability, view diff, apply, defer |
 | Usage | record and query which consumers use which version |
 
 **Publish does not return a boolean.** It returns the list of reasons a version cannot be published —
@@ -818,9 +829,10 @@ type procedure_template
 The block shows only what differs from the original model. As built, `member` — which `can_view`
 derives from — also lists all four new roles; without that, someone holding only one of them could
 act but not read. Every change to a result type needs `can_manage_result_types`, reads need
-`can_view`. `can_import_templates` and `can_review` are declared but not yet enforced: nothing calls
-them until import/export and review exist. Publishing as a right separate from authoring is our
-proposal rather than a written requirement, and is open with the lead.
+`can_view`. `can_import_templates` guards `POST .../import` — its first real call site, feature 10.
+`can_review` is still declared but not yet enforced: nothing calls it until review exists. Publishing
+as a right separate from authoring is our proposal rather than a written requirement, and is open
+with the lead.
 
 A property is its own type: `viewer` on it, or being an organization admin, gives `can_view`, which
 is what `X-Sclera-Property` is checked against and what `GET /api/v1/me/properties` lists.
@@ -854,30 +866,38 @@ Consumers read the JSON shape rather than a shared Java class, so adding a field
 
 ## Sharing across organizations
 
-Every template has one **global copy**. Importing it creates an **organization copy** linked back to
-it, and the link records which global version that copy has applied.
+**Built, feature 10.** Every organization can copy a procedure out of the Sclera-wide library — its
+own tables, held outside any tenant schema (see *Global library*, above). Importing one
+(`POST /api/v1/procedure-templates/import`) creates an **organization copy**, linked back to the
+global source: the link records which global version that copy has applied, and starts out
+`LINKED`.
 
-**Updates are offered, never imposed.** Publishing a global version does not reach into any
-organization's data. It notifies the linked organizations; each sees an "update available" badge —
-derived by comparing the version it has applied against the global current — and then chooses:
+Two ways a copy stops tracking the global one, both built: **explicit unlink**
+(`POST .../{id}/unlink`), and **fork on edit** — the first real content change to a linked copy's
+draft sets it `STANDALONE`, because a local change and an incoming global change cannot both be
+true of the same version. The global template id survives either way, so nothing about a fork or an
+unlink is undone automatically; relinking, if ever wanted, is a fresh import.
 
-- **Apply** — the global version is copied into the organization copy as a new published version.
-- **Defer** — recorded on the link, so the badge can distinguish "not seen" from "seen and declined".
-- **View diff** — the same document diff the authoring screen uses, computed on stable question keys.
+**Export** (`GET .../{id}/export?versions=&includeDocuments=`) takes a version selection, defaulting
+to the current published one, with a toggle for whether a version's cited documents travel with it
+— stripped by default, since a document id means nothing to whatever organization the export ends
+up in. **Import** either creates a new template or updates an existing one with a new draft, and
+maps result type keys the target organization lacks onto its own by creating them (appended as
+least severe, never guessed at).
 
-Updating affects records generated from then on. A checklist already in progress is pinned to the
-version it started with and is untouched.
+**Favourites** (`POST`/`DELETE .../{id}/favourite`, and `?favouritesOnly=true` on the list) are a
+plain per-user star, independent of any of the above.
 
-Two ways a copy stops tracking the global one: **explicit unlink**, and **fork on edit** — editing a
-linked copy sets it standalone, because a local change and an incoming global change cannot both be
-true of the same version. The global template id survives either way, so relinking stays possible.
+**Not yet built — later features, not this one:**
 
-**Export** takes a version selection, defaulting to the current published one, with a toggle for
-whether documents travel with it. **Import** either creates a new template or updates an existing one,
-and maps result type keys the target organization lacks onto its own or creates them.
-
-The **Sclera organization** is the reference library: generic templates and generic question sets per
-category that any organization can browse, copy whole, or pull individual questions from.
+- **Update notification and apply/defer.** Publishing a new global version does not yet notify a
+  linked organization, and nothing derives an "update available" badge. `link_state` already has a
+  `DEFERRED` value and `global_template_org_copy` already carries `deferred_version_no`/
+  `deferred_at`, reserved for this, but nothing writes them yet.
+- **The Sclera reference library and question bank** — browsing generic templates and per-category
+  question sets, copying a whole template or pulling individual questions out of one. Nothing
+  populates `global_procedure_template` yet; what exists today is the import/export/link machinery
+  this feature built and tested, against rows written directly for now.
 
 ---
 
