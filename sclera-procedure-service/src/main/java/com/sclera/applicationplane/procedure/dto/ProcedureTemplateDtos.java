@@ -58,6 +58,8 @@ public final class ProcedureTemplateDtos {
     public record TemplateResponse(
             UUID id,
             UUID orgId,
+            /** Null means organization-wide; set means scoped to that one property. */
+            UUID propertyId,
             String name,
             String description,
             String consumerKey,

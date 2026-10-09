@@ -22,6 +22,7 @@ public class ProcedureTemplateMapper {
         return new TemplateResponse(
                 t.getId(),
                 t.getOrgId(),
+                t.getPropertyId(),
                 t.getName(),
                 t.getDescription(),
                 t.getConsumerKey(),

@@ -1,9 +1,13 @@
 package com.sclera.applicationplane.procedure.controller;
 
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetKind;
+import com.sclera.applicationplane.procedure.domain.TemplateScope;
 import com.sclera.applicationplane.procedure.domain.TemplateStatus;
 import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluateRequest;
 import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluationResponse;
+import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ExportedProcedure;
+import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.FavouriteResponse;
+import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ImportRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.CloneRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.CreateTemplateRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.DiffResponse;
@@ -62,8 +66,10 @@ public class ProcedureTemplateController {
     @GetMapping
     @PreAuthorize("@fga.checkOrg('can_view')")
     public Page<TemplateResponse> list(@RequestParam(required = false) TemplateStatus status,
+                                       @RequestParam(required = false) TemplateScope scope,
+                                       @RequestParam(defaultValue = "false") boolean favouritesOnly,
                                        @PageableDefault(size = 20) Pageable pageable) {
-        return service.list(status, pageable);
+        return service.list(status, scope, favouritesOnly, pageable);
     }
 
     /**
@@ -156,6 +162,48 @@ public class ProcedureTemplateController {
     @PreAuthorize("@fga.check('procedure_template', #id, 'can_view')")
     public DiffResponse diff(@PathVariable UUID id, @RequestParam int from, @RequestParam int to) {
         return service.diff(id, from, to);
+    }
+
+    // --- sharing --------------------------------------------------------------
+
+    @GetMapping("/{id}/export")
+    @PreAuthorize("@fga.check('procedure_template', #id, 'can_view')")
+    public ExportedProcedure export(@PathVariable UUID id,
+                                    @RequestParam(required = false) List<Integer> versions,
+                                    @RequestParam(defaultValue = "false") boolean includeDocuments) {
+        return service.export(id, versions, includeDocuments);
+    }
+
+    /**
+     * Pulls a version from the Sclera-wide library into this organization —
+     * a new template, or a new draft of an existing one. Guarded by
+     * {@code can_import_templates} rather than {@code can_manage_templates},
+     * per feature 3's design: authoring and importing are separate rights.
+     */
+    @PostMapping("/import")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("@fga.checkOrg('can_import_templates')")
+    public TemplateResponse importFromGlobal(@Valid @RequestBody ImportRequest request) {
+        return service.importFromGlobal(request);
+    }
+
+    /** Stops tracking a global template's updates, without requiring an edit first. */
+    @PostMapping("/{id}/unlink")
+    @PreAuthorize("@fga.check('procedure_template', #id, 'can_edit')")
+    public TemplateResponse unlink(@PathVariable UUID id) {
+        return service.unlink(id);
+    }
+
+    @PostMapping("/{id}/favourite")
+    @PreAuthorize("@fga.check('procedure_template', #id, 'can_view')")
+    public FavouriteResponse favourite(@PathVariable UUID id) {
+        return service.favourite(id);
+    }
+
+    @DeleteMapping("/{id}/favourite")
+    @PreAuthorize("@fga.check('procedure_template', #id, 'can_view')")
+    public FavouriteResponse unfavourite(@PathVariable UUID id) {
+        return service.unfavourite(id);
     }
 
     // --- evaluation ---------------------------------------------------------

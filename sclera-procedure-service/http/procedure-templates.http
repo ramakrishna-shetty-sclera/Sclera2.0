@@ -866,3 +866,83 @@ Authorization: Bearer {{token}}
 ###
 POST {{host}}/api/v1/procedure-templates/{{unknownId}}/archive
 Authorization: Bearer {{token}}
+
+###############################################################################
+# Sharing (feature 10) — export, import, link/unlink, favourites, and the
+# organization/property scope filter.
+#
+# Importing needs a published GlobalProcedureTemplate to import from, and
+# nothing in this service's API authors one - populating the Sclera-wide
+# library is a later feature's job (see README's "Not yet built"). So F8
+# below demonstrates only the refusal for an id that does not exist; a real
+# import is exercised by GlobalProcedureLibraryIT and ProcedureSharingIT
+# instead, which seed one directly.
+###############################################################################
+
+### F1. A procedure to export and favourite
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Fire extinguisher walk {{$random.integer(1000, 9999)}}",
+  "definition": {
+    "items": [
+      { "text": "Is the extinguisher present?", "type": "YES_NO", "required": true,
+        "options": [
+          { "label": "Yes", "result": "PASS" },
+          { "label": "No",  "result": "FAIL" }
+        ]
+      }
+    ]
+  }
+}
+
+> {% client.global.set("shareId", response.body.data.id); %}
+
+### F2. Publish it — export needs a published version
+POST {{host}}/api/v1/procedure-templates/{{shareId}}/publish
+Authorization: Bearer {{token}}
+
+### F3. Export, no params — defaults to the current published version, documents stripped
+GET {{host}}/api/v1/procedure-templates/{{shareId}}/export
+Authorization: Bearer {{token}}
+
+### F4. Export a specific version explicitly, documents included
+GET {{host}}/api/v1/procedure-templates/{{shareId}}/export?versions=1&includeDocuments=true
+Authorization: Bearer {{token}}
+
+### F5. Favourite it
+POST {{host}}/api/v1/procedure-templates/{{shareId}}/favourite
+Authorization: Bearer {{token}}
+
+### F6. List with favouritesOnly=true — expect it, and only it
+GET {{host}}/api/v1/procedure-templates?favouritesOnly=true
+Authorization: Bearer {{token}}
+
+### F7. Unfavourite it — list again with favouritesOnly=true, expect empty
+DELETE {{host}}/api/v1/procedure-templates/{{shareId}}/favourite
+Authorization: Bearer {{token}}
+
+### F8. Import from an unknown global template — 404
+POST {{host}}/api/v1/procedure-templates/import
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "globalTemplateId": "00000000-0000-0000-0000-000000000000", "name": "Should not be created" }
+
+### F9. Unlink a procedure that was never imported — 400, nothing to unlink
+POST {{host}}/api/v1/procedure-templates/{{shareId}}/unlink
+Authorization: Bearer {{token}}
+
+### F10. Scope filter: organization-wide only (this procedure has no property)
+GET {{host}}/api/v1/procedure-templates?scope=ORGANIZATION
+Authorization: Bearer {{token}}
+
+### F11. Scope filter: property only — expect F1's procedure NOT to appear
+GET {{host}}/api/v1/procedure-templates?scope=PROPERTY
+Authorization: Bearer {{token}}
+
+### F12. Tidy up
+POST {{host}}/api/v1/procedure-templates/{{shareId}}/archive
+Authorization: Bearer {{token}}
