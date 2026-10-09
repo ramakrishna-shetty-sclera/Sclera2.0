@@ -64,6 +64,38 @@ public class ProcedureTemplate {
     @Column(name = "global_template_id")
     private UUID globalTemplateId;
 
+    /**
+     * The organization-wide {@code procedure_template} row (same org,
+     * {@code propertyId IS NULL}) this property-level fork came from. Null
+     * for everything else — an org-wide template, a hand-authored
+     * property-scoped one, or one linked to a global template instead.
+     *
+     * <p>Never both this and {@link #globalTemplateId} on the same row:
+     * importing happens at organization level and sets the latter; forking
+     * happens at property level, onto a different row, and sets this one.
+     */
+    @Column(name = "forked_from_template_id")
+    private UUID forkedFromTemplateId;
+
+    /** The parent's version number this fork last applied. Null unless {@link #forkedFromTemplateId} is set. */
+    @Column(name = "applied_version_no")
+    private Integer appliedVersionNo;
+
+    /**
+     * Reused unmodified from {@code GlobalTemplateOrgCopy} — the three
+     * states mean the same thing one level down. Null unless
+     * {@link #forkedFromTemplateId} is set.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "link_state", length = 20)
+    private LinkState linkState;
+
+    @Column(name = "deferred_version_no")
+    private Integer deferredVersionNo;
+
+    @Column(name = "deferred_at")
+    private OffsetDateTime deferredAt;
+
     @Column(name = "legacy_id", length = 100)
     private String legacyId;
 
@@ -111,6 +143,21 @@ public class ProcedureTemplate {
 
     public UUID getGlobalTemplateId() { return globalTemplateId; }
     public void setGlobalTemplateId(UUID globalTemplateId) { this.globalTemplateId = globalTemplateId; }
+
+    public UUID getForkedFromTemplateId() { return forkedFromTemplateId; }
+    public void setForkedFromTemplateId(UUID forkedFromTemplateId) { this.forkedFromTemplateId = forkedFromTemplateId; }
+
+    public Integer getAppliedVersionNo() { return appliedVersionNo; }
+    public void setAppliedVersionNo(Integer appliedVersionNo) { this.appliedVersionNo = appliedVersionNo; }
+
+    public LinkState getLinkState() { return linkState; }
+    public void setLinkState(LinkState linkState) { this.linkState = linkState; }
+
+    public Integer getDeferredVersionNo() { return deferredVersionNo; }
+    public void setDeferredVersionNo(Integer deferredVersionNo) { this.deferredVersionNo = deferredVersionNo; }
+
+    public OffsetDateTime getDeferredAt() { return deferredAt; }
+    public void setDeferredAt(OffsetDateTime deferredAt) { this.deferredAt = deferredAt; }
 
     public String getLegacyId() { return legacyId; }
     public void setLegacyId(String legacyId) { this.legacyId = legacyId; }

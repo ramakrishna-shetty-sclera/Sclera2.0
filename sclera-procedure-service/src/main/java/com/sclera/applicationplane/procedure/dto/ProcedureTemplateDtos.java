@@ -104,8 +104,17 @@ public final class ProcedureTemplateDtos {
      * {@code newVersion} is false when the draft's content matched an existing
      * published version: no version was created, the draft was discarded, and
      * that version became (or already was) the current one.
+     *
+     * <p>{@code linkedForkCount} — how many property-level forks of this
+     * template currently track its updates ({@code link_state = LINKED}),
+     * read fresh at publish time and never stored. Meaningful only for an
+     * org-wide template; always zero for a property-scoped template's own
+     * publish, since nothing forks from a fork. The only visible
+     * confirmation that publishing an org-wide procedure reached anyone,
+     * the same courtesy {@code linkedOrgCount} gives a global template's
+     * publish.
      */
-    public record PublishResponse(boolean newVersion, VersionResponse version) {}
+    public record PublishResponse(boolean newVersion, VersionResponse version, long linkedForkCount) {}
 
     public record DiffResponse(int fromVersionNo, int toVersionNo, DefinitionDiff diff) {}
 }

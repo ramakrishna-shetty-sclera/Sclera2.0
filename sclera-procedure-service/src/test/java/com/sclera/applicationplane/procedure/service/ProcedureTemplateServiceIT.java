@@ -87,7 +87,7 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
             // Bump this when a tenant migration is added. Pinning it is the
             // point: it makes anyone adding one notice that every existing
             // tenant schema has to be migrated too, not just new ones.
-            assertThat(migratedTo).isEqualTo("10");
+            assertThat(migratedTo).isEqualTo("11");
             // A property-scoped table with no policy is wide open, and the
             // failure is silent — so provisioning asserts the policy arrived,
             // not merely that the migration ran.

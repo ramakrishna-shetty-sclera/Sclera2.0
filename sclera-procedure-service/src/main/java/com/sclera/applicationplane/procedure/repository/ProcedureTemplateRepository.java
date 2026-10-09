@@ -80,7 +80,18 @@ public interface ProcedureTemplateRepository extends JpaRepository<ProcedureTemp
     Page<ProcedureTemplate> findApplicableTo(UUID orgId, String consumerKey, TargetKind kind, String key,
                                              Pageable pageable);
 
-    boolean existsByOrgIdAndNameIgnoreCaseAndStatus(UUID orgId, String name, TemplateStatus status);
+    /**
+     * Scoped by property as well as org, matching
+     * {@code uq_procedure_template_org_name_active}'s own scope. A null
+     * {@code propertyId} is translated by Spring Data into
+     * {@code property_id is null} — organization-wide templates collide with
+     * each other, exactly as the database's {@code NULLS NOT DISTINCT} index
+     * does, rather than every null argument comparing unequal the way a
+     * literal {@code = :propertyId} would.
+     */
+    boolean existsByOrgIdAndPropertyIdAndNameIgnoreCaseAndStatus(
+            UUID orgId, UUID propertyId, String name, TemplateStatus status);
 
-    boolean existsByOrgIdAndNameIgnoreCaseAndStatusAndIdNot(UUID orgId, String name, TemplateStatus status, UUID id);
+    boolean existsByOrgIdAndPropertyIdAndNameIgnoreCaseAndStatusAndIdNot(
+            UUID orgId, UUID propertyId, String name, TemplateStatus status, UUID id);
 }

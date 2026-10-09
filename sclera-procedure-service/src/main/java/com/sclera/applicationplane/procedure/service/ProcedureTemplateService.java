@@ -67,13 +67,16 @@ import com.sclera.applicationplane.procedure.repository.VersionDocumentRefReposi
 import com.sclera.applicationplane.procedure.repository.VersionResultTypeRefRepository;
 import com.sclera.applicationplane.procedure.repository.VersionTargetTypeRepository;
 import com.sclera.applicationplane.procedure.tenancy.PropertyContext;
+import com.sclera.applicationplane.procedure.tenancy.TenantSchemas;
 import com.sclera.controlplane.common.exception.BusinessRuleException;
 import com.sclera.controlplane.common.exception.ConflictException;
 import com.sclera.controlplane.common.exception.ResourceNotFoundException;
 import com.sclera.controlplane.common.exception.ValidationException;
 import com.sclera.controlplane.common.security.OrgContext;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -122,6 +125,7 @@ public class ProcedureTemplateService {
     private final GlobalProcedureTemplateVersionRepository globalVersions;
     private final GlobalTemplateOrgCopyRepository orgCopies;
     private final ProcedureFavouriteRepository favourites;
+    private final JdbcTemplate ownerJdbc;
 
     public ProcedureTemplateService(ProcedureTemplateRepository templates,
                                     ProcedureTemplateVersionRepository versions,
@@ -139,7 +143,8 @@ public class ProcedureTemplateService {
                                     GlobalProcedureTemplateRepository globalTemplates,
                                     GlobalProcedureTemplateVersionRepository globalVersions,
                                     GlobalTemplateOrgCopyRepository orgCopies,
-                                    ProcedureFavouriteRepository favourites) {
+                                    ProcedureFavouriteRepository favourites,
+                                    @Qualifier("ownerJdbcTemplate") JdbcTemplate ownerJdbc) {
         this.templates = templates;
         this.versions = versions;
         this.canonicalizer = canonicalizer;
@@ -157,6 +162,7 @@ public class ProcedureTemplateService {
         this.globalVersions = globalVersions;
         this.orgCopies = orgCopies;
         this.favourites = favourites;
+        this.ownerJdbc = ownerJdbc;
     }
 
     // --- template identity --------------------------------------------------
@@ -165,10 +171,6 @@ public class ProcedureTemplateService {
     public TemplateResponse create(CreateTemplateRequest request) {
         UUID orgId = OrgContext.getOrgId();
         String name = request.name().strip();
-        requireNameFree(orgId, name, null);
-
-        ProcedureTemplate template = new ProcedureTemplate();
-        template.setOrgId(orgId);
         // Authored inside a property, it belongs to that property; authored at
         // organization level, it belongs to the whole organization. Which one
         // the author meant is already answered by where they were standing, so
@@ -178,7 +180,12 @@ public class ProcedureTemplateService {
         // so a list of more than one means organization level and shared is the
         // right answer.
         List<UUID> scope = PropertyContext.current();
-        template.setPropertyId(scope.size() == 1 ? scope.get(0) : null);
+        UUID propertyId = scope.size() == 1 ? scope.get(0) : null;
+        requireNameFree(orgId, propertyId, name, null);
+
+        ProcedureTemplate template = new ProcedureTemplate();
+        template.setOrgId(orgId);
+        template.setPropertyId(propertyId);
         template.setName(name);
         template.setDescription(blankToNull(request.description()));
         if (!isBlank(request.consumerKey())) {
@@ -203,7 +210,7 @@ public class ProcedureTemplateService {
         requireActive(template);
         String name = request.name().strip();
         if (!name.equalsIgnoreCase(template.getName())) {
-            requireNameFree(template.getOrgId(), name, template.getId());
+            requireNameFree(template.getOrgId(), template.getPropertyId(), name, template.getId());
         }
         template.setName(name);
         template.setDescription(blankToNull(request.description()));
@@ -301,16 +308,17 @@ public class ProcedureTemplateService {
                                 "Procedure template " + id + " has no version to clone"));
 
         String name = request.name().strip();
-        requireNameFree(source.getOrgId(), name, null);
-
-        ProcedureTemplate copy = new ProcedureTemplate();
-        copy.setOrgId(source.getOrgId());
         // Same rule as create(): where the caller is standing decides the
         // scope, not the source's own scope. Cloning an organization-wide
         // procedure from inside a property must produce a property-scoped
         // copy, not silently widen it back to organization level.
         List<UUID> scope = PropertyContext.current();
-        copy.setPropertyId(scope.size() == 1 ? scope.get(0) : null);
+        UUID propertyId = scope.size() == 1 ? scope.get(0) : null;
+        requireNameFree(source.getOrgId(), propertyId, name, null);
+
+        ProcedureTemplate copy = new ProcedureTemplate();
+        copy.setOrgId(source.getOrgId());
+        copy.setPropertyId(propertyId);
         copy.setName(name);
         copy.setDescription(source.getDescription());
         copy.setConsumerKey(source.getConsumerKey());
@@ -326,6 +334,64 @@ public class ProcedureTemplateService {
         return mapper.toResponse(copy, null, 1);
     }
 
+    /**
+     * Forks an organization-wide procedure into a property-specific copy —
+     * the org → property half of the same fork pattern feature 10 already
+     * built one level up (Sclera → org). Unlike that one, this is an
+     * explicit action rather than an automatic side effect of editing: a
+     * save that silently redirected the caller to a different template id
+     * mid-call was judged worse than one extra click. From here on the
+     * fork is edited through the ordinary {@link #saveDraft}/{@link #publish}
+     * path like any other template; nothing about that path changes.
+     *
+     * <p>{@code source} must be organization-wide — a fork of a fork, or of
+     * a global import, is not this feature's scope. The caller must be
+     * standing inside exactly one property, the same rule {@link #create}
+     * already applies to decide where authored content belongs.
+     *
+     * <p>Deliberately skips {@link #requireNameFree}: the whole point of a
+     * fork is the same name in a different scope, so a collision here is
+     * expected and correct, not a mistake to refuse. {@code create} and
+     * {@code cloneTemplate} keep their own check because a caller there
+     * typed the name themselves and would want to know it collided.
+     */
+    public TemplateResponse fork(UUID id) {
+        ProcedureTemplate source = getOwned(id);
+        if (source.getPropertyId() != null) {
+            throw new BusinessRuleException("'" + source.getName()
+                    + "' already belongs to a property; only an organization-wide procedure can be forked");
+        }
+        List<UUID> scope = PropertyContext.current();
+        if (scope.size() != 1) {
+            throw new BusinessRuleException("Forking a procedure requires standing inside a single property");
+        }
+
+        ProcedureTemplateVersion from = currentVersion(source)
+                .or(() -> versions.findByTemplateIdAndState(source.getId(), VersionState.DRAFT))
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Procedure template " + id + " has no version to fork"));
+
+        ProcedureTemplate fork = new ProcedureTemplate();
+        fork.setOrgId(source.getOrgId());
+        fork.setPropertyId(scope.get(0));
+        fork.setName(source.getName());
+        fork.setDescription(source.getDescription());
+        fork.setConsumerKey(source.getConsumerKey());
+        fork.setKeySeq(source.getKeySeq());
+        fork.setForkedFromTemplateId(source.getId());
+        fork.setAppliedVersionNo(from.getVersionNo());
+        fork.setLinkState(LinkState.LINKED);
+        fork.setCreatedBy(OrgContext.getUserId());
+        templates.saveAndFlush(fork);
+
+        ProcedureTemplateVersion draft = newVersion(fork, 1, from.getDefinitionJson(), from.getDefinitionHash());
+        draft.setChangeNote("Forked from '" + source.getName() + "' v" + from.getVersionNo());
+        versions.saveAndFlush(draft);
+
+        fga.grantCreated(FGA_TYPE, fork.getId(), fork.getCreatedBy(), null);
+        return mapper.toResponse(fork, null, 1);
+    }
+
     // --- the draft ----------------------------------------------------------
 
     @Transactional(readOnly = true)
@@ -338,11 +404,12 @@ public class ProcedureTemplateService {
      * kept; items without a key are new and get one minted.
      *
      * <p>Fork-on-edit: an actual content change to a template still linked
-     * to a global source sets that link's state to {@code STANDALONE} — the
-     * organization no longer tracks the global template's future updates,
-     * because its own copy has diverged. An unchanged re-save is not an
-     * edit, matching the no-op-republish convention everywhere else in this
-     * service, so it does not fork.
+     * to a global source, <b>or</b> to a property's own fork of an org-wide
+     * template, sets that link's state to {@code STANDALONE} — whichever it
+     * is no longer tracks its source's future updates, because its own copy
+     * has diverged. An unchanged re-save is not an edit, matching the
+     * no-op-republish convention everywhere else in this service, so it
+     * does not fork either case.
      */
     public VersionResponse saveDraft(UUID id, SaveDraftRequest request) {
         ProcedureTemplate template = lockOwned(id);
@@ -352,8 +419,12 @@ public class ProcedureTemplateService {
 
         String previousHash = draft.getDefinitionHash();
         Canonical canonical = assignKeysAndCanonicalize(template, request.definition());
-        if (template.getGlobalTemplateId() != null && !canonical.hash().equals(previousHash)) {
+        boolean changed = !canonical.hash().equals(previousHash);
+        if (changed && template.getGlobalTemplateId() != null) {
             forkFromGlobal(template);
+        }
+        if (changed && template.getForkedFromTemplateId() != null) {
+            forkFromParent(template);
         }
         draft.setDefinition(canonical.json(), canonical.hash());
         draft.setChangeNote(blankToNull(request.changeNote()));
@@ -373,17 +444,35 @@ public class ProcedureTemplateService {
     }
 
     /**
-     * Stops tracking a global template's future updates without requiring an
-     * edit first — the explicit counterpart to fork-on-edit.
+     * The org → property equivalent of {@link #forkFromGlobal}, except there
+     * is no separate link row to update (decision 8): the fork's own row
+     * already carries its link state, so this is a plain field change on an
+     * entity already loaded in this same transaction.
+     */
+    private void forkFromParent(ProcedureTemplate fork) {
+        if (fork.getLinkState() != LinkState.STANDALONE) {
+            fork.setLinkState(LinkState.STANDALONE);
+        }
+    }
+
+    /**
+     * Stops tracking a source's future updates without requiring an edit
+     * first — the explicit counterpart to fork-on-edit, for either a global
+     * import or a property's own fork.
      */
     public TemplateResponse unlink(UUID id) {
         ProcedureTemplate template = getOwned(id);
-        if (template.getGlobalTemplateId() == null) {
-            throw new BusinessRuleException("'" + template.getName()
-                    + "' was not imported from the shared library, so there is nothing to unlink");
+        if (template.getGlobalTemplateId() != null) {
+            forkFromGlobal(template);
+            return toResponse(template);
         }
-        forkFromGlobal(template);
-        return toResponse(template);
+        if (template.getForkedFromTemplateId() != null) {
+            forkFromParent(template);
+            templates.flush();
+            return toResponse(template);
+        }
+        throw new BusinessRuleException("'" + template.getName()
+                + "' was not imported or forked from anything, so there is nothing to unlink");
     }
 
     /** Starts a new draft from any earlier version — the way to edit after publishing. */
@@ -450,7 +539,7 @@ public class ProcedureTemplateService {
                 templates.flush();
                 events.publish(template, existing, ProcedureTemplateEvent.EventType.PUBLISHED);
             }
-            return new PublishResponse(false, mapper.toResponse(existing));
+            return new PublishResponse(false, mapper.toResponse(existing), linkedForkCount(template.getId()));
         }
 
         draft.markPublished(OrgContext.getUserId(), OffsetDateTime.now());
@@ -474,7 +563,35 @@ public class ProcedureTemplateService {
         template.setCurrentPublishedVersionId(draft.getId());
         templates.flush();
         events.publish(template, draft, ProcedureTemplateEvent.EventType.PUBLISHED);
-        return new PublishResponse(true, mapper.toResponse(draft));
+        return new PublishResponse(true, mapper.toResponse(draft), linkedForkCount(template.getId()));
+    }
+
+    /**
+     * Zero for a property-scoped template, since nothing forks from a fork —
+     * the count only ever means something for the org-wide template that
+     * owns it.
+     *
+     * <p>Reads through the <b>owner</b> connection, deliberately, not the
+     * ordinary {@code templates} repository. Publishing an org-wide template
+     * happens with no property selected, and {@code procedure_template}'s own
+     * row-level security policy only lets such a connection see
+     * {@code property_id IS NULL} rows — every fork, by definition, has a
+     * real property id, so an app-role count here would always silently
+     * return zero. This is the same class of problem
+     * {@code version_result_type_ref}/{@code procedure_usage} solve by
+     * carrying no row-level security at all; it cannot be solved that way
+     * here, because {@code procedure_template} holds real content that
+     * policy has to keep isolated for every other reader. Confirmed
+     * empirically, not assumed — the first version of this method used the
+     * ordinary repository and returned 0 in every test with a real fork.
+     */
+    private long linkedForkCount(UUID templateId) {
+        String schema = TenantSchemas.requireValid(TenantSchemas.schemaFor(OrgContext.getOrgId()));
+        Long count = ownerJdbc.queryForObject(
+                "SELECT count(*) FROM \"" + schema + "\".procedure_template "
+                        + "WHERE forked_from_template_id = ? AND link_state = 'LINKED'",
+                Long.class, templateId);
+        return count == null ? 0L : count;
     }
 
     // --- history ------------------------------------------------------------
@@ -558,8 +675,23 @@ public class ProcedureTemplateService {
      * <p>Lands as a draft, never auto-published: the organization reviews
      * and publishes it like any other draft, the same as every other
      * version-creating action in this service.
+     *
+     * <p><b>Organization level only.</b> A property cannot import directly
+     * from the shared library — its only path to Sclera-published content
+     * is to have its organization import it, then {@link #fork} the
+     * organization's own copy. This matches the Part 1 brief's own
+     * description of import as an organization-admin action, and it closes
+     * a real bug: {@code global_template_org_copy}'s key is
+     * {@code (global_template_id, org_id)} with no property dimension at
+     * all, so a second property independently importing the same global
+     * template would silently repoint the first property's link row via
+     * {@link #linkToGlobal} rather than getting one of its own.
      */
     public TemplateResponse importFromGlobal(ImportRequest request) {
+        if (!PropertyContext.current().isEmpty()) {
+            throw new BusinessRuleException("Importing from the shared library happens at organization level. "
+                    + "Import it into your organization, then fork it from inside this property.");
+        }
         GlobalProcedureTemplate globalTemplate = globalTemplates.findById(request.globalTemplateId())
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Global template not found: " + request.globalTemplateId()));
@@ -616,12 +748,13 @@ public class ProcedureTemplateService {
 
     private ProcedureTemplate newTemplateFromGlobal(GlobalProcedureTemplate globalTemplate, String name) {
         UUID orgId = OrgContext.getOrgId();
-        requireNameFree(orgId, name, null);
+        requireNameFree(orgId, null, name, null);
 
         ProcedureTemplate template = new ProcedureTemplate();
         template.setOrgId(orgId);
-        List<UUID> scope = PropertyContext.current();
-        template.setPropertyId(scope.size() == 1 ? scope.get(0) : null);
+        // Always organization-wide: importFromGlobal already refuses to
+        // reach here with a property context active.
+        template.setPropertyId(null);
         template.setName(name);
         template.setDescription(globalTemplate.getDescription());
         if (!isBlank(globalTemplate.getConsumerKey())) {
@@ -665,21 +798,36 @@ public class ProcedureTemplateService {
         }
     }
 
-    // --- update lifecycle: is a linked copy behind the global template? -----
+    // --- update lifecycle: is a linked copy behind its source? --------------
+    //
+    // A template has at most one "parent" reference set: globalTemplateId
+    // (set only by an organization-level import) or forkedFromTemplateId
+    // (set only by a property-level fork), never both, since the two are
+    // set on different rows at different levels. Every method below branches
+    // once, at the top, on which reference is set, rather than existing as
+    // two parallel sets of methods for a comparison that is structurally
+    // identical whichever table the parent lives in.
 
     /**
-     * Whether this template's link to the shared library is behind, derived
-     * fresh rather than stored: {@code appliedVersionNo < the global
-     * template's current published version number}. A template never
-     * imported from the shared library reports a null link state and
-     * {@code updateAvailable: false} — a normal state, not an error.
+     * Whether this template's link to its source is behind, derived fresh
+     * rather than stored: {@code appliedVersionNo < the source's current
+     * published version number}. A template with neither parent reference
+     * set reports a null link state and {@code updateAvailable: false} — a
+     * normal state, not an error.
      */
     @Transactional(readOnly = true)
     public UpdateStatus updateStatus(UUID id) {
         ProcedureTemplate template = getOwned(id);
-        if (template.getGlobalTemplateId() == null) {
-            return new UpdateStatus(null, null, null, false);
+        if (template.getGlobalTemplateId() != null) {
+            return updateStatusAgainstGlobal(template);
         }
+        if (template.getForkedFromTemplateId() != null) {
+            return updateStatusAgainstParent(template);
+        }
+        return new UpdateStatus(null, null, null, false);
+    }
+
+    private UpdateStatus updateStatusAgainstGlobal(ProcedureTemplate template) {
         GlobalTemplateOrgCopy copy = requireOrgCopy(template);
         Integer currentVersionNo = globalCurrentVersionNo(template.getGlobalTemplateId());
         boolean updateAvailable = copy.getLinkState() != LinkState.STANDALONE
@@ -687,19 +835,34 @@ public class ProcedureTemplateService {
         return new UpdateStatus(copy.getLinkState(), copy.getAppliedVersionNo(), currentVersionNo, updateAvailable);
     }
 
+    private UpdateStatus updateStatusAgainstParent(ProcedureTemplate fork) {
+        ProcedureTemplate parent = requireParent(fork);
+        Integer currentVersionNo = currentVersion(parent).map(ProcedureTemplateVersion::getVersionNo).orElse(null);
+        boolean updateAvailable = fork.getLinkState() != LinkState.STANDALONE
+                && currentVersionNo != null && currentVersionNo > fork.getAppliedVersionNo();
+        return new UpdateStatus(fork.getLinkState(), fork.getAppliedVersionNo(), currentVersionNo, updateAvailable);
+    }
+
     /**
-     * What changed between the version this copy last applied and the
-     * global template's current version — the same diff machinery
-     * {@link #diff} already uses between two versions of one template,
-     * reading from the global tables on one side instead.
+     * What changed between the version this copy last applied and its
+     * source's current version — the same diff machinery {@link #diff}
+     * already uses between two versions of one template, reading the "from"
+     * side from the source instead.
      */
     @Transactional(readOnly = true)
     public DiffResponse updateDiff(UUID id) {
         ProcedureTemplate template = getOwned(id);
-        if (template.getGlobalTemplateId() == null) {
-            throw new BusinessRuleException("'" + template.getName()
-                    + "' was not imported from the shared library, so there is no update to diff");
+        if (template.getGlobalTemplateId() != null) {
+            return updateDiffAgainstGlobal(template);
         }
+        if (template.getForkedFromTemplateId() != null) {
+            return updateDiffAgainstParent(template);
+        }
+        throw new BusinessRuleException("'" + template.getName()
+                + "' was not imported or forked from anything, so there is no update to diff");
+    }
+
+    private DiffResponse updateDiffAgainstGlobal(ProcedureTemplate template) {
         GlobalTemplateOrgCopy copy = requireOrgCopy(template);
         GlobalProcedureTemplate globalTemplate = globalTemplates.findById(template.getGlobalTemplateId())
                 .orElseThrow(() -> new IllegalStateException(
@@ -720,20 +883,68 @@ public class ProcedureTemplateService {
         return new DiffResponse(applied.getVersionNo(), current.getVersionNo(), DefinitionDiff.between(from, to));
     }
 
+    private DiffResponse updateDiffAgainstParent(ProcedureTemplate fork) {
+        ProcedureTemplate parent = requireParent(fork);
+        ProcedureTemplateVersion applied = versions.findByTemplateIdAndVersionNo(parent.getId(), fork.getAppliedVersionNo())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Applied version " + fork.getAppliedVersionNo() + " of template " + parent.getId()
+                                + " does not exist"));
+        ProcedureTemplateVersion current = currentVersion(parent)
+                .orElseThrow(() -> new BusinessRuleException(
+                        "'" + parent.getName() + "' has no published version to diff against"));
+
+        DefinitionDocument from = canonicalizer.parse(applied.getDefinitionJson());
+        DefinitionDocument to = canonicalizer.parse(current.getDefinitionJson());
+        return new DiffResponse(applied.getVersionNo(), current.getVersionNo(), DefinitionDiff.between(from, to));
+    }
+
     /**
-     * Pulls the global template's current version into this copy as a new
-     * draft — the update-lifecycle's own name for exactly what importing
-     * again, into this same existing template, already does. Same refusal
-     * as import when a draft is already in progress; reached through a
-     * clearer verb, not different behaviour.
+     * Pulls the source's current version into this copy as a new draft. For
+     * a global import this is the update-lifecycle's own name for exactly
+     * what importing again, into this same existing template, already does
+     * — same refusal as import when a draft is already in progress, reached
+     * through a clearer verb. For a property's fork there is no equivalent
+     * existing action, so this writes the new draft directly, mirroring
+     * importFromGlobal's own existing-template branch exactly.
      */
     public TemplateResponse applyUpdate(UUID id) {
         ProcedureTemplate template = getOwned(id);
-        if (template.getGlobalTemplateId() == null) {
-            throw new BusinessRuleException("'" + template.getName()
-                    + "' was not imported from the shared library, so there is no update to apply");
+        if (template.getGlobalTemplateId() != null) {
+            return importFromGlobal(new ImportRequest(template.getGlobalTemplateId(), null, template.getId(), null));
         }
-        return importFromGlobal(new ImportRequest(template.getGlobalTemplateId(), null, template.getId(), null));
+        if (template.getForkedFromTemplateId() != null) {
+            return applyParentUpdate(template);
+        }
+        throw new BusinessRuleException("'" + template.getName()
+                + "' was not imported or forked from anything, so there is no update to apply");
+    }
+
+    private TemplateResponse applyParentUpdate(ProcedureTemplate fork) {
+        ProcedureTemplate parent = requireParent(fork);
+        ProcedureTemplateVersion current = currentVersion(parent)
+                .orElseThrow(() -> new BusinessRuleException("'" + parent.getName()
+                        + "' has no published version to apply"));
+
+        ProcedureTemplate locked = lockOwned(fork.getId());
+        versions.findByTemplateIdAndState(locked.getId(), VersionState.DRAFT).ifPresent(existing -> {
+            throw new ConflictException("This procedure already has a draft (v" + existing.getVersionNo()
+                    + "); publish or discard it first");
+        });
+        // Carries the parent's own key counter forward, exactly as
+        // importFromGlobal does for a global source — the applied content's
+        // keys must never land outside the range this fork has issued.
+        locked.setKeySeq(Math.max(locked.getKeySeq(), parent.getKeySeq()));
+        int versionNo = versions.maxVersionNo(locked.getId()) + 1;
+        versions.saveAndFlush(newVersion(locked, versionNo, current.getDefinitionJson(), current.getDefinitionHash()));
+
+        locked.setAppliedVersionNo(current.getVersionNo());
+        locked.setLinkState(LinkState.LINKED);
+        locked.setDeferredVersionNo(null);
+        locked.setDeferredAt(null);
+        templates.flush();
+
+        return mapper.toResponse(locked,
+                currentVersion(locked).map(ProcedureTemplateVersion::getVersionNo).orElse(null), versionNo);
     }
 
     /**
@@ -744,10 +955,17 @@ public class ProcedureTemplateService {
      */
     public UpdateStatus deferUpdate(UUID id) {
         ProcedureTemplate template = getOwned(id);
-        if (template.getGlobalTemplateId() == null) {
-            throw new BusinessRuleException("'" + template.getName()
-                    + "' was not imported from the shared library, so there is no update to defer");
+        if (template.getGlobalTemplateId() != null) {
+            return deferGlobalUpdate(template);
         }
+        if (template.getForkedFromTemplateId() != null) {
+            return deferParentUpdate(template);
+        }
+        throw new BusinessRuleException("'" + template.getName()
+                + "' was not imported or forked from anything, so there is no update to defer");
+    }
+
+    private UpdateStatus deferGlobalUpdate(ProcedureTemplate template) {
         GlobalTemplateOrgCopy copy = requireOrgCopy(template);
         Integer currentVersionNo = globalCurrentVersionNo(template.getGlobalTemplateId());
         if (currentVersionNo == null || currentVersionNo <= copy.getAppliedVersionNo()) {
@@ -757,7 +975,21 @@ public class ProcedureTemplateService {
         copy.setDeferredVersionNo(currentVersionNo);
         copy.setDeferredAt(OffsetDateTime.now());
         orgCopies.saveAndFlush(copy);
-        return updateStatus(id);
+        return updateStatus(template.getId());
+    }
+
+    private UpdateStatus deferParentUpdate(ProcedureTemplate fork) {
+        ProcedureTemplate parent = requireParent(fork);
+        Integer currentVersionNo = currentVersion(parent).map(ProcedureTemplateVersion::getVersionNo).orElse(null);
+        if (currentVersionNo == null || currentVersionNo <= fork.getAppliedVersionNo()) {
+            throw new BusinessRuleException("'" + fork.getName() + "' has no update available to defer");
+        }
+        ProcedureTemplate locked = lockOwned(fork.getId());
+        locked.setLinkState(LinkState.DEFERRED);
+        locked.setDeferredVersionNo(currentVersionNo);
+        locked.setDeferredAt(OffsetDateTime.now());
+        templates.flush();
+        return updateStatus(fork.getId());
     }
 
     private Integer globalCurrentVersionNo(UUID globalTemplateId) {
@@ -780,6 +1012,20 @@ public class ProcedureTemplateService {
                 .orElseThrow(() -> new IllegalStateException(
                         "Template " + template.getId() + " names global template " + template.getGlobalTemplateId()
                                 + " but has no org-copy link row"));
+    }
+
+    /**
+     * The org-wide template a fork's {@code forkedFromTemplateId} names.
+     * Reached the ordinary org-scoped way, never through property-level row
+     * security, since the parent is always organization-wide
+     * ({@code propertyId IS NULL}) and therefore visible from any property
+     * in the same organization.
+     */
+    private ProcedureTemplate requireParent(ProcedureTemplate fork) {
+        return templates.findByIdAndOrgId(fork.getForkedFromTemplateId(), fork.getOrgId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Fork " + fork.getId() + " names parent " + fork.getForkedFromTemplateId()
+                                + " which does not exist"));
     }
 
     private void linkToGlobal(GlobalProcedureTemplate globalTemplate, ProcedureTemplate template, int appliedVersionNo) {
@@ -1025,10 +1271,21 @@ public class ProcedureTemplateService {
         }
     }
 
-    private void requireNameFree(UUID orgId, String name, UUID excludeId) {
+    /**
+     * Scoped by property as well as organization, matching the database's own
+     * {@code uq_procedure_template_org_name_active} index: a name is free to
+     * reuse in a different property, or at organization level, from the
+     * moment property scoping existed — two properties forked from the same
+     * org-wide source are the concrete case that makes this matter now.
+     * {@code propertyId} null means organization level, passed straight
+     * through to the derived query, which Spring Data turns into
+     * {@code property_id is null} for a null argument.
+     */
+    private void requireNameFree(UUID orgId, UUID propertyId, String name, UUID excludeId) {
         boolean taken = excludeId == null
-                ? templates.existsByOrgIdAndNameIgnoreCaseAndStatus(orgId, name, TemplateStatus.ACTIVE)
-                : templates.existsByOrgIdAndNameIgnoreCaseAndStatusAndIdNot(orgId, name, TemplateStatus.ACTIVE, excludeId);
+                ? templates.existsByOrgIdAndPropertyIdAndNameIgnoreCaseAndStatus(orgId, propertyId, name, TemplateStatus.ACTIVE)
+                : templates.existsByOrgIdAndPropertyIdAndNameIgnoreCaseAndStatusAndIdNot(
+                        orgId, propertyId, name, TemplateStatus.ACTIVE, excludeId);
         if (taken) {
             throw new ConflictException("A procedure named '" + name + "' already exists");
         }

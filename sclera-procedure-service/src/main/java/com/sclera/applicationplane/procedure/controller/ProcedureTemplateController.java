@@ -115,6 +115,20 @@ public class ProcedureTemplateController {
         return service.cloneTemplate(id, request);
     }
 
+    /**
+     * Forks an organization-wide procedure into this property's own copy.
+     * Guarded the same as clone — reading the source plus the caller's
+     * general right to author within their organization — since forking is
+     * the property-level equivalent of creating a new template, not an edit
+     * to the source.
+     */
+    @PostMapping("/{id}/fork")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("@fga.check('procedure_template', #id, 'can_view') and @fga.checkOrg('can_manage_templates')")
+    public TemplateResponse fork(@PathVariable UUID id) {
+        return service.fork(id);
+    }
+
     // --- the draft ----------------------------------------------------------
 
     @GetMapping("/{id}/draft")

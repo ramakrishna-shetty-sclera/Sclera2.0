@@ -350,16 +350,18 @@ class ProcedureSharingIT extends PostgresIntegrationTest {
         }
 
         @Test
-        void importingFromInsideAPropertySetsItsScope() {
+        void importingFromInsideAPropertyIsRefused() {
+            // Only an organization may import directly from the shared
+            // library (feature 11, decision 11) -- a property's path to the
+            // same content is import-then-fork, never a direct import.
             UUID org = actAsNewOrg();
             GlobalProcedureTemplate global = publishedGlobalTemplate("NFPA 10", null,
                     opt("o2", "Yes", "PASS"), opt("o3", "No", "FAIL"));
             UUID property = UUID.randomUUID();
 
-            TemplateResponse imported = asProperty(org, property, () ->
-                    service.importFromGlobal(new ImportRequest(global.getId(), null, null, "Fire walk")));
-
-            assertThat(imported.propertyId()).isEqualTo(property);
+            assertThatThrownBy(() -> asProperty(org, property, () ->
+                    service.importFromGlobal(new ImportRequest(global.getId(), null, null, "Fire walk"))))
+                    .isInstanceOf(BusinessRuleException.class);
         }
     }
 
