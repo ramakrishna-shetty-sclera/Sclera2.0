@@ -52,4 +52,12 @@ public final class UsageDtos {
             OffsetDateTime recordedAt,
             boolean created) {
     }
+
+    /**
+     * How many consumers are on one version of a procedure: the answer to "before
+     * you publish v4, which configurations are still on v3?". Only versions with a
+     * consumer appear.
+     */
+    public record VersionUsageSummary(int versionNo, long consumerCount) {
+    }
 }

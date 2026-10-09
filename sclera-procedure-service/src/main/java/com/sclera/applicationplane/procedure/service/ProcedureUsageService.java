@@ -5,6 +5,7 @@ import com.sclera.applicationplane.procedure.domain.ProcedureUsage;
 import com.sclera.applicationplane.procedure.domain.VersionState;
 import com.sclera.applicationplane.procedure.dto.UsageDtos.ReportUsageRequest;
 import com.sclera.applicationplane.procedure.dto.UsageDtos.ReportUsageResponse;
+import com.sclera.applicationplane.procedure.dto.UsageDtos.VersionUsageSummary;
 import com.sclera.applicationplane.procedure.repository.ProcedureConsumerRepository;
 import com.sclera.applicationplane.procedure.repository.ProcedureTemplateVersionRepository;
 import com.sclera.applicationplane.procedure.repository.ProcedureUsageRepository;
@@ -14,7 +15,9 @@ import com.sclera.controlplane.common.exception.ValidationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 
 /**
  * What consumers report about the versions they use, and what an author is told
@@ -94,5 +97,21 @@ public class ProcedureUsageService {
 
         return new ReportUsageResponse(row.getId(), row.getTemplateId(), row.getVersionId(),
                 row.getConsumerKey(), row.getConsumerRefId(), row.getTargetTypeKey(), row.getRecordedAt(), created);
+    }
+
+    /**
+     * Which versions of a template still have consumers, oldest first, so the ones
+     * most worth deprecating come first. Empty when nothing has been reported,
+     * which is the usual case for a procedure nobody downstream has wired up yet.
+     *
+     * <p>The template is not looked up: the usage table has no row-level security,
+     * so a property's procedure is counted from organization level even though the
+     * procedure itself is hidden there, and an id with no reports is simply empty.
+     */
+    @Transactional(readOnly = true)
+    public List<VersionUsageSummary> usageOf(UUID templateId) {
+        return usage.countByVersion(templateId).stream()
+                .map(c -> new VersionUsageSummary(c.getVersionNo(), c.getConsumerCount()))
+                .toList();
     }
 }
