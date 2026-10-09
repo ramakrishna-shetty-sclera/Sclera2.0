@@ -997,3 +997,49 @@ Authorization: Bearer {{token}}
 ### G3. Tidy up
 POST {{host}}/api/v1/procedure-templates/{{usageId}}/archive
 Authorization: Bearer {{token}}
+
+
+###############################################################################
+# I — browsing the Sclera-wide library and its question bank
+#
+#   GET /api/v1/global-procedure-templates?search=&consumer=&page=&size=
+#   GET /api/v1/global-procedure-templates/{id}
+#   GET /api/v1/global-procedure-templates/questions?search=&standard=&page=&size=
+#
+# Any signed-in user may call these: the library belongs to no organization, so
+# there is no permission to check. Nothing authors global templates yet (feature
+# 11), so against a fresh database every list here is EMPTY and that is the
+# expected answer, not a failure. GlobalLibraryBrowseIT, GlobalQuestionBankIT and
+# GlobalQuestionIndexIT seed rows directly and cover what comes back once there
+# are some.
+#
+# The question bank is filled by a Kafka listener on
+# sclera.procedure.global-template-events.v1, so it also needs a broker and
+# whatever publishes that event.
+#
+# Not through the gateway yet: it has no route for /api/v1/global-procedure-templates/**.
+###############################################################################
+
+### I1. The library — 200 and an empty page on a fresh database
+GET {{host}}/api/v1/global-procedure-templates
+Authorization: Bearer {{token}}
+
+### I2. Narrowed by a word and a consumer — both optional and independent
+GET {{host}}/api/v1/global-procedure-templates?search=extinguisher&consumer=inspection
+Authorization: Bearer {{token}}
+
+### I3. The question bank — a word inside a question, stemmed ("extinguishers" finds "extinguisher")
+GET {{host}}/api/v1/global-procedure-templates/questions?search=extinguishers
+Authorization: Bearer {{token}}
+
+### I4. The bank by the standard a question came from, with no search words
+GET {{host}}/api/v1/global-procedure-templates/questions?standard=NFPA%2010&page=0&size=20
+Authorization: Bearer {{token}}
+
+### I5. Input of any shape is fine — an unbalanced quote is an empty page, never a 500
+GET {{host}}/api/v1/global-procedure-templates/questions?search=%22unbalanced
+Authorization: Bearer {{token}}
+
+### I6. A template that does not exist → 404
+GET {{host}}/api/v1/global-procedure-templates/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{token}}

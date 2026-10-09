@@ -282,13 +282,14 @@ Held outside any single tenant:
 | `global_procedure_template` | `id, name, description, consumer_key, current_published_version_id, status, key_seq, created_by, created_at, updated_at` |
 | `global_procedure_template_version` | `id, global_template_id, version_no, state, definition_json, definition_hash, change_note, published_by, published_at` |
 | `global_template_org_copy` | `global_template_id, org_id, template_id, applied_version_no, link_state, deferred_version_no, deferred_at, linked_at` |
+| `global_question_index` | `id, global_version_id, global_template_id, question_key, text, standard, section_text` — one row per question of every published global version; see *The reference library and question bank* |
 
 `link_state ∈ LINKED, DEFERRED, STANDALONE`. **"Update available" is derived**, by comparing
 `applied_version_no` against the global template's current version — never stored, so it cannot go
 stale. `DEFERRED` and `deferred_version_no`/`deferred_at` are written by nothing yet — reserved for
 the update-notification feature, not this one.
 
-**All three tables live in `public`, written once** — not twice like every tenant table, because
+**All four tables live in `public`, written once** — not twice like every tenant table, because
 there is no tenant to scope them to. A per-request connection's `search_path` is pinned to the
 caller's own tenant schema with no `public` fallback, so their entities are schema-qualified
 explicitly (`@Table(schema = "public", ...)`) rather than relying on search_path to find them —
@@ -297,6 +298,11 @@ the only place in the service a JPA entity is read through the ordinary per-requ
 outside the caller's own schema; `global_template_org_copy` is also the only table here with no
 row-level security and no schema wall protecting it, so every query against it filters `org_id`
 explicitly in the repository layer — that filter is the whole boundary.
+
+Entity mappings are qualified, but **a native query is not**: the question bank's search is native SQL
+(full-text search is not expressible in JPQL), so its tables are written `public.global_question_index`
+by hand. Without that it works with no organization in scope and fails inside one, which is the only
+place the library is ever read from.
 
 ---
 
@@ -576,6 +582,7 @@ publicly.
 | Discovery | `GET /api/v1/procedure-templates/discover?consumer=&kind=&key=` — the active procedures that apply to a target; see *Discovery* below |
 | Documents | create (upload already done via helper), list, get, activate, deactivate, delete (conditional) |
 | Sharing | export a version or several (`GET .../{id}/export`); import from the Sclera-wide library by id, creating new or updating existing (`POST .../import`); explicit unlink (`POST .../{id}/unlink` — fork-on-edit happens automatically on `saveDraft`); favourite/unfavourite |
+| Library | browse and search the Sclera-wide library: `GET /api/v1/global-procedure-templates?search=&consumer=` (list), `GET .../{id}` (one template with its current form), and `GET .../questions?search=&standard=` (the question bank). Any signed-in user, no per-organization check; see *The reference library and question bank* below |
 | Updates *(planned — feature 11)* | check availability, view diff, apply, defer |
 | Usage | `GET /api/v1/procedure-templates/{id}/usage` — how many consumers are on each version, oldest first (public, `can_view`); `POST /internal/api/v1/procedure-usage/orgs/{orgId}/report` — a consumer reports the version it is on (internal); see the procedure_usage section above |
 
@@ -882,6 +889,15 @@ notify, since applying it is their decision rather than something this service d
 
 Consumers read the JSON shape rather than a shared Java class, so adding a field is safe.
 
+This service also **listens**, once: to **`sclera.procedure.global-template-events.v1`**, for the event that
+says a Sclera-wide template has a new published version. It is the question bank's only way in:
+`GlobalQuestionIndexer` indexes the named version's questions. The payload type is named in
+`application.yml` (the producer sends no type headers) and the consumer reads through
+`ErrorHandlingDeserializer`, so an unreadable message is logged and skipped rather than failing the
+consumer on it forever. `sclera.library.index-listener.enabled` switches the listener off, which the
+tests do because they run without a broker. Whatever publishes that event is a separate feature's
+work; until it exists nothing arrives here.
+
 ---
 
 ## Sharing across organizations
@@ -908,16 +924,47 @@ least severe, never guessed at).
 **Favourites** (`POST`/`DELETE .../{id}/favourite`, and `?favouritesOnly=true` on the list) are a
 plain per-user star, independent of any of the above.
 
+**The reference library and question bank — built, feature 12.** The read side of the library, for
+finding something before importing it. It is read-only: nothing here writes global content, and copying
+a whole template is the import above, not a second way in.
+
+- **Browse** — `GET /api/v1/global-procedure-templates` lists active templates that have a published
+  version (one without cannot be imported), filtered by a word in the name or description and by
+  consumer, each optional, paged and sorted by name. Search is case-insensitive and literal: a `%` or
+  `_` typed in the box matches itself. `GET .../{id}` returns a template with its current version's
+  whole form, to read first; an archived or never-published template is not found.
+- **Question bank** — `GET .../questions?search=&standard=&page=&size=` finds questions across the whole
+  library by words in the question and/or the standard it came from, and says which template, heading
+  and version each came from. Only the **current published version** of each active template is
+  searched: the index keeps a row for every version ever published, so without that a question would
+  appear once per version and an archived template's questions would never leave. It is Postgres
+  full-text search on the expression the GIN index is built on, so word forms match ("extinguishers"
+  finds "extinguisher"); `websearch_to_tsquery` accepts anything a person can type and never raises a
+  syntax error, and a query of only stop words such as "the" matches nothing. Results are ordered by
+  relevance, then template name and question key. Paging takes a page and size and **no sort** (the
+  order is fixed, and a sort would be appended to the native SQL as written); a size above 100 is cut
+  to 100.
+- **Pulling a question into a draft** has no endpoint of its own: open the template with the detail
+  endpoint and take the item with the returned `questionKey` from its document. A draft being edited is
+  the frontend's own state until it saves.
+- **No `@PreAuthorize`, on purpose.** The library belongs to no organization, so there is no relation
+  to check; any signed-in user may browse it. `ControllerAuthorizationTest` names the controller as
+  deliberately open and checks that it stays unguarded. The gateway does not route this path yet
+  (`/api/v1/global-procedure-templates/**`), so it is reachable only directly on `:8095` until that
+  is added in the gateway repository.
+- **The index** (`global_question_index`) is written only by the listener described under *Events*,
+  deleting and rewriting a version's rows each time, so a repeated event adds nothing. A version that
+  is a draft or does not exist is ignored.
+
+Nothing authors global templates yet (feature 11), so outside tests the library is empty and so is
+the bank. The tests seed rows directly.
+
 **Not yet built — later features, not this one:**
 
 - **Update notification and apply/defer.** Publishing a new global version does not yet notify a
   linked organization, and nothing derives an "update available" badge. `link_state` already has a
   `DEFERRED` value and `global_template_org_copy` already carries `deferred_version_no`/
   `deferred_at`, reserved for this, but nothing writes them yet.
-- **The Sclera reference library and question bank** — browsing generic templates and per-category
-  question sets, copying a whole template or pulling individual questions out of one. Nothing
-  populates `global_procedure_template` yet; what exists today is the import/export/link machinery
-  this feature built and tested, against rows written directly for now.
 
 ---
 
