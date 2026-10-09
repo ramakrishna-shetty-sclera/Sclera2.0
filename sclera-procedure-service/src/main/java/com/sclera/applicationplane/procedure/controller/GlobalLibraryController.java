@@ -2,6 +2,7 @@ package com.sclera.applicationplane.procedure.controller;
 
 import com.sclera.applicationplane.procedure.dto.GlobalLibraryBrowseDtos.GlobalTemplateDetail;
 import com.sclera.applicationplane.procedure.dto.GlobalLibraryBrowseDtos.GlobalTemplateSummary;
+import com.sclera.applicationplane.procedure.dto.GlobalLibraryBrowseDtos.QuestionBankEntry;
 import com.sclera.applicationplane.procedure.service.GlobalLibraryService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -42,6 +43,22 @@ public class GlobalLibraryController {
                                             @RequestParam(required = false) String consumer,
                                             @PageableDefault(size = 20, sort = "name") Pageable pageable) {
         return library.browse(search, consumer, pageable);
+    }
+
+    /**
+     * The question bank: questions from every template in the library, found by words
+     * in the question and/or the standard it came from. The literal path wins over
+     * {@code /{id}}, so this is never read as a template id.
+     *
+     * <p>Takes a bare page and size and no sort: the order is fixed by relevance, then
+     * template name and key, and a size above 100 is cut to 100.
+     */
+    @GetMapping("/questions")
+    public Page<QuestionBankEntry> questions(@RequestParam(required = false) String search,
+                                             @RequestParam(required = false) String standard,
+                                             @RequestParam(defaultValue = "0") int page,
+                                             @RequestParam(defaultValue = "20") int size) {
+        return library.searchQuestions(search, standard, page, size);
     }
 
     /** One template with its current version's whole form, to read before importing it. */
