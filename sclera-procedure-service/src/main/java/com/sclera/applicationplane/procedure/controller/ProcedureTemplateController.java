@@ -6,6 +6,7 @@ import com.sclera.applicationplane.procedure.domain.TemplateStatus;
 import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluateRequest;
 import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluationResponse;
 import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ExportedProcedure;
+import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.FavouriteResponse;
 import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ImportRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.CloneRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.CreateTemplateRequest;
@@ -66,8 +67,9 @@ public class ProcedureTemplateController {
     @PreAuthorize("@fga.checkOrg('can_view')")
     public Page<TemplateResponse> list(@RequestParam(required = false) TemplateStatus status,
                                        @RequestParam(required = false) TemplateScope scope,
+                                       @RequestParam(defaultValue = "false") boolean favouritesOnly,
                                        @PageableDefault(size = 20) Pageable pageable) {
-        return service.list(status, scope, pageable);
+        return service.list(status, scope, favouritesOnly, pageable);
     }
 
     /**
@@ -190,6 +192,18 @@ public class ProcedureTemplateController {
     @PreAuthorize("@fga.check('procedure_template', #id, 'can_edit')")
     public TemplateResponse unlink(@PathVariable UUID id) {
         return service.unlink(id);
+    }
+
+    @PostMapping("/{id}/favourite")
+    @PreAuthorize("@fga.check('procedure_template', #id, 'can_view')")
+    public FavouriteResponse favourite(@PathVariable UUID id) {
+        return service.favourite(id);
+    }
+
+    @DeleteMapping("/{id}/favourite")
+    @PreAuthorize("@fga.check('procedure_template', #id, 'can_view')")
+    public FavouriteResponse unfavourite(@PathVariable UUID id) {
+        return service.unfavourite(id);
     }
 
     // --- evaluation ---------------------------------------------------------

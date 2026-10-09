@@ -14,6 +14,7 @@ import com.sclera.applicationplane.procedure.domain.ResultType;
 import com.sclera.applicationplane.procedure.domain.VersionState;
 import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ExportedProcedure;
 import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ExportedVersion;
+import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.FavouriteResponse;
 import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ImportRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.CreateTemplateRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.NewDraftRequest;
@@ -24,15 +25,18 @@ import com.sclera.applicationplane.procedure.repository.GlobalProcedureTemplateR
 import com.sclera.applicationplane.procedure.repository.GlobalProcedureTemplateVersionRepository;
 import com.sclera.applicationplane.procedure.repository.GlobalTemplateOrgCopyRepository;
 import com.sclera.applicationplane.procedure.repository.ProcedureDocumentRepository;
+import com.sclera.applicationplane.procedure.repository.ProcedureFavouriteRepository;
 import com.sclera.applicationplane.procedure.repository.ResultTypeRepository;
 import com.sclera.applicationplane.procedure.support.PostgresIntegrationTest;
 import com.sclera.controlplane.common.exception.BusinessRuleException;
 import com.sclera.controlplane.common.exception.ConflictException;
 import com.sclera.controlplane.common.exception.ResourceNotFoundException;
 import com.sclera.controlplane.common.exception.ValidationException;
+import com.sclera.controlplane.common.security.OrgContext;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -70,6 +74,9 @@ class ProcedureSharingIT extends PostgresIntegrationTest {
 
     @Autowired
     private ResultTypeRepository resultTypes;
+
+    @Autowired
+    private ProcedureFavouriteRepository favourites;
 
     private static Item question() {
         return Item.builder().text("Exit clear?").type(QuestionType.YES_NO).required(true)
@@ -417,6 +424,70 @@ class ProcedureSharingIT extends PostgresIntegrationTest {
             assertThatCode(() -> service.saveDraft(id,
                     new SaveDraftRequest(draft.definition(), draft.rowVersion(), null)))
                     .doesNotThrowAnyException();
+        }
+    }
+
+    @Nested
+    class Favourites {
+
+        @Test
+        void favouritingMarksItAndListingWithFavouritesOnlyFindsIt() {
+            actAsNewOrg();
+            UUID id = service.create(request("Fire walk")).id();
+            UUID other = service.create(request("Boiler check")).id();
+
+            FavouriteResponse response = service.favourite(id);
+
+            assertThat(response.favourite()).isTrue();
+            assertThat(service.list(null, null, true, PageRequest.of(0, 20)).getContent())
+                    .extracting(TemplateResponse::id).containsExactly(id).doesNotContain(other);
+        }
+
+        @Test
+        void favouritingTwiceIsIdempotent() {
+            actAsNewOrg();
+            UUID id = service.create(request("Fire walk")).id();
+
+            service.favourite(id);
+            service.favourite(id);
+
+            assertThat(favourites.findAllByUserId(OrgContext.getUserId())).hasSize(1);
+        }
+
+        @Test
+        void unfavouritingRemovesItFromTheFilteredList() {
+            actAsNewOrg();
+            UUID id = service.create(request("Fire walk")).id();
+            service.favourite(id);
+
+            FavouriteResponse response = service.unfavourite(id);
+
+            assertThat(response.favourite()).isFalse();
+            assertThat(service.list(null, null, true, PageRequest.of(0, 20)).getContent()).isEmpty();
+        }
+
+        @Test
+        void unfavouritingSomethingNeverFavouritedIsANoOp() {
+            actAsNewOrg();
+            UUID id = service.create(request("Fire walk")).id();
+
+            assertThatCode(() -> service.unfavourite(id)).doesNotThrowAnyException();
+        }
+
+        @Test
+        void favouritesAreTrackedPerUserNotPerOrganization() {
+            actAsNewOrg();
+            UUID id = service.create(request("Fire walk")).id();
+            UUID firstUser = OrgContext.getUserId();
+
+            service.favourite(id);
+
+            OrgContext.setUserId(UUID.randomUUID());
+            try {
+                assertThat(service.list(null, null, true, PageRequest.of(0, 20)).getContent()).isEmpty();
+            } finally {
+                OrgContext.setUserId(firstUser);
+            }
         }
     }
 }

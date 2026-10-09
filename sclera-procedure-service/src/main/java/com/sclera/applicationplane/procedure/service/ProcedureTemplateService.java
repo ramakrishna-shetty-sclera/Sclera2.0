@@ -18,6 +18,7 @@ import com.sclera.applicationplane.procedure.domain.GlobalProcedureTemplateVersi
 import com.sclera.applicationplane.procedure.domain.GlobalTemplateOrgCopy;
 import com.sclera.applicationplane.procedure.domain.LinkState;
 import com.sclera.applicationplane.procedure.domain.ProcedureConsumer;
+import com.sclera.applicationplane.procedure.domain.ProcedureFavourite;
 import com.sclera.applicationplane.procedure.domain.ProcedureTemplate;
 import com.sclera.applicationplane.procedure.domain.ProcedureTemplateVersion;
 import com.sclera.applicationplane.procedure.domain.ResultType;
@@ -43,6 +44,7 @@ import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluationRespon
 import com.sclera.applicationplane.procedure.dto.EvaluationDtos.VersionRef;
 import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ExportedProcedure;
 import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ExportedVersion;
+import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.FavouriteResponse;
 import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ImportRequest;
 import com.sclera.applicationplane.procedure.evaluation.Answers;
 import com.sclera.applicationplane.procedure.evaluation.Evaluator;
@@ -56,6 +58,7 @@ import com.sclera.applicationplane.procedure.repository.GlobalProcedureTemplateR
 import com.sclera.applicationplane.procedure.repository.GlobalProcedureTemplateVersionRepository;
 import com.sclera.applicationplane.procedure.repository.GlobalTemplateOrgCopyRepository;
 import com.sclera.applicationplane.procedure.repository.ProcedureDocumentRepository;
+import com.sclera.applicationplane.procedure.repository.ProcedureFavouriteRepository;
 import com.sclera.applicationplane.procedure.repository.ProcedureTemplateRepository;
 import com.sclera.applicationplane.procedure.repository.ProcedureTemplateVersionRepository;
 import com.sclera.applicationplane.procedure.repository.ResultTypeRepository;
@@ -117,6 +120,7 @@ public class ProcedureTemplateService {
     private final GlobalProcedureTemplateRepository globalTemplates;
     private final GlobalProcedureTemplateVersionRepository globalVersions;
     private final GlobalTemplateOrgCopyRepository orgCopies;
+    private final ProcedureFavouriteRepository favourites;
 
     public ProcedureTemplateService(ProcedureTemplateRepository templates,
                                     ProcedureTemplateVersionRepository versions,
@@ -133,7 +137,8 @@ public class ProcedureTemplateService {
                                     VersionDocumentRefRepository documentRefs,
                                     GlobalProcedureTemplateRepository globalTemplates,
                                     GlobalProcedureTemplateVersionRepository globalVersions,
-                                    GlobalTemplateOrgCopyRepository orgCopies) {
+                                    GlobalTemplateOrgCopyRepository orgCopies,
+                                    ProcedureFavouriteRepository favourites) {
         this.templates = templates;
         this.versions = versions;
         this.canonicalizer = canonicalizer;
@@ -150,6 +155,7 @@ public class ProcedureTemplateService {
         this.globalTemplates = globalTemplates;
         this.globalVersions = globalVersions;
         this.orgCopies = orgCopies;
+        this.favourites = favourites;
     }
 
     // --- template identity --------------------------------------------------
@@ -222,10 +228,29 @@ public class ProcedureTemplateService {
     }
 
     @Transactional(readOnly = true)
-    public Page<TemplateResponse> list(TemplateStatus status, TemplateScope scope, Pageable pageable) {
+    public Page<TemplateResponse> list(TemplateStatus status, TemplateScope scope, boolean favouritesOnly,
+                                       Pageable pageable) {
         Boolean propertyScoped = scope == null ? null : scope == TemplateScope.PROPERTY;
-        Page<ProcedureTemplate> page = templates.findAllByOrgId(OrgContext.getOrgId(), status, propertyScoped, pageable);
+        Page<ProcedureTemplate> page = templates.findAllByOrgId(OrgContext.getOrgId(), status, propertyScoped,
+                favouritesOnly, OrgContext.getUserId(), pageable);
         return withVersionNumbers(page);
+    }
+
+    /** Idempotent: starring an already-starred procedure changes nothing. */
+    public FavouriteResponse favourite(UUID id) {
+        ProcedureTemplate template = getOwned(id);
+        UUID userId = OrgContext.getUserId();
+        if (favourites.findByUserIdAndTemplateId(userId, template.getId()).isEmpty()) {
+            favourites.saveAndFlush(new ProcedureFavourite(userId, template.getId()));
+        }
+        return new FavouriteResponse(true);
+    }
+
+    /** Idempotent: un-starring one that was never starred changes nothing. */
+    public FavouriteResponse unfavourite(UUID id) {
+        ProcedureTemplate template = getOwned(id);
+        favourites.findByUserIdAndTemplateId(OrgContext.getUserId(), template.getId()).ifPresent(favourites::delete);
+        return new FavouriteResponse(false);
     }
 
     /**

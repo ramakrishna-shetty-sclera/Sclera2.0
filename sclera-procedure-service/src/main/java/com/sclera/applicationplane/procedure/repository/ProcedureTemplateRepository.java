@@ -1,6 +1,7 @@
 package com.sclera.applicationplane.procedure.repository;
 
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetKind;
+import com.sclera.applicationplane.procedure.domain.ProcedureFavourite;
 import com.sclera.applicationplane.procedure.domain.ProcedureTemplate;
 import com.sclera.applicationplane.procedure.domain.TemplateStatus;
 import jakarta.persistence.LockModeType;
@@ -50,8 +51,11 @@ public interface ProcedureTemplateRepository extends JpaRepository<ProcedureTemp
               and (:propertyScoped is null
                    or (:propertyScoped = true and t.propertyId is not null)
                    or (:propertyScoped = false and t.propertyId is null))
+              and (:favouritesOnly = false or t.id in
+                   (select f.templateId from ProcedureFavourite f where f.userId = :userId))
             """)
-    Page<ProcedureTemplate> findAllByOrgId(UUID orgId, TemplateStatus status, Boolean propertyScoped, Pageable pageable);
+    Page<ProcedureTemplate> findAllByOrgId(UUID orgId, TemplateStatus status, Boolean propertyScoped,
+                                          boolean favouritesOnly, UUID userId, Pageable pageable);
 
     /**
      * The active procedures whose current published version applies to a target.

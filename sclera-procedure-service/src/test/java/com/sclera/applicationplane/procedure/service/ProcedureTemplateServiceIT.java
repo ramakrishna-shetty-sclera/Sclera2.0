@@ -81,12 +81,13 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
                     String.class, schema);
 
             assertThat(tables).contains("procedure_template", "procedure_template_version", "version_result_type_ref",
-                    "version_target_type", "procedure_consumer", "procedure_document", "version_document_ref")
+                    "version_target_type", "procedure_consumer", "procedure_document", "version_document_ref",
+                    "procedure_favourite")
                     .doesNotContain("question_template", "template_section", "question");
             // Bump this when a tenant migration is added. Pinning it is the
             // point: it makes anyone adding one notice that every existing
             // tenant schema has to be migrated too, not just new ones.
-            assertThat(migratedTo).isEqualTo("8");
+            assertThat(migratedTo).isEqualTo("9");
             // A property-scoped table with no policy is wide open, and the
             // failure is silent — so provisioning asserts the policy arrived,
             // not merely that the migration ran.
@@ -205,19 +206,19 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
             // rows (organization-wide, plus this property's own), so the
             // filter is the only thing telling them apart.
             asProperty(org, property, () -> {
-                assertThat(service.list(null, TemplateScope.ORGANIZATION, PageRequest.of(0, 20)).getContent())
+                assertThat(service.list(null, TemplateScope.ORGANIZATION, false, PageRequest.of(0, 20)).getContent())
                         .extracting(TemplateResponse::id).containsExactly(orgWide);
-                assertThat(service.list(null, TemplateScope.PROPERTY, PageRequest.of(0, 20)).getContent())
+                assertThat(service.list(null, TemplateScope.PROPERTY, false, PageRequest.of(0, 20)).getContent())
                         .extracting(TemplateResponse::id).containsExactly(propertyScoped);
-                assertThat(service.list(TemplateStatus.ACTIVE, null, PageRequest.of(0, 20)).getContent())
+                assertThat(service.list(TemplateStatus.ACTIVE, null, false, PageRequest.of(0, 20)).getContent())
                         .extracting(TemplateResponse::id).containsExactly(orgWide);
-                assertThat(service.list(TemplateStatus.ARCHIVED, null, PageRequest.of(0, 20)).getContent())
+                assertThat(service.list(TemplateStatus.ARCHIVED, null, false, PageRequest.of(0, 20)).getContent())
                         .extracting(TemplateResponse::id).containsExactly(propertyScoped);
-                assertThat(service.list(TemplateStatus.ARCHIVED, TemplateScope.ORGANIZATION, PageRequest.of(0, 20))
+                assertThat(service.list(TemplateStatus.ARCHIVED, TemplateScope.ORGANIZATION, false, PageRequest.of(0, 20))
                         .getContent()).isEmpty();
-                assertThat(service.list(TemplateStatus.ARCHIVED, TemplateScope.PROPERTY, PageRequest.of(0, 20))
+                assertThat(service.list(TemplateStatus.ARCHIVED, TemplateScope.PROPERTY, false, PageRequest.of(0, 20))
                         .getContent()).extracting(TemplateResponse::id).containsExactly(propertyScoped);
-                assertThat(service.list(null, null, PageRequest.of(0, 20)).getContent())
+                assertThat(service.list(null, null, false, PageRequest.of(0, 20)).getContent())
                         .extracting(TemplateResponse::id).containsExactlyInAnyOrder(orgWide, propertyScoped);
             });
 
@@ -225,7 +226,7 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
             // property-scoped row is invisible full stop - row-level security
             // hides it before the scope filter ever runs, so scope=PROPERTY
             // here returns nothing rather than "every property's rows".
-            assertThat(service.list(null, TemplateScope.PROPERTY, PageRequest.of(0, 20)).getContent()).isEmpty();
+            assertThat(service.list(null, TemplateScope.PROPERTY, false, PageRequest.of(0, 20)).getContent()).isEmpty();
         }
 
         @Test
@@ -496,7 +497,7 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
             UUID id = publishedTemplate("Fire walk");
 
             UUID orgB = actAsNewOrg();
-            assertThat(service.list(null, null, PageRequest.of(0, 20)).getContent()).isEmpty();
+            assertThat(service.list(null, null, false, PageRequest.of(0, 20)).getContent()).isEmpty();
             assertThatThrownBy(() -> service.get(id)).isInstanceOf(ResourceNotFoundException.class);
             assertThatThrownBy(() -> service.getVersion(id, 1)).isInstanceOf(ResourceNotFoundException.class);
             assertThatThrownBy(() -> service.createDraft(id, new NewDraftRequest(1)))
