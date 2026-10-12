@@ -105,7 +105,7 @@ Ten tables, all inside the per-tenant schema except the global library.
 | `consumer_key` | → `procedure_consumer`. Not part of the definition document: it is identity and does not vary by version. |
 | `status` | `ACTIVE`, `ARCHIVED`. Draft and published belong to the *version*, not here. |
 | `current_published_version_id` | the moving pointer |
-| `key_seq` | per-template counter for minting question keys. Lives here, not on the version, because a key must never be reused across **any** version. |
+| `key_seq` | per-template counter for minting question keys. Lives here, not on the version, because a key must never be reused across **any** version. An export carries it (`keySeq`), so a file imported elsewhere keeps minting from the same counter. |
 | `global_template_id` | an immutable breadcrumb to the global copy. The **link state is not here** — it lives once, on `global_template_org_copy`, because the global side has to find who is linked without scanning every tenant schema. |
 | `forked_from_template_id`, `applied_version_no`, `link_state`, `deferred_version_no`, `deferred_at` | **feature 11.** The org → property half of the same pattern, one level down. Unlike `global_template_id`, the link state lives **directly on this row** rather than a separate table: a property's fork is its own row from the moment it exists, and nothing repoints which row a fork "is" (the repoint scenario `global_template_org_copy` exists for has no equivalent here). `link_state` reuses `LinkState` unmodified. At most one of `global_template_id` or `forked_from_template_id` is ever set on a given row — importing happens at organization level, forking at property level, onto different rows. |
 | `legacy_id` | provenance from 1.0. `UNIQUE(org_id, legacy_id)` |
@@ -411,7 +411,7 @@ recorded and decides nothing, which is what a meter reading often should do.
 **Keys are stable across versions and never reused.** `q2` means the same question in v1 and v7,
 which is what lets reporting and amendments refer to one question over time. Minted from
 `procedure_template.key_seq`: `s` for sections, `q` for questions, `o` for options, one counter
-behind all three, so a key's prefix alone says what it names.
+behind all three, so a key's prefix alone says what it names. The counter is **not recoverable from the content**: keys are never reused, so a template that has had a question added and removed has a counter past the highest key still in its document. That is why `/export` carries it, and why an import may raise it but never lower it below the highest key the content uses.
 
 **Sibling order is the array index.** No `order` field to renumber, and no way for two siblings to
 claim the same position.
@@ -588,7 +588,7 @@ publicly.
 | Evaluation | evaluate answers against any version, draft included (public); against a published version by id (internal, for the inspection service) |
 | Discovery | `GET /api/v1/procedure-templates/discover?consumer=&kind=&key=` — the active procedures that apply to a target; see *Discovery* below |
 | Documents | create (upload already done via helper), list, get, activate, deactivate, delete (conditional) |
-| Sharing | export a version or several (`GET .../{id}/export`); import from the Sclera-wide library by id, organization level only, creating new or updating existing (`POST .../import`); fork an organization-wide procedure into a property's own copy (`POST .../{id}/fork`); explicit unlink for either (`POST .../{id}/unlink` — fork-on-edit also happens automatically on `saveDraft`); favourite/unfavourite |
+| Sharing | export a version or several (`GET .../{id}/export`); import from the Sclera-wide library by id, organization level only, creating new or updating existing (`POST .../import`); recreate a procedure from an exported file, in the caller's own scope (`POST .../import-file`); fork an organization-wide procedure into a property's own copy (`POST .../{id}/fork`); explicit unlink for either (`POST .../{id}/unlink` — fork-on-edit also happens automatically on `saveDraft`); favourite/unfavourite |
 | Global authoring | platform-admin only: create, save draft, start a new draft from the current published version, publish (`/api/v1/global-procedure-templates/**`) |
 | Library | browse and search the Sclera-wide library: `GET /api/v1/global-procedure-templates?search=&consumer=` (list), `GET .../{id}` (one template with its current form), and `GET .../questions?search=&standard=` (the question bank). Any signed-in user, no per-organization check; see *The reference library and question bank* below |
 | Updates | `GET .../{id}/update-status`, `GET .../{id}/update-diff`, `POST .../{id}/apply-update`, `POST .../{id}/defer-update` — generalised to serve a global import or a property's own fork, whichever the template has |
@@ -926,6 +926,30 @@ to the current published one, with a toggle for whether a version's cited docume
 up in. **Import** either creates a new template or updates an existing one with a new draft, and
 maps result type keys the target organization lacks onto its own by creating them (appended as
 least severe, never guessed at).
+
+**Import from a file** (`POST /api/v1/procedure-templates/import-file`, feature 14) takes the body
+`/export` produces and recreates the procedure as a new, **published** template, so downloading a file and
+uploading the same file is the whole action. It is guarded by `can_manage_templates`, like creating a
+procedure, not `can_import_templates`: this is authoring, pasting in a document the caller already has, and
+the two rights are kept apart on purpose. It works at both levels and follows `create`'s scoping, so where
+the caller is standing decides whether the copy belongs to the organization or to one property; unlike the
+library import it needs no organization-level copy to fork from. The response is the new template plus
+`droppedDocumentCitations`.
+
+- **Only the current version** is recreated: the highest version number in the file. Replaying history would
+  mean publishing once per version to reach the same end state.
+- **The file's hash is checked, not trusted.** It is recomputed from the file's own definition; a mismatch
+  is refused by name as corrupted or edited by hand. The name and description are not part of the hash, so
+  editing them in the file is allowed, and is how a copy gets a name that is not already taken.
+- **The key counter** is the file's `keySeq`, raised to the highest key the content uses. A file exported
+  before the counter was recorded has none and still imports, safely for the keys it has.
+- **Result types** the organization lacks are created, by the same method the library import uses.
+- **Document citations that do not resolve** in the destination are dropped and counted, since a document id
+  means something only in the scope it came from; the Procedures page says how many were left out.
+- **Published through the ordinary publish path**, so the index rows, readiness checks and event all happen.
+  Content that cannot be published here (an unknown target type, a question with no answer mapped to a
+  result) refuses the whole import with the full list and leaves nothing behind, not even a result type the
+  import had already created. Importing the same file twice into one scope is refused: the name is taken.
 
 **Favourites** (`POST`/`DELETE .../{id}/favourite`, and `?favouritesOnly=true` on the list) are a
 plain per-user star, independent of any of the above.

@@ -1195,3 +1195,103 @@ Authorization: Bearer {{token}}
 ### I6. A template that does not exist → 404
 GET {{host}}/api/v1/global-procedure-templates/00000000-0000-0000-0000-000000000000
 Authorization: Bearer {{token}}
+
+
+###############################################################################
+# J — export a procedure, then import the file back (feature 14)
+#
+#   GET  /api/v1/procedure-templates/{id}/export
+#   POST /api/v1/procedure-templates/import-file
+#
+# The body of import-file is exactly what export returned, so J2 stores the
+# export in a variable and J3 posts it back unchanged apart from a new name. The
+# name and description are not part of the file's hash, which is why changing
+# the name is allowed and is how a copy avoids a name that is already taken.
+#
+# Run as testuser (an organization admin). To try it inside a property, add the
+# X-Sclera-Property header to J3: the copy then belongs to that property.
+###############################################################################
+
+### J1. A procedure to export — created and published
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Export me {{$random.integer(1000, 9999)}}",
+  "description": "Source of the file",
+  "definition": {
+    "items": [
+      { "text": "Present?", "type": "YES_NO",
+        "options": [
+          { "label": "Yes", "result": "PASS" },
+          { "label": "No",  "result": "FAIL" }
+        ]
+      }
+    ]
+  }
+}
+
+> {% client.global.set("exportSourceId", response.body.data.id); %}
+
+###
+POST {{host}}/api/v1/procedure-templates/{{exportSourceId}}/publish
+Authorization: Bearer {{token}}
+
+### J2. Export it → 200 with name, description, consumerKey, keySeq (3) and versions[]
+# The script keeps two copies of the file for the next requests: one renamed so it
+# imports cleanly, and one whose question text was changed but whose hash was not.
+GET {{host}}/api/v1/procedure-templates/{{exportSourceId}}/export
+Authorization: Bearer {{token}}
+
+> {%
+  var file = response.body.data;
+  var clean = JSON.parse(JSON.stringify(file));
+  clean.name = "Imported " + Date.now();
+  client.global.set("exportedFile", JSON.stringify(clean));
+  var edited = JSON.parse(JSON.stringify(file));
+  edited.name = "Edited " + Date.now();
+  edited.versions[0].definitionJson = edited.versions[0].definitionJson.replace("Present?", "Present now?");
+  client.global.set("tamperedFile", JSON.stringify(edited));
+%}
+
+### J3. Import the file → 201, a new procedure, published as its only version
+# Expect data.template.currentPublishedVersionNo 1, draftVersionNo absent, and
+# data.droppedDocumentCitations 0.
+POST {{host}}/api/v1/procedure-templates/import-file
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{{exportedFile}}
+
+> {% client.global.set("importedId", response.body.data.template.id); %}
+
+### J4. The same file again → 409, the name is taken
+# Change "name" in the file and it imports; nothing else needs to change.
+POST {{host}}/api/v1/procedure-templates/import-file
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{{exportedFile}}
+
+### J5. A file edited after export → 400, "does not match its own hash ... edited by hand"
+POST {{host}}/api/v1/procedure-templates/import-file
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{{tamperedFile}}
+
+### J6. A body that is not an exported procedure → 400
+POST {{host}}/api/v1/procedure-templates/import-file
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "No versions", "versions": [] }
+
+### J7. Tidy up
+POST {{host}}/api/v1/procedure-templates/{{exportSourceId}}/archive
+Authorization: Bearer {{token}}
+
+###
+POST {{host}}/api/v1/procedure-templates/{{importedId}}/archive
+Authorization: Bearer {{token}}
