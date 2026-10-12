@@ -16,6 +16,7 @@ const NO_PERMISSIONS: Permissions = {
   canManageTemplates: false,
   canPublishTemplates: false,
   canManageResultTypes: false,
+  canImportTemplates: false,
 }
 
 interface AuthState {

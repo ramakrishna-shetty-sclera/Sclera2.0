@@ -401,6 +401,8 @@ export type TargetKind = 'HIERARCHY_LEVEL' | 'LOCATION_TYPE' | 'ASSET_CLASS' | '
 export interface ProcedureTemplate {
   id: string
   orgId: string
+  /** Absent means organization-wide. Set means scoped to that one property. */
+  propertyId?: string | null
   name: string
   description?: string | null
   consumerKey?: string | null
@@ -410,10 +412,17 @@ export interface ProcedureTemplate {
   currentPublishedVersionNo?: number | null
   /** Absent when no draft is open. */
   draftVersionNo?: number | null
+  /** Set only when imported from the Sclera-wide library. At most one of this and forkedFromTemplateId is set. */
+  globalTemplateId?: string | null
+  /** Set only when forked from an organization-wide procedure into a property. */
+  forkedFromTemplateId?: string | null
   createdBy: string
   createdAt: string
   updatedAt: string
 }
+
+/** Whether a procedure is organization-wide or scoped to one property. Independent of `status`. */
+export type TemplateScope = 'ORGANIZATION' | 'PROPERTY'
 
 /** A version without its document, for history lists. */
 export interface TemplateVersionSummary {
@@ -541,6 +550,85 @@ export interface Permissions {
   canManageTemplates: boolean
   canPublishTemplates: boolean
   canManageResultTypes: boolean
+  canImportTemplates: boolean
+}
+
+// ── Sharing: the Sclera-wide library, import/export, the update lifecycle ────
+// (features 10-12). `linkState`/`appliedVersionNo` deliberately do not appear
+// on ProcedureTemplate — only UpdateStatus carries them, fetched live, because
+// they mean different things for an import (tracked on a separate global-copy
+// row) and a fork (tracked on the template's own row), and the list view only
+// needs to know *that* a template tracks something, not its live state.
+
+/** One row of the Sclera-wide library, for browsing and searching. */
+export interface GlobalTemplateSummary {
+  id: string
+  name: string
+  description?: string | null
+  consumerKey?: string | null
+  currentVersionNo?: number | null
+  publishedAt?: string | null
+}
+
+/** A global template's current content, for a read-only preview before importing. */
+export interface GlobalTemplateDetail {
+  id: string
+  name: string
+  description?: string | null
+  consumerKey?: string | null
+  currentVersionNo?: number | null
+  publishedAt?: string | null
+  changeNote?: string | null
+  definition: DefinitionDocument
+}
+
+/** One question found in the cross-template question bank, with where it came from. */
+export interface QuestionBankEntry {
+  questionKey: string
+  text: string
+  standard?: string | null
+  sectionText?: string | null
+  templateId: string
+  templateName: string
+  versionNo: number
+}
+
+/**
+ * Whether a template's link to its parent (a global template or an
+ * organization-wide procedure) is ahead of what was last applied. Fetched
+ * live with `GET .../update-status` — never stored on ProcedureTemplate.
+ */
+export interface UpdateStatus {
+  linkState?: 'LINKED' | 'DEFERRED' | 'STANDALONE' | null
+  appliedVersionNo?: number | null
+  currentVersionNo?: number | null
+  updateAvailable: boolean
+}
+
+export interface ImportRequest {
+  globalTemplateId: string
+  /** Defaults to the global template's current published version. */
+  versionNo?: number
+  /** Set to update an existing procedure instead of creating a new one. */
+  templateId?: string
+  /** Used only when creating a new procedure. */
+  name?: string
+}
+
+export interface ExportedVersion {
+  versionNo: number
+  definition: DefinitionDocument
+}
+
+export interface ExportedProcedure {
+  templateId: string
+  name: string
+  versions: ExportedVersion[]
+}
+
+export interface FavouriteResponse {
+  templateId: string
+  favourited: boolean
 }
 
 // ── Evaluation (feature 7) ────────────────────────────────────────────────

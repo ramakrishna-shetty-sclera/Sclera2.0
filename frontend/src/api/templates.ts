@@ -3,15 +3,20 @@ import type {
   CloneProcedureRequest,
   CreateProcedureRequest,
   EvaluationResponse,
+  ExportedProcedure,
+  FavouriteResponse,
+  ImportRequest,
   NewDraftRequest,
   ProcedureDiff,
   ProcedureStatus,
   ProcedureTemplate,
   PublishResult,
   SaveDraftRequest,
+  TemplateScope,
   TemplateVersion,
   TemplateVersionSummary,
   UpdateProcedureRequest,
+  UpdateStatus,
 } from './types'
 
 // ── Procedures ───────────────────────────────────────────────────────────────
@@ -21,13 +26,22 @@ import type {
 
 const PROCEDURES = '/api/v1/procedure-templates'
 
-/** Identity only; the questions are on the versions. `status` filters ACTIVE vs ARCHIVED. */
+/**
+ * Identity only; the questions are on the versions. `status` filters ACTIVE
+ * vs ARCHIVED, `scope` filters organization-wide vs property-scoped — the two
+ * are independent and either, both or neither may be set.
+ */
 export function listProcedures(params: {
   status?: ProcedureStatus
+  scope?: TemplateScope
+  favouritesOnly?: boolean
   page?: number
   size?: number
 } = {}): Promise<ApiResult<ProcedureTemplate[]>> {
-  return apiFetch<ProcedureTemplate[]>(PROCEDURES, { query: params })
+  const { favouritesOnly, ...rest } = params
+  return apiFetch<ProcedureTemplate[]>(PROCEDURES, {
+    query: { ...rest, favouritesOnly: favouritesOnly === undefined ? undefined : String(favouritesOnly) },
+  })
 }
 
 export function getProcedure(id: string): Promise<ProcedureTemplate> {
@@ -129,4 +143,64 @@ export function evaluateVersion(
     method: 'POST',
     body: { answers },
   }).then((r) => r.data)
+}
+
+// ── Sharing: the update lifecycle, import/export, fork, favourites ───────────
+// (features 10-12). See src/api/library.ts for browsing the Sclera-wide
+// library itself, which these act on the result of.
+
+/** Copies an organization-wide procedure into a new, independent template scoped to the current property. */
+export function forkProcedure(id: string): Promise<ProcedureTemplate> {
+  return apiFetch<ProcedureTemplate>(`${PROCEDURES}/${id}/fork`, { method: 'POST' }).then((r) => r.data)
+}
+
+/** Omitting `versions` exports the current published version only. */
+export function exportProcedure(
+  id: string,
+  params: { versions?: number[]; includeDocuments?: boolean } = {},
+): Promise<ExportedProcedure> {
+  return apiFetch<ExportedProcedure>(`${PROCEDURES}/${id}/export`, {
+    query: {
+      versions: params.versions?.join(','),
+      includeDocuments: params.includeDocuments === undefined ? undefined : String(params.includeDocuments),
+    },
+  }).then((r) => r.data)
+}
+
+/** Create new (omit `templateId`) or update an existing procedure, from the Sclera-wide library. */
+export function importProcedure(body: ImportRequest): Promise<ProcedureTemplate> {
+  return apiFetch<ProcedureTemplate>(`${PROCEDURES}/import`, { method: 'POST', body }).then((r) => r.data)
+}
+
+/** Stops tracking a linked parent without requiring an edit first. */
+export function unlinkProcedure(id: string): Promise<ProcedureTemplate> {
+  return apiFetch<ProcedureTemplate>(`${PROCEDURES}/${id}/unlink`, { method: 'POST' }).then((r) => r.data)
+}
+
+/** Whether this template's link to its parent (global template or org-wide procedure) is behind. */
+export function getUpdateStatus(id: string): Promise<UpdateStatus> {
+  return apiFetch<UpdateStatus>(`${PROCEDURES}/${id}/update-status`).then((r) => r.data)
+}
+
+/** What changed between the applied version and the parent's current one. */
+export function getUpdateDiff(id: string): Promise<ProcedureDiff> {
+  return apiFetch<ProcedureDiff>(`${PROCEDURES}/${id}/update-diff`).then((r) => r.data)
+}
+
+/** Pulls the parent's current content into a new draft. 409s if a draft is already open. */
+export function applyUpdate(id: string): Promise<ProcedureTemplate> {
+  return apiFetch<ProcedureTemplate>(`${PROCEDURES}/${id}/apply-update`, { method: 'POST' }).then((r) => r.data)
+}
+
+/** Records that an available update was seen and deliberately not applied yet. */
+export function deferUpdate(id: string): Promise<UpdateStatus> {
+  return apiFetch<UpdateStatus>(`${PROCEDURES}/${id}/defer-update`, { method: 'POST' }).then((r) => r.data)
+}
+
+export function favouriteProcedure(id: string): Promise<FavouriteResponse> {
+  return apiFetch<FavouriteResponse>(`${PROCEDURES}/${id}/favourite`, { method: 'POST' }).then((r) => r.data)
+}
+
+export function unfavouriteProcedure(id: string): Promise<FavouriteResponse> {
+  return apiFetch<FavouriteResponse>(`${PROCEDURES}/${id}/favourite`, { method: 'DELETE' }).then((r) => r.data)
 }
