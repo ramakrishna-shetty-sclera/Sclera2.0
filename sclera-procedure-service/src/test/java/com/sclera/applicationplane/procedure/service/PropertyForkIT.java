@@ -61,6 +61,8 @@ class PropertyForkIT extends PostgresIntegrationTest {
 
         assertThat(fork.propertyId()).isEqualTo(property);
         assertThat(fork.draftVersionNo()).isEqualTo(1);
+        assertThat(fork.forkedFromTemplateId()).isEqualTo(source.id());
+        assertThat(fork.globalTemplateId()).isNull();
         VersionResponse draft = asProperty(org, property, () -> service.getDraft(fork.id()));
         assertThat(draft.definition().items()).extracting(Item::text).containsExactly("Exit clear?");
 

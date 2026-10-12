@@ -250,6 +250,8 @@ class ProcedureSharingIT extends PostgresIntegrationTest {
 
             assertThat(imported.name()).isEqualTo("Fire extinguisher walk");
             assertThat(imported.draftVersionNo()).isEqualTo(1);
+            assertThat(imported.globalTemplateId()).isEqualTo(global.getId());
+            assertThat(imported.forkedFromTemplateId()).isNull();
             VersionResponse draft = service.getDraft(imported.id());
             assertThat(draft.definition().items()).extracting(Item::key).containsExactly("q1");
 
