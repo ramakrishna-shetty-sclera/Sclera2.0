@@ -214,6 +214,16 @@ input[type='file'] {
   padding: 0;
 }
 
+/*
+ * The input rule above gives every input display: block, and a site's own display beats the
+ * browser's built-in [hidden] { display: none }. So an input hidden with the attribute, as the
+ * file inputs behind the Documents upload and Import from file are, showed its native
+ * "Choose file" control at full width. This restores what the attribute says.
+ */
+[hidden] {
+  display: none !important;
+}
+
 .checkbox {
   display: flex;
   align-items: center;
