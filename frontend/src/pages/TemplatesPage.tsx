@@ -1,10 +1,25 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { listProcedures } from '../api/templates'
-import type { Pagination, ProcedureStatus, ProcedureTemplate, TemplateScope } from '../api/types'
+import { ApiError } from '../api/client'
+import { importProcedureFile, listProcedures } from '../api/templates'
+import type {
+  ExportedProcedure,
+  Pagination,
+  ProcedureStatus,
+  ProcedureTemplate,
+  TemplateScope,
+} from '../api/types'
 import { useAuth } from '../auth/AuthContext'
-import { StatusBadge } from '../components/StatusBadge'
 import { Pager } from '../components/Pager'
+import { Refusal } from '../components/Refusal'
+import { StatusBadge } from '../components/StatusBadge'
+
+/** Enough to tell an exported procedure from any other JSON; the server judges everything else. */
+function looksExported(value: unknown): value is ExportedProcedure {
+  if (typeof value !== 'object' || value === null) return false
+  const candidate = value as { name?: unknown; versions?: unknown }
+  return typeof candidate.name === 'string' && Array.isArray(candidate.versions)
+}
 
 /**
  * The procedure library.
@@ -25,6 +40,11 @@ export function TemplatesPage() {
   const [page, setPage] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const [importing, setImporting] = useState(false)
+  const [importError, setImportError] = useState<unknown>(null)
+  const [dropped, setDropped] = useState<{ id: string; name: string; count: number } | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -47,7 +67,56 @@ export function TemplatesPage() {
     return () => {
       cancelled = true
     }
-  }, [status, scope, favouritesOnly, page])
+  }, [status, scope, favouritesOnly, page, reloadKey])
+
+  /**
+   * Recreates a procedure from a file the Export button produced, in whichever scope the
+   * switcher is on. The file is read and parsed here, so one that is not JSON is told so at
+   * once with no round trip. Everything else is the server's to judge: a file edited after
+   * export, content that cannot be published in this scope, a name already taken.
+   */
+  async function onFile(file: File | undefined) {
+    if (!file) return
+    setImporting(true)
+    setImportError(null)
+    setDropped(null)
+    try {
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(await file.text())
+      } catch {
+        throw new Error('That file is not valid JSON. Choose a file the Export button produced.')
+      }
+      if (!looksExported(parsed)) {
+        throw new Error(
+          'That file does not look like an exported procedure. Choose a file the Export button produced.',
+        )
+      }
+      const result = await importProcedureFile(parsed)
+      if (result.droppedDocumentCitations > 0) {
+        // Stay here: navigating away would lose the one thing the user has to be told.
+        setDropped({
+          id: result.template.id,
+          name: result.template.name,
+          count: result.droppedDocumentCitations,
+        })
+        setPage(0)
+        setReloadKey((k) => k + 1)
+      } else {
+        navigate('/templates/' + result.template.id)
+      }
+    } catch (e) {
+      // The name is not part of the file's hash, so editing it is the way out of a clash.
+      setImportError(
+        e instanceof ApiError && e.status === 409
+          ? new Error(e.message + '. Change the name in the file and try again.')
+          : e,
+      )
+    } finally {
+      setImporting(false)
+      if (fileInput.current) fileInput.current.value = ''
+    }
+  }
 
   return (
     <div>
@@ -95,12 +164,40 @@ export function TemplatesPage() {
             Favourites only
           </label>
           {permissions.canManageTemplates && (
-            <Link className="btn btn-primary" to="/templates/new">
-              New procedure
-            </Link>
+            <>
+              <input
+                ref={fileInput}
+                type="file"
+                accept="application/json,.json"
+                hidden
+                onChange={(e) => onFile(e.target.files?.[0])}
+              />
+              <button
+                className="btn"
+                disabled={importing}
+                title="Recreates an exported procedure in the scope you are working in"
+                onClick={() => fileInput.current?.click()}
+              >
+                {importing ? 'Importing…' : 'Import from file'}
+              </button>
+              <Link className="btn btn-primary" to="/templates/new">
+                New procedure
+              </Link>
+            </>
           )}
         </div>
       </div>
+
+      {dropped && (
+        <div className="alert alert-amber">
+          '{dropped.name}' was imported, but {dropped.count} document{' '}
+          {dropped.count === 1 ? 'citation was' : 'citations were'} left out: the{' '}
+          {dropped.count === 1 ? 'document is' : 'documents are'} not in this scope's library.{' '}
+          <Link to={'/templates/' + dropped.id}>Open it</Link> and cite{' '}
+          {dropped.count === 1 ? 'it' : 'them'} again from the Reference documents card.
+        </div>
+      )}
+      <Refusal error={importError} />
 
       {error && <div className="alert alert-error">{error}</div>}
       {loading ? (
