@@ -30,6 +30,8 @@ public class ProcedureTemplateMapper {
                 t.getCurrentPublishedVersionId(),
                 currentPublishedVersionNo,
                 draftVersionNo,
+                t.getGlobalTemplateId(),
+                t.getForkedFromTemplateId(),
                 t.getCreatedBy(),
                 t.getCreatedAt(),
                 t.getUpdatedAt());

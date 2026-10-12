@@ -55,6 +55,27 @@ public final class ProcedureTemplateDtos {
 
     // --- responses ----------------------------------------------------------
 
+    /**
+     * {@code globalTemplateId}/{@code forkedFromTemplateId} let a list or
+     * detail view show where a template came from — "tracks the shared
+     * library" or "a property's fork" — without an extra call per row. At
+     * most one is ever set: importing happens at organization level and
+     * sets the former; forking happens at property level, onto a different
+     * row, and sets the latter. Both null means hand-authored.
+     *
+     * <p>Deliberately <b>not</b> included here: {@code linkState} and
+     * {@code appliedVersionNo}. Both exist as plain columns on
+     * {@code procedure_template}, but only the fork path ever writes them —
+     * an import's equivalent state lives on {@code GlobalTemplateOrgCopy},
+     * a different row entirely (see {@code GlobalTemplateOrgCopy}'s own
+     * javadoc for why). Reading the entity's own columns here would report
+     * a real, non-null link state for every fork and a silent, misleading
+     * {@code null} for every import that is actually {@code DEFERRED} —
+     * right for one parent kind and wrong for the other on the same field.
+     * {@code GET .../update-status} remains the one authoritative source for
+     * the live link state, for either parent kind; the ids above are only
+     * enough to decide whether that call is worth making at all.
+     */
     public record TemplateResponse(
             UUID id,
             UUID orgId,
@@ -67,6 +88,8 @@ public final class ProcedureTemplateDtos {
             UUID currentPublishedVersionId,
             Integer currentPublishedVersionNo,
             Integer draftVersionNo,
+            UUID globalTemplateId,
+            UUID forkedFromTemplateId,
             UUID createdBy,
             OffsetDateTime createdAt,
             OffsetDateTime updatedAt) {}
