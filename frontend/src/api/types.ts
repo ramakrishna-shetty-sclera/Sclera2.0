@@ -623,12 +623,33 @@ export interface ExportedVersion {
   changeNote?: string | null
 }
 
-/** What GET .../export returns. Carries no org id, no property id, no FGA state. */
+/**
+ * What GET .../export returns, and what POST .../import-file takes back. Carries no
+ * org id, no property id, no FGA state.
+ */
 export interface ExportedProcedure {
   name: string
   description?: string | null
   consumerKey?: string | null
+  /**
+   * The source template's key counter: the number its next question, section or
+   * answer key is minted from. It is not recoverable from the content, because keys
+   * are never reused. Absent in a file exported before it was recorded, which the
+   * server reads as 0 and raises to the highest key the content uses.
+   */
+  keySeq?: number
   versions: ExportedVersion[]
+}
+
+/**
+ * What importing a file produced: the new procedure, and how many document citations
+ * were left out of it. A citation names a library document by id, which means nothing
+ * outside the scope it was exported from, so one the destination cannot resolve is
+ * dropped rather than refusing the whole import. Say so when it is not zero.
+ */
+export interface ImportFileResult {
+  template: ProcedureTemplate
+  droppedDocumentCitations: number
 }
 
 export interface FavouriteResponse {

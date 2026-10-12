@@ -5,6 +5,7 @@ import type {
   EvaluationResponse,
   ExportedProcedure,
   FavouriteResponse,
+  ImportFileResult,
   ImportRequest,
   NewDraftRequest,
   ProcedureDiff,
@@ -170,6 +171,17 @@ export function exportProcedure(
 /** Create new (omit `templateId`) or update an existing procedure, from the Sclera-wide library. */
 export function importProcedure(body: ImportRequest): Promise<ProcedureTemplate> {
   return apiFetch<ProcedureTemplate>(`${PROCEDURES}/import`, { method: 'POST', body }).then((r) => r.data)
+}
+
+/**
+ * Recreates a procedure from a file `exportProcedure` produced, in whichever scope
+ * (organization or property) the caller is standing in. Published at once, as its only
+ * version. The body is the export's own shape, so upload the same object you downloaded.
+ * Refused, with a message that names the problem, when the file was edited after export
+ * or its content cannot be published here.
+ */
+export function importProcedureFile(body: ExportedProcedure): Promise<ImportFileResult> {
+  return apiFetch<ImportFileResult>(`${PROCEDURES}/import-file`, { method: 'POST', body }).then((r) => r.data)
 }
 
 /** Stops tracking a linked parent without requiring an edit first. */
