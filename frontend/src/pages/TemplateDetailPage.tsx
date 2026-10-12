@@ -1,23 +1,36 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
+  applyUpdate,
   archiveProcedure,
   cloneProcedure,
   createDraft,
+  deferUpdate,
   discardDraft,
+  exportProcedure,
+  favouriteProcedure,
+  forkProcedure,
   getDraft,
   getProcedure,
+  getUpdateDiff,
+  getUpdateStatus,
   getVersion,
+  listProcedures,
   listVersions,
   publishProcedure,
+  unfavouriteProcedure,
+  unlinkProcedure,
 } from '../api/templates'
 import { createInspection } from '../api/inspections'
-import type { ProcedureTemplate, TemplateVersion, TemplateVersionSummary } from '../api/types'
+import { getSelectedProperty } from '../api/client'
+import type { ProcedureDiff, ProcedureTemplate, TemplateVersion, TemplateVersionSummary, UpdateStatus } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { StatusBadge } from '../components/StatusBadge'
 import { DefinitionView } from '../components/DefinitionView'
+import { DiffView } from '../components/DiffView'
 import { VersionHistory } from '../components/VersionHistory'
 import { Refusal } from '../components/Refusal'
+import { Modal } from '../components/Modal'
 
 /**
  * One procedure: what it is, what it can do next, and the content of whichever
@@ -41,6 +54,22 @@ export function TemplateDetailPage() {
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  /** Only fetched when the procedure tracks a parent — an import or a fork. */
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
+  const [diff, setDiff] = useState<ProcedureDiff | null>(null)
+  const [diffError, setDiffError] = useState<string | null>(null)
+  const [showExport, setShowExport] = useState(false)
+  const [exportVersions, setExportVersions] = useState<Set<number>>(new Set())
+  const [exportIncludeDocuments, setExportIncludeDocuments] = useState(false)
+  /**
+   * There is no field on TemplateResponse saying whether the current user has
+   * starred this procedure, so this is read back from the favourites-only
+   * list rather than the procedure itself — fine at this app's scale, and
+   * self-correcting the moment the toggle below is used, since that always
+   * trusts the server's own returned state.
+   */
+  const [favourited, setFavourited] = useState(false)
+
   /**
    * Loads the procedure, its history, and the version worth showing by default:
    * the draft when one is open, since that is what the author is working on,
@@ -62,6 +91,16 @@ export function TemplateDetailPage() {
     } else {
       setVersion(null)
     }
+
+    setDiff(null)
+    if (p.globalTemplateId != null || p.forkedFromTemplateId != null) {
+      setUpdateStatus(await getUpdateStatus(id).catch(() => null))
+    } else {
+      setUpdateStatus(null)
+    }
+
+    const favs = await listProcedures({ favouritesOnly: true, size: 200 }).catch(() => null)
+    setFavourited(favs?.data.some((t) => t.id === id) ?? false)
   }, [id])
 
   /** Shows an older version from the history without changing anything. */
@@ -131,6 +170,76 @@ export function TemplateDetailPage() {
     }
   }
 
+  async function onFork() {
+    if (!procedure) return
+    setBusy(true)
+    setError(null)
+    try {
+      const fork = await forkProcedure(procedure.id)
+      navigate(`/templates/${fork.id}`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not fork this procedure')
+      setBusy(false)
+    }
+  }
+
+  async function onViewDiff() {
+    if (!procedure) return
+    setDiffError(null)
+    try {
+      setDiff(await getUpdateDiff(procedure.id))
+    } catch (e) {
+      setDiff(null)
+      setDiffError(e instanceof Error ? e.message : 'Could not load the diff')
+    }
+  }
+
+  function toggleExportVersion(versionNo: number) {
+    setExportVersions((prev) => {
+      const next = new Set(prev)
+      if (next.has(versionNo)) next.delete(versionNo)
+      else next.add(versionNo)
+      return next
+    })
+  }
+
+  async function onExport() {
+    if (!procedure) return
+    setBusy(true)
+    setError(null)
+    try {
+      const exported = await exportProcedure(procedure.id, {
+        versions: exportVersions.size > 0 ? Array.from(exportVersions) : undefined,
+        includeDocuments: exportIncludeDocuments,
+      })
+      const blob = new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${procedure.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      setShowExport(false)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not export this procedure')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onToggleFavourite() {
+    if (!procedure) return
+    const was = favourited
+    setFavourited(!was)
+    try {
+      const result = was ? await unfavouriteProcedure(procedure.id) : await favouriteProcedure(procedure.id)
+      setFavourited(result.favourite)
+    } catch (e) {
+      setFavourited(was)
+      setError(e instanceof Error ? e.message : 'Could not update the favourite')
+    }
+  }
+
   async function startInspection() {
     if (!procedure) return
     setBusy(true)
@@ -151,12 +260,27 @@ export function TemplateDetailPage() {
   const hasDraft = procedure.draftVersionNo != null
   const published = procedure.currentPublishedVersionNo
   const archived = procedure.status === 'ARCHIVED'
+  const canFork =
+    procedure.propertyId == null &&
+    procedure.forkedFromTemplateId == null &&
+    getSelectedProperty() != null &&
+    permissions.canManageTemplates
+  const canUnlink = updateStatus?.linkState === 'LINKED' || updateStatus?.linkState === 'DEFERRED'
 
   return (
     <div>
       <div className="page-head">
         <div>
-          <h1>{procedure.name}</h1>
+          <h1>
+            <button
+              className="btn btn-ghost small"
+              title={favourited ? 'Remove from favourites' : 'Add to favourites'}
+              onClick={onToggleFavourite}
+            >
+              {favourited ? '★' : '☆'}
+            </button>{' '}
+            {procedure.name}
+          </h1>
           <p className="muted">
             <StatusBadge status={procedure.status} />
             {published == null ? ' · never published' : ` · published v${published}`}
@@ -169,6 +293,27 @@ export function TemplateDetailPage() {
           </p>
         </div>
         <div className="page-actions">
+          {canFork && (
+            <button className="btn" disabled={busy} onClick={onFork}>
+              Customize for this property
+            </button>
+          )}
+          {canUnlink && permissions.canManageTemplates && (
+            <button
+              className="btn"
+              disabled={busy}
+              onClick={() => {
+                if (confirm('Stop tracking this procedure\'s shared source? You can still edit it on your own.')) {
+                  run(() => unlinkProcedure(procedure.id))
+                }
+              }}
+            >
+              Unlink
+            </button>
+          )}
+          <button className="btn" disabled={busy} onClick={() => setShowExport(true)}>
+            Export
+          </button>
           {!archived && hasDraft && (
             <>
               {permissions.canManageTemplates && (
@@ -235,6 +380,38 @@ export function TemplateDetailPage() {
       {error && <div className="alert alert-error">{error}</div>}
       <Refusal error={refusal} />
 
+      {updateStatus?.updateAvailable && (
+        <div className="alert alert-amber">
+          An update is available — v{updateStatus.currentVersionNo}
+          {updateStatus.appliedVersionNo != null && `, you have v${updateStatus.appliedVersionNo}`}.
+          <div className="page-actions">
+            <button className="btn btn-ghost small" onClick={onViewDiff}>
+              View diff
+            </button>
+            {permissions.canManageTemplates && (
+              <>
+                <button className="btn btn-primary small" disabled={busy} onClick={() => run(() => applyUpdate(procedure.id))}>
+                  Apply update
+                </button>
+                <button
+                  className="btn small"
+                  disabled={busy}
+                  onClick={() => {
+                    if (confirm('Defer this update? You can apply it later.')) {
+                      run(() => deferUpdate(procedure.id))
+                    }
+                  }}
+                >
+                  Defer
+                </button>
+              </>
+            )}
+          </div>
+          {diffError && <div className="alert alert-error">{diffError}</div>}
+          {diff && <DiffView result={diff} />}
+        </div>
+      )}
+
       {procedure.description && <p>{procedure.description}</p>}
 
       {version === null ? (
@@ -263,6 +440,40 @@ export function TemplateDetailPage() {
           viewingVersionNo={version?.versionNo ?? null}
           onView={showVersion}
         />
+      )}
+
+      {showExport && (
+        <Modal title="Export" onClose={() => setShowExport(false)}>
+          <p className="muted small">
+            Choose which published versions to include. Leaving none checked exports the current
+            published version only.
+          </p>
+          {versions
+            .filter((v) => v.state !== 'DRAFT')
+            .map((v) => (
+              <label key={v.id} className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={exportVersions.has(v.versionNo)}
+                  onChange={() => toggleExportVersion(v.versionNo)}
+                />
+                v{v.versionNo}
+              </label>
+            ))}
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={exportIncludeDocuments}
+              onChange={(e) => setExportIncludeDocuments(e.target.checked)}
+            />
+            Include cited documents
+          </label>
+          <div className="page-actions">
+            <button className="btn btn-primary" disabled={busy} onClick={onExport}>
+              Download
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   )
