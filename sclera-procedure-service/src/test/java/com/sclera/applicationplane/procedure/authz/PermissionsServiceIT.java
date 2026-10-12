@@ -48,6 +48,7 @@ class PermissionsServiceIT {
     private static final UUID ADMIN = UUID.randomUUID();
     private static final UUID AUTHOR = UUID.randomUUID();
     private static final UUID PUBLISHER = UUID.randomUUID();
+    private static final UUID IMPORTER = UUID.randomUUID();
     private static final UUID RESULT_TYPE_MANAGER = UUID.randomUUID();
     private static final UUID SUPERVISOR = UUID.randomUUID();
     private static final UUID INSPECTOR = UUID.randomUUID();
@@ -78,6 +79,7 @@ class PermissionsServiceIT {
                 tuple("user:" + ADMIN, "admin", "organization:" + ORG),
                 tuple("user:" + AUTHOR, "template_author", "organization:" + ORG),
                 tuple("user:" + PUBLISHER, "template_publisher", "organization:" + ORG),
+                tuple("user:" + IMPORTER, "template_importer", "organization:" + ORG),
                 tuple("user:" + RESULT_TYPE_MANAGER, "result_type_manager", "organization:" + ORG),
                 tuple("user:" + SUPERVISOR, "supervisor", "organization:" + ORG),
                 tuple("user:" + INSPECTOR, "inspector", "organization:" + ORG),
@@ -102,14 +104,14 @@ class PermissionsServiceIT {
     void anAdminMayDoEverything() {
         actAs(ADMIN);
         assertThat(service.forCurrentUser())
-                .isEqualTo(new PermissionsResponse(true, true, true, true));
+                .isEqualTo(new PermissionsResponse(true, true, true, true, true));
     }
 
     @Test
-    void anAuthorMayAuthorButNotPublishOrManageResultTypes() {
+    void anAuthorMayAuthorButNotPublishManageResultTypesOrImport() {
         actAs(AUTHOR);
         assertThat(service.forCurrentUser())
-                .isEqualTo(new PermissionsResponse(true, true, false, false));
+                .isEqualTo(new PermissionsResponse(true, true, false, false, false));
     }
 
     @Test
@@ -118,42 +120,53 @@ class PermissionsServiceIT {
         // separate rights, and this is the role that only holds one of them.
         actAs(PUBLISHER);
         assertThat(service.forCurrentUser())
-                .isEqualTo(new PermissionsResponse(true, false, true, false));
+                .isEqualTo(new PermissionsResponse(true, false, true, false, false));
+    }
+
+    @Test
+    void anImporterMayImportButNotAuthorOrPublish() {
+        // template_importer had no call site at all until feature 11's
+        // POST /import started guarding on can_import_templates -- this is
+        // the first test that actually exercises the role, not just the
+        // admin bypass that every other case here also happens to satisfy.
+        actAs(IMPORTER);
+        assertThat(service.forCurrentUser())
+                .isEqualTo(new PermissionsResponse(true, false, false, false, true));
     }
 
     @Test
     void aResultTypeManagerMayManageResultTypesButNotTemplates() {
         actAs(RESULT_TYPE_MANAGER);
         assertThat(service.forCurrentUser())
-                .isEqualTo(new PermissionsResponse(true, false, false, true));
+                .isEqualTo(new PermissionsResponse(true, false, false, true, false));
     }
 
     @Test
     void aSupervisorMayOnlyView() {
         actAs(SUPERVISOR);
         assertThat(service.forCurrentUser())
-                .isEqualTo(new PermissionsResponse(true, false, false, false));
+                .isEqualTo(new PermissionsResponse(true, false, false, false, false));
     }
 
     @Test
     void anInspectorMayOnlyView() {
         actAs(INSPECTOR);
         assertThat(service.forCurrentUser())
-                .isEqualTo(new PermissionsResponse(true, false, false, false));
+                .isEqualTo(new PermissionsResponse(true, false, false, false, false));
     }
 
     @Test
     void aViewerMayOnlyView() {
         actAs(VIEWER);
         assertThat(service.forCurrentUser())
-                .isEqualTo(new PermissionsResponse(true, false, false, false));
+                .isEqualTo(new PermissionsResponse(true, false, false, false, false));
     }
 
     @Test
     void someoneWithNoGrantsMayDoNothing() {
         actAs(NO_GRANTS);
         assertThat(service.forCurrentUser())
-                .isEqualTo(new PermissionsResponse(false, false, false, false));
+                .isEqualTo(new PermissionsResponse(false, false, false, false, false));
     }
 
     @Test
@@ -161,7 +174,7 @@ class PermissionsServiceIT {
         actAs(UUID.randomUUID());
         OrgContext.setPlatformAdmin(true);
         assertThat(service.forCurrentUser())
-                .isEqualTo(new PermissionsResponse(true, true, true, true));
+                .isEqualTo(new PermissionsResponse(true, true, true, true, true));
     }
 
     private static void actAs(UUID userId) {

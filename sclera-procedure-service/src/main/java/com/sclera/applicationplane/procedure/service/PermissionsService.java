@@ -26,6 +26,7 @@ public class PermissionsService {
                 fga.checkOrg("can_view"),
                 fga.checkOrg("can_manage_templates"),
                 fga.checkOrg("can_publish_templates"),
-                fga.checkOrg("can_manage_result_types"));
+                fga.checkOrg("can_manage_result_types"),
+                fga.checkOrg("can_import_templates"));
     }
 }
