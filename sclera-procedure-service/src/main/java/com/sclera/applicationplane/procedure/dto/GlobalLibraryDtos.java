@@ -4,6 +4,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 
+import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.TemplateResponse;
+
 import java.util.List;
 import java.util.UUID;
 
@@ -69,6 +71,20 @@ public final class GlobalLibraryDtos {
             @Positive Integer versionNo,
             UUID templateId,
             @Size(max = 200) String name) {}
+
+    /**
+     * What importing a file produced: the new procedure, and how many document
+     * citations were left out of it.
+     *
+     * <p>A citation names a library document by id, and that id means nothing
+     * outside the scope it was exported from. The importer does not own the
+     * destination's document library, so a citation it cannot resolve is dropped
+     * rather than refusing the whole import, and the count is reported so the
+     * screen can say so instead of losing them silently.
+     */
+    public record ImportFileResponse(
+            TemplateResponse template,
+            int droppedDocumentCitations) {}
 
     // --- favourites -------------------------------------------------------------
 

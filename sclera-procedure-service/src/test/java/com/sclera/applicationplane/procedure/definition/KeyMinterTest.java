@@ -137,4 +137,37 @@ class KeyMinterTest {
 
         assertThat(keyed.targetTypes()).containsExactly(new TargetType(TargetKind.ASSET_CLASS, "EXTINGUISHER"));
     }
+
+    @Test
+    void theHighestKeyNumberCountsSectionsQuestionsAnswersAndFollowUps() {
+        Item followUp = Item.builder().key("q40").text("Why?").type(QuestionType.TEXT).build();
+        Item parent = Item.builder().key("q2").text("Present?").type(QuestionType.YES_NO)
+                .options(List.of(new Option("o3", "Yes", "PASS", null, false), new Option("o17", "No", "FAIL", null, false)))
+                .follow(List.of(followUp)).build();
+
+        assertThat(KeyMinter.highestKeyNumber(doc(section("s1", "Fire"), parent))).as("the follow-up's q40 is deepest").isEqualTo(40);
+        assertThat(KeyMinter.highestKeyNumber(doc(section("s1", "Fire"), q("q2", "Present?")))).isEqualTo(2);
+    }
+
+    @Test
+    void theHighestKeyNumberIsTheNumberNotTheTextSoNineIsBelowTen() {
+        // Compared as text, "q9" would sort after "q10".
+        assertThat(KeyMinter.highestKeyNumber(doc(q("q9", "A"), q("q10", "B")))).isEqualTo(10);
+    }
+
+    @Test
+    void aDocumentWithNoKeysOrOnlyUnusableOnesHasHighestKeyZero() {
+        assertThat(KeyMinter.highestKeyNumber(doc())).isZero();
+        assertThat(KeyMinter.highestKeyNumber(doc(q(null, "New"), q("  ", "Blank"), q("zz", "Malformed")))).isZero();
+    }
+
+    @Test
+    void aKeyPastTheCounterIsRefusedWhichIsWhyTheCounterMustNotBeRebuiltBelowTheContent() {
+        DefinitionDocument document = doc(q("q5", "Five"));
+        int floor = KeyMinter.highestKeyNumber(document);
+
+        assertThatThrownBy(() -> KeyMinter.assignKeys(document, floor - 1, new AtomicInteger()::incrementAndGet))
+                .isInstanceOf(ValidationException.class).hasMessageContaining("never issued");
+        assertThat(KeyMinter.assignKeys(document, floor, new AtomicInteger()::incrementAndGet).items()).hasSize(1);
+    }
 }

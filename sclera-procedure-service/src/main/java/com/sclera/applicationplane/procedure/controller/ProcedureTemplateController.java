@@ -7,6 +7,7 @@ import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluateRequest;
 import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluationResponse;
 import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ExportedProcedure;
 import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.FavouriteResponse;
+import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ImportFileResponse;
 import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ImportRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.CloneRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.CreateTemplateRequest;
@@ -204,6 +205,20 @@ public class ProcedureTemplateController {
     @PreAuthorize("@fga.checkOrg('can_import_templates')")
     public TemplateResponse importFromGlobal(@Valid @RequestBody ImportRequest request) {
         return service.importFromGlobal(request);
+    }
+
+    /**
+     * Recreates a procedure from a file {@code /export} produced. Guarded like
+     * {@link #create}, not like the library import above: this is authoring, pasting
+     * in a document the caller already has, which feature 3 keeps apart from pulling
+     * from the shared library. The body is the export's own shape, so downloading and
+     * uploading the same file is the whole action.
+     */
+    @PostMapping("/import-file")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("@fga.checkOrg('can_manage_templates')")
+    public ImportFileResponse importFile(@RequestBody ExportedProcedure file) {
+        return service.importFromFile(file);
     }
 
     /** Stops tracking a global template's updates, without requiring an edit first. */

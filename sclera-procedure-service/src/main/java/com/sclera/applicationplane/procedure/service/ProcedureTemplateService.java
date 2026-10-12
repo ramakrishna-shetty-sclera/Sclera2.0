@@ -9,6 +9,7 @@ import com.sclera.applicationplane.procedure.client.vocabulary.Vocabulary;
 import com.sclera.applicationplane.procedure.client.vocabulary.VocabularyKind;
 import com.sclera.applicationplane.procedure.client.vocabulary.VocabularyUnavailableException;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument;
+import com.sclera.applicationplane.procedure.definition.DefinitionDocument.DocumentRef;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetKind;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetType;
 import com.sclera.applicationplane.procedure.definition.DefinitionValidator;
@@ -46,6 +47,7 @@ import com.sclera.applicationplane.procedure.dto.EvaluationDtos.VersionRef;
 import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ExportedProcedure;
 import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ExportedVersion;
 import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.FavouriteResponse;
+import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ImportFileResponse;
 import com.sclera.applicationplane.procedure.dto.GlobalLibraryDtos.ImportRequest;
 import com.sclera.applicationplane.procedure.evaluation.Answers;
 import com.sclera.applicationplane.procedure.evaluation.Evaluator;
@@ -81,6 +83,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -665,6 +668,114 @@ public class ProcedureTemplateService {
         return new ExportedVersion(version.getVersionNo(), canonical.json(), canonical.hash(), version.getChangeNote());
     }
 
+    /**
+     * Recreates a procedure from a file {@code /export} produced: a new template,
+     * published, with the file's current content.
+     *
+     * <p>This is authoring, not pulling from the shared library, so it is
+     * guarded like {@link #create}, and it follows {@code create}'s scoping:
+     * where the caller is standing decides whether the copy belongs to the
+     * organization or to one property. Unlike {@link #importFromGlobal} it works
+     * inside a property, since a file has no organization-level copy to fork from.
+     *
+     * <ul>
+     *   <li><b>Only the current version is recreated</b>: the highest version
+     *       number in the file. Replaying every version would mean publishing
+     *       once per version to reach the same end state, and nothing reads
+     *       "this was v1 three imports ago" as different from "this is the
+     *       content". Taking the maximum instead of looping is the only thing
+     *       that would change if history is ever wanted.</li>
+     *   <li><b>The file's hash is checked, not trusted.</b> It is recomputed from
+     *       the file's own definition and compared with the hash the file claims.
+     *       Every other import path hashes bytes it produced itself a moment
+     *       earlier; this is the first to read bytes from outside. A mismatch
+     *       means the file was damaged or edited by hand. The name and
+     *       description are not part of the hash, so changing them in the file is
+     *       fine and is how a copy gets a name that is not taken.</li>
+     *   <li><b>Result types the organization lacks are created</b>, by the same
+     *       method {@link #importFromGlobal} uses, so the two imports share one
+     *       policy.</li>
+     *   <li><b>Citations that do not resolve here are dropped, and counted.</b>
+     *       A document id is meaningful only in the scope it was exported from,
+     *       and the importer does not own this scope's library, so refusing would
+     *       leave them with nothing to fix.</li>
+     *   <li><b>The key counter is the file's, raised to the highest key the
+     *       content uses.</b> The key minter refuses a supplied key above the
+     *       counter, so a counter below the content's own keys would make the
+     *       file unimportable. A file exported before the counter was recorded
+     *       reads as 0 and gets the content's highest key, which is safe for the
+     *       keys it has, though it cannot know about keys since removed.</li>
+     *   <li><b>Published in the same call</b> by the ordinary publish path, so the
+     *       result-type, target-type and document index rows, the readiness
+     *       checks and the event all happen exactly as for any other publish. If
+     *       the content is not publishable here (an unknown target type, say) the
+     *       whole import is refused with the full list and nothing is created.</li>
+     * </ul>
+     */
+    public ImportFileResponse importFromFile(ExportedProcedure file) {
+        if (file == null || isBlank(file.name())) {
+            throw new ValidationException("The file does not name a procedure");
+        }
+        if (file.versions() == null || file.versions().stream().noneMatch(Objects::nonNull)) {
+            throw new ValidationException("The file contains no version to import");
+        }
+        if (file.keySeq() < 0 || file.keySeq() > KeyMinter.MAX_KEY_NUMBER) {
+            throw new ValidationException("The file's key counter " + file.keySeq() + " is out of range");
+        }
+        ExportedVersion chosen = file.versions().stream().filter(Objects::nonNull)
+                .max(Comparator.comparingInt(ExportedVersion::versionNo)).orElseThrow();
+        if (isBlank(chosen.definitionJson()) || isBlank(chosen.definitionHash())) {
+            throw new ValidationException("Version " + chosen.versionNo() + " in the file has no definition or no hash");
+        }
+        if (!DefinitionCanonicalizer.sha256Hex(chosen.definitionJson()).equalsIgnoreCase(chosen.definitionHash().strip())) {
+            throw new ValidationException("Version " + chosen.versionNo() + " in the file does not match its own hash, "
+                    + "so the file is corrupted or was edited by hand. Export the procedure again");
+        }
+        DefinitionDocument document;
+        try {
+            document = canonicalizer.parse(chosen.definitionJson());
+        } catch (IllegalStateException e) {
+            throw new ValidationException("Version " + chosen.versionNo()
+                    + " in the file is not a procedure definition this service can read");
+        }
+
+        UUID orgId = OrgContext.getOrgId();
+        List<UUID> scope = PropertyContext.current();
+        UUID propertyId = scope.size() == 1 ? scope.get(0) : null;
+        String name = file.name().strip();
+        requireNameFree(orgId, propertyId, name, null);
+
+        Set<String> citable = documents.findCitable(orgId, propertyId).stream()
+                .map(d -> d.getId().toString())
+                .collect(Collectors.toSet());
+        List<DocumentRef> kept = document.documents().stream().filter(ref -> citable.contains(ref.id())).toList();
+        int dropped = document.documents().size() - kept.size();
+        DefinitionDocument usable = new DefinitionDocument(document.schema(), document.items(),
+                document.thresholds(), document.targetTypes(), kept);
+
+        createMissingResultTypes(usable.resultTypeKeys());
+
+        ProcedureTemplate template = new ProcedureTemplate();
+        template.setOrgId(orgId);
+        template.setPropertyId(propertyId);
+        template.setName(name);
+        template.setDescription(blankToNull(file.description()));
+        if (!isBlank(file.consumerKey())) {
+            template.setConsumerKey(requireActiveConsumer(file.consumerKey()));
+        }
+        template.setKeySeq(Math.max(file.keySeq(), KeyMinter.highestKeyNumber(usable)));
+        template.setCreatedBy(OrgContext.getUserId());
+        templates.saveAndFlush(template);
+
+        Canonical canonical = assignKeysAndCanonicalize(template, usable);
+        ProcedureTemplateVersion draft = newVersion(template, 1, canonical.json(), canonical.hash());
+        draft.setChangeNote("Imported from a file, exported as v" + chosen.versionNo());
+        versions.saveAndFlush(draft);
+        fga.grantCreated(FGA_TYPE, template.getId(), template.getCreatedBy(), null);
+
+        publish(template.getId(), null);
+        return new ImportFileResponse(get(template.getId()), dropped);
+    }
     /**
      * Pulls one published version of a global template into this
      * organization — a new template ({@code templateId} absent) or a new

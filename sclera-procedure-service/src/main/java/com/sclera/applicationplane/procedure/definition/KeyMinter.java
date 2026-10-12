@@ -41,6 +41,9 @@ public final class KeyMinter {
 
     private static final Pattern KEY = Pattern.compile("^([sqo])([1-9][0-9]{0,8})$");
 
+    /** The largest number a key can carry: the pattern above allows nine digits. */
+    public static final int MAX_KEY_NUMBER = 999_999_999;
+
     private KeyMinter() {
     }
 
@@ -55,6 +58,39 @@ public final class KeyMinter {
         return new DefinitionDocument(
                 document.schema(), assignToAll(document.items(), next), document.thresholds(),
                    document.targetTypes(), document.documents());
+    }
+
+    /**
+     * The highest number any key in the document carries, or 0 when it has none.
+     *
+     * <p>A template's key counter must be at least this, or {@link #assignKeys}
+     * refuses the document's own keys as never issued. It is the floor for a
+     * counter that has to be rebuilt from content, such as one read from a file
+     * that did not record it. It is only a floor: keys are never reused, so a
+     * template that has had items removed has a counter above this.
+     */
+    public static int highestKeyNumber(DefinitionDocument document) {
+        return highestIn(document.items());
+    }
+
+    private static int highestIn(List<Item> items) {
+        int highest = 0;
+        for (Item item : items) {
+            highest = Math.max(highest, numberOf(item.key()));
+            for (Option option : item.options()) {
+                highest = Math.max(highest, numberOf(option.key()));
+            }
+            highest = Math.max(highest, highestIn(item.follow()));
+        }
+        return highest;
+    }
+
+    private static int numberOf(String key) {
+        if (isBlank(key)) {
+            return 0;
+        }
+        Matcher m = KEY.matcher(key.strip());
+        return m.matches() ? Integer.parseInt(m.group(2)) : 0;
     }
 
     private static List<Item> assignToAll(List<Item> items, IntSupplier next) {
