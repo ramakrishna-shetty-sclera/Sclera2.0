@@ -214,6 +214,14 @@ input[type='file'] {
   padding: 0;
 }
 
+/* An author rule always beats a user-agent rule at equal importance,
+   regardless of specificity — so the blanket `input { display: block }`
+   above silently defeats `hidden` on every hidden input. A bare [hidden]
+   outranks a bare element selector, so this one rule fixes it everywhere. */
+[hidden] {
+  display: none;
+}
+
 .checkbox {
   display: flex;
   align-items: center;

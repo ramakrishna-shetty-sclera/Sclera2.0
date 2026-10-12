@@ -173,7 +173,7 @@ export function TemplatesPage() {
                 onChange={(e) => onFile(e.target.files?.[0])}
               />
               <button
-                className="btn"
+                className="btn btn-primary"
                 disabled={importing}
                 title="Recreates an exported procedure in the scope you are working in"
                 onClick={() => fileInput.current?.click()}
