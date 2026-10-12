@@ -645,7 +645,8 @@ public class ProcedureTemplateService {
                 : versionNumbers.stream().map(no -> requireVersion(template, no)).toList();
 
         List<ExportedVersion> exported = toExport.stream().map(v -> exportVersion(v, includeDocuments)).toList();
-        return new ExportedProcedure(template.getName(), template.getDescription(), template.getConsumerKey(), exported);
+        return new ExportedProcedure(template.getName(), template.getDescription(), template.getConsumerKey(),
+                template.getKeySeq(), exported);
     }
 
     private ExportedVersion exportVersion(ProcedureTemplateVersion version, boolean includeDocuments) {

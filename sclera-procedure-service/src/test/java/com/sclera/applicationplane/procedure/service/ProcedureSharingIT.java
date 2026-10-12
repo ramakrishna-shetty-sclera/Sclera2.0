@@ -234,6 +234,64 @@ class ProcedureSharingIT extends PostgresIntegrationTest {
             assertThat(withDocs.versions().get(0).definitionHash())
                     .isEqualTo(withoutDocs.versions().get(0).definitionHash());
         }
+
+        @Test
+        void aFreshTemplatesExportCarriesItsKeyCounter() {
+            actAsNewOrg();
+            UUID id = service.create(request("Fire walk")).id();
+            service.publish(id, null);
+
+            // One Yes/No question mints three keys: the question and its two answers.
+            assertThat(service.export(id, null, false).keySeq()).isEqualTo(3);
+        }
+
+        @Test
+        void theKeyCounterTravelsWithTheExportNotAKeyCountedFromTheContent() {
+            // Keys are never reused, so a template that has had a question added and
+            // removed has a counter past the highest key left in its document. An
+            // import that rebuilt the counter from the content would restart at 3 and
+            // could mint a key the removed question already used.
+            actAsNewOrg();
+            UUID id = service.create(request("Fire walk")).id();                    // q1 o2 o3: counter 3
+            VersionResponse first = service.getDraft(id);
+            Item keyed = first.definition().items().get(0);
+            VersionResponse withSecond = service.saveDraft(id, new SaveDraftRequest(
+                    new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
+                            List.of(keyed, question()), List.of(), List.of(), List.of()),
+                    first.rowVersion(), "add"));                                    // q4 o5 o6: counter 6
+            service.saveDraft(id, new SaveDraftRequest(
+                    new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
+                            List.of(keyed), List.of(), List.of(), List.of()),
+                    withSecond.rowVersion(), "remove"));                            // back to one question
+            service.publish(id, null);
+
+            ExportedProcedure exported = service.export(id, null, false);
+
+            DefinitionDocument content = canonicalizer.parse(exported.versions().get(0).definitionJson());
+            assertThat(content.items()).as("only the first question is left").hasSize(1);
+            assertThat(content.items().get(0).options()).extracting(Option::key).containsExactly("o2", "o3");
+            assertThat(exported.keySeq()).as("the counter, not the highest key in the content (3)").isEqualTo(6);
+        }
+
+        @Test
+        void everyExportedVersionOfATemplateSharesTheTemplatesOneCounter() {
+            // The counter belongs to the template, not to a version, so asking for
+            // several versions does not change it.
+            actAsNewOrg();
+            UUID id = service.create(request("Fire walk")).id();
+            service.publish(id, null);
+            VersionResponse draft = service.createDraft(id, new NewDraftRequest(1));
+            service.saveDraft(id, new SaveDraftRequest(
+                    new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
+                            List.of(draft.definition().items().get(0), question()), List.of(), List.of(), List.of()),
+                    draft.rowVersion(), "v2"));
+            service.publish(id, null);
+
+            assertThat(service.export(id, List.of(1, 2), false).keySeq())
+                    .isEqualTo(service.export(id, List.of(2), false).keySeq())
+                    .isEqualTo(service.export(id, null, false).keySeq())
+                    .isEqualTo(6);
+        }
     }
 
     @Nested

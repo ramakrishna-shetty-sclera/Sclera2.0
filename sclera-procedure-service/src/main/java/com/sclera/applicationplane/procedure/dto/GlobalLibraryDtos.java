@@ -34,11 +34,20 @@ public final class GlobalLibraryDtos {
      * produces. Carries no org id, no property id and no FGA state: none of
      * that travels with a procedure once it leaves the organization that
      * authored it.
+     *
+     * <p>{@code keySeq} is the source template's key counter, the number the next
+     * question, section or answer key is minted from. It is carried because it is
+     * not recoverable from the content: keys are never reused, so a template that
+     * has had items added and removed has a counter past the highest key still in
+     * its document. A copy that restarted the counter from what it can see could
+     * mint a key an earlier edit already used, and the key minter would accept it
+     * as fresh. Cloning and forking carry the counter for the same reason.
      */
     public record ExportedProcedure(
             String name,
             String description,
             String consumerKey,
+            int keySeq,
             List<ExportedVersion> versions) {}
 
     // --- import -----------------------------------------------------------------
