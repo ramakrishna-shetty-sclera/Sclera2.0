@@ -15,6 +15,7 @@ import com.sclera.applicationplane.procedure.dto.AiGenerationDtos.ImportQuestion
 import com.sclera.applicationplane.procedure.dto.AiGenerationDtos.QuestionDraftResponse;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.CreateTemplateRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.TemplateResponse;
+import com.sclera.applicationplane.procedure.service.AiDocumentService;
 import com.sclera.applicationplane.procedure.service.ProcedureTemplateService;
 import com.sclera.applicationplane.procedure.service.QuestionGenerationService;
 import com.sclera.applicationplane.procedure.service.QuestionImportService;
@@ -44,6 +45,8 @@ class DocumentGenerationIT extends AiIntegrationTest {
     private ProcedureTemplateService templateService;
     @Autowired
     private QuestionGenerationService generation;
+    @Autowired
+    private AiDocumentService documents;
     @Autowired
     private QuestionImportService imports;
 
@@ -78,11 +81,11 @@ class DocumentGenerationIT extends AiIntegrationTest {
                                 null, null, null, null, null, null, null, 0.1, null))),
                         "mock-model", 100, 50, 10));
 
-        AiDocumentResponse document = generation.upload(new MockMultipartFile(
+        AiDocumentResponse document = documents.upload(new MockMultipartFile(
                 "file", "sop.txt", "text/plain",
                 "Exit doors must close and latch. A charged extinguisher shall be provided."
                         .getBytes(StandardCharsets.UTF_8)));
-        AiDocumentResponse ready = await(() -> generation.getDocument(document.id()),
+        AiDocumentResponse ready = await(() -> documents.getDocument(document.id()),
                 d -> d.status() != AiDocumentStatus.PENDING && d.status() != AiDocumentStatus.EXTRACTING);
         assertThat(ready.status()).isEqualTo(AiDocumentStatus.READY);
 

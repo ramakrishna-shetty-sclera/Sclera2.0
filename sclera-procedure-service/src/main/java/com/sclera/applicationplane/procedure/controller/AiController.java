@@ -4,6 +4,7 @@ import com.sclera.applicationplane.procedure.dto.AiGenerationDtos.AiDocumentResp
 import com.sclera.applicationplane.procedure.dto.AiGenerationDtos.ChatMessageRequest;
 import com.sclera.applicationplane.procedure.dto.AiGenerationDtos.ChatTurnResponse;
 import com.sclera.applicationplane.procedure.dto.AiGenerationDtos.GenerationJobResponse;
+import com.sclera.applicationplane.procedure.service.AiDocumentService;
 import com.sclera.applicationplane.procedure.service.QuestionGenerationService;
 import jakarta.validation.Valid;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -36,9 +38,11 @@ import java.util.UUID;
 public class AiController {
 
     private final QuestionGenerationService service;
+    private final AiDocumentService documents;
 
-    public AiController(QuestionGenerationService service) {
+    public AiController(QuestionGenerationService service, AiDocumentService documents) {
         this.service = service;
+        this.documents = documents;
     }
 
     /** Upload a source document (PDF/DOCX/TXT). Text extraction runs in the background. */
@@ -46,13 +50,20 @@ public class AiController {
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("@fga.checkOrg('can_manage_templates')")
     public AiDocumentResponse upload(@RequestParam("file") MultipartFile file) {
-        return service.upload(file);
+        return documents.upload(file);
+    }
+
+    /** The organization's document library, newest first — for reuse and re-generation. */
+    @GetMapping("/documents")
+    @PreAuthorize("@fga.checkOrg('can_manage_templates')")
+    public List<AiDocumentResponse> listDocuments() {
+        return documents.list();
     }
 
     @GetMapping("/documents/{id}")
     @PreAuthorize("@fga.checkOrg('can_manage_templates')")
     public AiDocumentResponse getDocument(@PathVariable UUID id) {
-        return service.getDocument(id);
+        return documents.getDocument(id);
     }
 
     /** Status + the GeneratedQuestionSet once COMPLETED. */

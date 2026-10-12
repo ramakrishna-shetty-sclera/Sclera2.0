@@ -8,12 +8,14 @@ import {
   listQuestionDrafts,
   sendChatMessage,
   uploadAiDocument,
+  type AiDocument,
   type CandidateQuestion,
   type ImportResult,
   type QuestionDraft,
 } from '../../api/ai'
 import { ApiError } from '../../api/client'
 import { typeLabel } from '../../api/document'
+import { DocumentLibraryDialog, formatBytes } from './DocumentLibraryDialog'
 import { resultDot } from './ReadOnlyChecklist'
 
 const POLL_MS = 1500
@@ -42,6 +44,7 @@ export type SideTab = 'details' | 'docs' | 'suggest'
  */
 export function BuilderSidePanel({
   templateId,
+  initialDocIds = [],
   tab,
   onTab,
   details,
@@ -49,6 +52,8 @@ export function BuilderSidePanel({
 }: {
   /** Null while creating: the procedure does not exist yet, so neither can AI candidates. */
   templateId: string | null
+  /** Library documents picked before the builder opened ("create from documents"). */
+  initialDocIds?: string[]
   tab: SideTab
   onTab: (tab: SideTab) => void
   details: SidePanelDetails
@@ -132,6 +137,7 @@ export function BuilderSidePanel({
       {tab === 'docs' && aiReady && (
         <DocsTab
           templateId={templateId}
+          initialDocIds={initialDocIds}
           alive={alive}
           onError={setError}
           onNotice={setNotice}
@@ -246,94 +252,189 @@ function DetailsTab({ details }: { details: SidePanelDetails }) {
   )
 }
 
+const MAX_DOCS = 5
+
 function DocsTab({
   templateId,
+  initialDocIds = [],
   alive,
   onError,
   onNotice,
   onCandidates,
 }: {
   templateId: string
+  initialDocIds?: string[]
   alive: React.MutableRefObject<boolean>
   onError: (e: string | null) => void
   onNotice: (n: string | null) => void
   onCandidates: () => void
 }) {
-  const [file, setFile] = useState<File | null>(null)
+  const [docs, setDocs] = useState<AiDocument[]>([])
+
+  useEffect(() => {
+    if (initialDocIds.length === 0) return
+    Promise.allSettled(initialDocIds.map((docId) => getAiDocument(docId))).then((results) => {
+      if (!alive.current) return
+      addDocs(results.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : [])))
+    })
+    // Pre-picked documents load once; the list is the author's to edit after that.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [instructions, setInstructions] = useState('')
-  const [phase, setPhase] = useState<'idle' | 'uploading' | 'extracting' | 'generating'>('idle')
+  const [phase, setPhase] = useState<'idle' | 'uploading' | 'generating'>('idle')
+  const [progress, setProgress] = useState<string | null>(null)
+  const [libOpen, setLibOpen] = useState(false)
   const fileInput = useRef<HTMLInputElement | null>(null)
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
+  function addDocs(added: AiDocument[]) {
+    setDocs((d) => {
+      const seen = new Set(d.map((x) => x.id))
+      return [...d, ...added.filter((x) => !seen.has(x.id))].slice(0, MAX_DOCS)
+    })
+  }
+
+  async function onUpload(files: FileList | null) {
+    if (!files || files.length === 0) return
+    onError(null)
+    setPhase('uploading')
+    try {
+      const results = await Promise.allSettled(Array.from(files).map((f) => uploadAiDocument(f)))
+      if (!alive.current) return
+      addDocs(results.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : [])))
+      const failed = results.flatMap((r) =>
+        r.status === 'rejected' ? [r.reason instanceof Error ? r.reason.message : 'Upload failed'] : [],
+      )
+      if (failed.length) onError(failed.join(' · '))
+    } finally {
+      if (alive.current) setPhase('idle')
+    }
+  }
+
   async function onGenerate() {
-    if (!file) return
+    if (docs.length === 0) return
     onError(null)
     onNotice(null)
+    setPhase('generating')
     try {
-      setPhase('uploading')
-      const uploaded = await uploadAiDocument(file)
-      setPhase('extracting')
-      let document = uploaded
-      while (alive.current && (document.status === 'PENDING' || document.status === 'EXTRACTING')) {
-        await sleep(POLL_MS)
-        document = await getAiDocument(uploaded.id)
-      }
-      if (!alive.current) return
-      if (document.status === 'FAILED') throw new Error(document.error ?? 'The document could not be read')
+      let produced = 0
+      for (const doc of docs) {
+        setProgress(`Reading ${doc.filename}…`)
+        let document = doc
+        while (alive.current && (document.status === 'PENDING' || document.status === 'EXTRACTING')) {
+          await sleep(POLL_MS)
+          document = await getAiDocument(doc.id)
+        }
+        if (!alive.current) return
+        if (document.status === 'FAILED') {
+          throw new Error(`${document.filename}: ${document.error ?? 'the document could not be read'}`)
+        }
 
-      setPhase('generating')
-      let job = await generateFromDocument(templateId, {
-        documentId: document.id,
-        instructions: instructions.trim() || undefined,
-      })
-      while (alive.current && (job.status === 'QUEUED' || job.status === 'RUNNING')) {
-        await sleep(POLL_MS)
-        job = await getGenerationJob(job.id)
+        setProgress(`Generating questions from ${document.filename}…`)
+        let job = await generateFromDocument(templateId, {
+          documentId: document.id,
+          instructions: instructions.trim() || undefined,
+        })
+        while (alive.current && (job.status === 'QUEUED' || job.status === 'RUNNING')) {
+          await sleep(POLL_MS)
+          job = await getGenerationJob(job.id)
+        }
+        if (!alive.current) return
+        if (job.status === 'FAILED') throw new Error(`${document.filename}: ${job.error ?? 'generation failed'}`)
+        produced += job.candidates.length
       }
-      if (!alive.current) return
-      if (job.status === 'FAILED') throw new Error(job.error ?? 'Generation failed')
 
-      setFile(null)
+      setDocs([])
       if (fileInput.current) fileInput.current.value = ''
-      if (job.candidates.length === 0) {
-        onNotice('The document produced no questions — it may not contain inspectable requirements.')
+      if (produced === 0) {
+        onNotice('The documents produced no questions — they may not contain inspectable requirements.')
       } else {
         onCandidates()
       }
     } catch (e) {
       if (alive.current) onError(e instanceof Error ? e.message : 'Generation failed')
     } finally {
-      if (alive.current) setPhase('idle')
+      if (alive.current) {
+        setPhase('idle')
+        setProgress(null)
+      }
     }
   }
-
-  const phaseText =
-    phase === 'uploading'
-      ? 'Uploading…'
-      : phase === 'extracting'
-        ? 'Reading the document…'
-        : phase === 'generating'
-          ? 'Generating questions…'
-          : null
 
   return (
     <div className="side-body">
       <PanelIntro
-        title="Generate from a document"
-        text="Add a standard or SOP; questions are generated for review — nothing joins the checklist until you add it."
+        title="Generate from documents"
+        text="Upload a standard or SOP, or reuse one from the library — documents are kept, so questions can be generated from them again later. Nothing joins the checklist until you add it."
       />
-      <div className="field">
-        <label htmlFor="ai-file">Source document (PDF, DOCX or TXT)</label>
-        <input
-          ref={fileInput}
-          id="ai-file"
-          className="input"
-          style={{ paddingTop: 8 }}
-          type="file"
-          accept=".pdf,.docx,.txt"
-          disabled={phase !== 'idle'}
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-        />
+      <input
+        ref={fileInput}
+        type="file"
+        accept=".pdf,.docx,.txt"
+        multiple
+        style={{ display: 'none' }}
+        aria-label="Upload documents"
+        onChange={(e) => {
+          void onUpload(e.target.files)
+          e.target.value = ''
+        }}
+      />
+      <div className="row" style={{ gap: 8 }}>
+        <button
+          type="button"
+          className="btn btn-outline btn-sm"
+          style={{ flex: 1 }}
+          disabled={phase !== 'idle' || docs.length >= MAX_DOCS}
+          onClick={() => fileInput.current?.click()}
+        >
+          ⇧ Upload
+        </button>
+        <button
+          type="button"
+          className="btn btn-outline btn-sm"
+          style={{ flex: 1 }}
+          disabled={phase !== 'idle' || docs.length >= MAX_DOCS}
+          onClick={() => setLibOpen(true)}
+        >
+          ⌸ From library
+        </button>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <span className="small muted">
+          Added documents ({docs.length}/{MAX_DOCS})
+        </span>
+        {docs.length === 0 && (
+          <p
+            className="small muted"
+            style={{ border: '1px dashed var(--dim)', borderRadius: 4, padding: 14, textAlign: 'center' }}
+          >
+            Upload a standard or SOP, or pick one already in the library.
+          </p>
+        )}
+        {docs.map((doc) => (
+          <div
+            key={doc.id}
+            className="row"
+            style={{ minHeight: 44, border: '1px solid var(--line)', borderRadius: 4, padding: '4px 6px 4px 10px', gap: 10 }}
+          >
+            <span className="tag fail" style={{ fontSize: 9 }}>
+              {doc.filename.slice(doc.filename.lastIndexOf('.') + 1).toUpperCase().slice(0, 4)}
+            </span>
+            <span className="ellipsis" style={{ flex: 1 }}>
+              {doc.filename}
+            </span>
+            <span className="small muted">{formatBytes(doc.sizeBytes)}</span>
+            <button
+              type="button"
+              className="ibtn"
+              aria-label={`Remove ${doc.filename}`}
+              disabled={phase === 'generating'}
+              onClick={() => setDocs((d) => d.filter((x) => x.id !== doc.id))}
+            >
+              ×
+            </button>
+          </div>
+        ))}
       </div>
       <div className="field">
         <label htmlFor="ai-instr">Instructions (optional)</label>
@@ -348,14 +449,29 @@ function DocsTab({
           onChange={(e) => setInstructions(e.target.value)}
         />
       </div>
-      <button type="button" className="btn btn-primary" disabled={!file || phase !== 'idle'} onClick={() => void onGenerate()}>
-        {phaseText ?? '✦ Generate questions'}
+      <button
+        type="button"
+        className="btn btn-primary"
+        disabled={docs.length === 0 || phase !== 'idle'}
+        onClick={() => void onGenerate()}
+      >
+        {phase === 'generating' ? 'Generating…' : phase === 'uploading' ? 'Uploading…' : '✦ Generate questions'}
       </button>
-      {phaseText && (
+      {progress && (
         <div className="row" style={{ gap: 10 }}>
           <span className="spin" />
-          <span className="small muted">{phaseText} This can take a minute.</span>
+          <span className="small muted">{progress} This can take a minute.</span>
         </div>
+      )}
+      {libOpen && (
+        <DocumentLibraryDialog
+          confirmLabel="Add"
+          onClose={() => setLibOpen(false)}
+          onConfirm={(picked) => {
+            setLibOpen(false)
+            addDocs(picked)
+          }}
+        />
       )}
     </div>
   )

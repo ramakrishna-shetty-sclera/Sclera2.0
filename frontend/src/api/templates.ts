@@ -1,4 +1,4 @@
-import { apiFetch, type ApiResult } from './client'
+import { apiDownload, apiFetch, type ApiResult } from './client'
 import type {
   CloneProcedureRequest,
   CreateProcedureRequest,
@@ -79,6 +79,18 @@ export function publishProcedure(id: string, rowVersion?: number): Promise<Publi
     method: 'POST',
     body: { rowVersion },
   }).then((r) => r.data)
+}
+
+/**
+ * Download the checklist as a file. Exports the published version unless a
+ * versionNo is named; the draft only when nothing was ever published.
+ */
+export function exportProcedure(
+  id: string,
+  format: 'pdf' | 'xlsx',
+  versionNo?: number,
+): Promise<{ blob: Blob; filename: string | null }> {
+  return apiDownload(`${PROCEDURES}/${id}/export`, { format, versionNo })
 }
 
 // --- history ---

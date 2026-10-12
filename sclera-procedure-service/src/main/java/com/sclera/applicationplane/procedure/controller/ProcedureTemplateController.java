@@ -12,12 +12,18 @@ import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.TemplateR
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.UpdateTemplateRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.VersionResponse;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.VersionSummary;
+import com.sclera.applicationplane.procedure.export.ExportFile;
+import com.sclera.applicationplane.procedure.export.TemplateExportService;
 import com.sclera.applicationplane.procedure.service.ProcedureTemplateService;
 import jakarta.validation.Valid;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -42,9 +48,11 @@ import java.util.UUID;
 public class ProcedureTemplateController {
 
     private final ProcedureTemplateService service;
+    private final TemplateExportService exports;
 
-    public ProcedureTemplateController(ProcedureTemplateService service) {
+    public ProcedureTemplateController(ProcedureTemplateService service, TemplateExportService exports) {
         this.service = service;
+        this.exports = exports;
     }
 
     // --- template identity --------------------------------------------------
@@ -67,6 +75,22 @@ public class ProcedureTemplateController {
     @PreAuthorize("@fga.check('procedure_template', #id, 'can_view')")
     public TemplateResponse get(@PathVariable UUID id) {
         return service.get(id);
+    }
+
+    /**
+     * Download the checklist as a file. Exports the published version unless a
+     * versionNo is named; the draft only when nothing was ever published.
+     */
+    @GetMapping("/{id}/export")
+    @PreAuthorize("@fga.check('procedure_template', #id, 'can_view')")
+    public ResponseEntity<ByteArrayResource> export(@PathVariable UUID id,
+                                                    @RequestParam String format,
+                                                    @RequestParam(required = false) Integer versionNo) {
+        ExportFile file = exports.export(id, format, versionNo);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.filename() + "\"")
+                .contentType(MediaType.parseMediaType(file.mediaType()))
+                .body(new ByteArrayResource(file.bytes()));
     }
 
     @PutMapping("/{id}")

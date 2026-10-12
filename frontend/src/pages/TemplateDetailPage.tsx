@@ -5,6 +5,7 @@ import {
   cloneProcedure,
   createDraft,
   discardDraft,
+  exportProcedure,
   getDraft,
   getProcedure,
   getVersion,
@@ -39,16 +40,21 @@ export function TemplateDetailPage() {
   const [refusal, setRefusal] = useState<unknown>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
+  const [exportFormat, setExportFormat] = useState<'pdf' | 'xlsx' | null>(null)
 
   const reload = useCallback(async () => {
     if (!id) return
     const p = await getProcedure(id)
     setProcedure(p)
     setVersions(await listVersions(id))
-    if (p.draftVersionNo != null) {
-      setVersion(await getDraft(id))
-    } else if (p.currentPublishedVersionNo != null) {
+    // The published version is what inspections run against, so it is what
+    // this page shows; an open draft is announced, not displayed (the
+    // procedures-v3 design). A never-published procedure IS its draft.
+    if (p.currentPublishedVersionNo != null) {
       setVersion(await getVersion(id, p.currentPublishedVersionNo))
+    } else if (p.draftVersionNo != null) {
+      setVersion(await getDraft(id))
     } else {
       setVersion(null)
     }
@@ -114,6 +120,27 @@ export function TemplateDetailPage() {
     }
   }
 
+  async function onExport() {
+    if (!procedure || !version || !exportFormat) return
+    setBusy(true)
+    setError(null)
+    try {
+      const { blob, filename } = await exportProcedure(procedure.id, exportFormat, version.versionNo)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename ?? `${procedure.name}-v${version.versionNo}.${exportFormat}`
+      a.click()
+      URL.revokeObjectURL(url)
+      setExportOpen(false)
+      setNotice(`Exported v${version.versionNo} as ${exportFormat.toUpperCase()}.`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Export failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function startInspection() {
     if (!procedure) return
     setBusy(true)
@@ -138,6 +165,8 @@ export function TemplateDetailPage() {
   const hasDraft = procedure.draftVersionNo != null
   const published = procedure.currentPublishedVersionNo
   const archived = procedure.status === 'ARCHIVED'
+  const draftSummary = versions.find((v) => v.state === 'DRAFT')
+  const draftSavedAt = draftSummary ? new Date(draftSummary.createdAt).toLocaleDateString() : null
   const items = version?.definition.items ?? []
   const flat = flattenItems(items)
   const questions = flat.filter((f) => f.item.type !== 'SECTION')
@@ -172,6 +201,11 @@ export function TemplateDetailPage() {
           {published != null && (
             <button className="btn btn-outline" disabled={busy} onClick={startInspection}>
               New inspection
+            </button>
+          )}
+          {version != null && (
+            <button className="btn btn-outline" disabled={busy} onClick={() => setExportOpen(true)}>
+              ⤓ Export
             </button>
           )}
           <button className="btn btn-outline" disabled={busy} onClick={onClone}>
@@ -228,15 +262,22 @@ export function TemplateDetailPage() {
             aria-label="Checklist"
           >
             {hasDraft && !archived && (
-              <div className="pending-strip">
+              <div className="pending-strip" role="status">
                 <span aria-hidden="true" style={{ color: 'var(--action)' }}>
                   ✎
                 </span>
                 <span style={{ flex: 1 }}>
-                  Draft v{procedure.draftVersionNo} is open
-                  {version?.state === 'DRAFT'
-                    ? ' — this page shows the draft.'
-                    : ` — this page shows v${version?.versionNo}.`}
+                  {published != null ? (
+                    <>
+                      You have unpublished changes saved as draft v{procedure.draftVersionNo}
+                      {draftSavedAt ? ` (${draftSavedAt})` : ''}.{' '}
+                      {version?.state === 'DRAFT'
+                        ? 'You are viewing that draft.'
+                        : `This page shows the published version (v${version?.versionNo}).`}
+                    </>
+                  ) : (
+                    <>Draft v{procedure.draftVersionNo} is open — this page shows the draft.</>
+                  )}
                 </span>
                 <button
                   className="btn btn-quiet btn-xs"
@@ -359,6 +400,69 @@ export function TemplateDetailPage() {
           </aside>
         </div>
       </div>
+
+      {exportOpen && version && (
+        <div
+          className="scrim"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setExportOpen(false)
+          }}
+        >
+          <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="ex-t" style={{ width: 640 }}>
+            <div className="dhead">
+              <h2 id="ex-t" style={{ fontSize: 20 }}>
+                Export procedure
+              </h2>
+              <span className="small muted">v{version.versionNo}</span>
+              <button
+                className="ibtn lg"
+                style={{ marginLeft: 'auto' }}
+                aria-label="Close"
+                onClick={() => setExportOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div
+              className="dbody"
+              role="radiogroup"
+              aria-label="Format"
+              style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 14 }}
+            >
+              {(
+                [
+                  ['pdf', 'PDF', 'Readable format', 'Formatted for reading or printing.', 'fail'],
+                  ['xlsx', 'XLS', 'Structured format', 'Structured data of the checklist.', 'pass'],
+                ] as [('pdf' | 'xlsx'), string, string, string, string][]
+              ).map(([key, ext, title, sub, color]) => (
+                <button
+                  key={key}
+                  role="radio"
+                  aria-checked={exportFormat === key}
+                  className="choice"
+                  style={{ flexDirection: 'column', padding: 22, textAlign: 'center' }}
+                  onClick={() => setExportFormat(key)}
+                >
+                  <span
+                    className={`tag ${color}`}
+                    style={{ width: 56, height: 68, justifyContent: 'center', fontSize: 16 }}
+                  >
+                    {ext}
+                  </span>
+                  <span style={{ fontWeight: 600 }}>{title}</span>
+                  <span className="small muted">{sub}</span>
+                </button>
+              ))}
+            </div>
+            <div className="dfoot">
+              <span />
+              <button className="btn btn-primary" disabled={!exportFormat || busy} onClick={() => void onExport()}>
+                Export
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

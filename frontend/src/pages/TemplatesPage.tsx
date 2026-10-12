@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { listProcedures } from '../api/templates'
 import type { Pagination, ProcedureTemplate } from '../api/types'
 import { Pager } from '../components/Pager'
+import { DocumentLibraryDialog } from '../components/v3/DocumentLibraryDialog'
 
 /**
  * The procedure library, in the Sclera 2.0 design (docs/procedures-v3.html):
@@ -25,6 +26,7 @@ export function TemplatesPage() {
   const [page, setPage] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [docLibOpen, setDocLibOpen] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -73,11 +75,25 @@ export function TemplatesPage() {
           </span>
         </div>
         <div className="pacts">
+          <button className="btn btn-outline" onClick={() => setDocLibOpen(true)}>
+            ⌸ Documents
+          </button>
           <Link className="btn btn-primary" to="/templates/new">
             + Create procedure
           </Link>
         </div>
       </div>
+
+      {docLibOpen && (
+        <DocumentLibraryDialog
+          confirmLabel="Create procedure from"
+          onClose={() => setDocLibOpen(false)}
+          onConfirm={(docs) => {
+            setDocLibOpen(false)
+            navigate('/templates/new', { state: { docIds: docs.map((d) => d.id) } })
+          }}
+        />
+      )}
 
       <div className="lib-head">
         <div className="dtabs" role="tablist" aria-label="Status">

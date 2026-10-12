@@ -59,6 +59,8 @@ const snapshotOf = (schema: number, items: ItemDraft[]): string =>
 interface PendingFollow {
   addFollowAt?: number[]
   optionIndex?: number
+  /** Documents picked in the library's "create from documents" flow. */
+  docIds?: string[]
 }
 
 function withFollowAt(items: ItemDraft[], path: number[], optionIndex?: number): ItemDraft[] {
@@ -159,7 +161,9 @@ export function TemplateEditorPage() {
   const [readyOpen, setReadyOpen] = useState(false)
   const [quick, setQuick] = useState('')
   const [quickType, setQuickType] = useState<ItemType>('YES_NO')
-  const [sideTab, setSideTab] = useState<SideTab>('details')
+  /** Documents chosen before the procedure existed ride along until the docs tab can use them. */
+  const initialDocIds = useRef<string[]>((location.state as PendingFollow | null)?.docIds ?? [])
+  const [sideTab, setSideTab] = useState<SideTab>(initialDocIds.current.length ? 'docs' : 'details')
 
   useEffect(() => {
     listResultTypes(true)
@@ -827,6 +831,7 @@ export function TemplateEditorPage() {
 
           <BuilderSidePanel
             templateId={editing ? id! : null}
+            initialDocIds={initialDocIds.current}
             tab={sideTab}
             onTab={setSideTab}
             details={{

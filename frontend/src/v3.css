@@ -1254,6 +1254,23 @@
   border-color: var(--action);
   background: var(--selected);
 }
+.v3 .choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: transparent;
+  text-align: left;
+  width: 100%;
+  color: var(--text);
+  cursor: pointer;
+}
+.v3 .choice[aria-checked='true'] {
+  border-color: var(--action);
+  background: var(--selected);
+}
 .v3 .chatlog {
   display: flex;
   flex-direction: column;

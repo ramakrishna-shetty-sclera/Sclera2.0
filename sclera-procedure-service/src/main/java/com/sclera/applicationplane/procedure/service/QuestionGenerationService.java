@@ -3,7 +3,6 @@ package com.sclera.applicationplane.procedure.service;
 import com.sclera.applicationplane.procedure.ai.AiConfig;
 import com.sclera.applicationplane.procedure.ai.CandidateMapper;
 import com.sclera.applicationplane.procedure.ai.DedupService;
-import com.sclera.applicationplane.procedure.ai.DocumentExtractionService;
 import com.sclera.applicationplane.procedure.ai.GenerationJobRunner;
 import com.sclera.applicationplane.procedure.ai.LlmClient;
 import com.sclera.applicationplane.procedure.ai.LlmSchemas;
@@ -23,7 +22,6 @@ import com.sclera.applicationplane.procedure.domain.ProcedureTemplate;
 import com.sclera.applicationplane.procedure.domain.ResultType;
 import com.sclera.applicationplane.procedure.domain.TemplateStatus;
 import com.sclera.applicationplane.procedure.domain.VersionState;
-import com.sclera.applicationplane.procedure.dto.AiGenerationDtos.AiDocumentResponse;
 import com.sclera.applicationplane.procedure.dto.AiGenerationDtos.ChatMessageRequest;
 import com.sclera.applicationplane.procedure.dto.AiGenerationDtos.ChatSessionResponse;
 import com.sclera.applicationplane.procedure.dto.AiGenerationDtos.ChatTurnResponse;
@@ -48,9 +46,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -88,7 +84,6 @@ public class QuestionGenerationService {
     private final PromptLoader prompts;
     private final CandidateMapper candidateMapper;
     private final DedupService dedup;
-    private final DocumentExtractionService extraction;
     private final GenerationJobRunner runner;
     private final AiMapper aiMapper;
     private final TaskExecutor executor;
@@ -105,7 +100,6 @@ public class QuestionGenerationService {
                                      PromptLoader prompts,
                                      CandidateMapper candidateMapper,
                                      DedupService dedup,
-                                     DocumentExtractionService extraction,
                                      GenerationJobRunner runner,
                                      AiMapper aiMapper,
                                      @Qualifier(AiConfig.EXECUTOR) TaskExecutor executor) {
@@ -121,70 +115,9 @@ public class QuestionGenerationService {
         this.prompts = prompts;
         this.candidateMapper = candidateMapper;
         this.dedup = dedup;
-        this.extraction = extraction;
         this.runner = runner;
         this.aiMapper = aiMapper;
         this.executor = executor;
-    }
-
-    // --- documents ----------------------------------------------------------
-
-    /** Stores the upload and extracts its text in the background (PENDING → READY). */
-    public AiDocumentResponse upload(MultipartFile file) {
-        String filename = file.getOriginalFilename();
-        if (file.isEmpty()) {
-            throw new ValidationException("The uploaded file is empty");
-        }
-        if (!DocumentExtractionService.isSupported(filename)) {
-            throw new ValidationException("Unsupported document type: '" + filename
-                    + "'. Upload a PDF, DOCX or TXT file.");
-        }
-
-        AiDocument document = new AiDocument();
-        UUID orgId = OrgContext.getOrgId();
-        document.setOrgId(orgId);
-        document.setFilename(filename);
-        document.setMediaType(file.getContentType() == null ? "application/octet-stream" : file.getContentType());
-        document.setSizeBytes(file.getSize());
-        try {
-            document.setContent(file.getBytes());
-        } catch (IOException e) {
-            throw new ValidationException("Could not read the uploaded file: " + e.getMessage());
-        }
-        document.setCreatedBy(OrgContext.getUserId());
-        documents.saveAndFlush(document);
-
-        UUID documentId = document.getId();
-        executor.execute(() -> extractInBackground(documentId, orgId));
-        return aiMapper.toResponse(document);
-    }
-
-    private void extractInBackground(UUID documentId, UUID orgId) {
-        OrgContext.clear();
-        OrgContext.setOrgId(orgId);
-        try {
-            AiDocument document = documents.findByIdAndOrgId(documentId, orgId).orElseThrow();
-            document.setStatus(AiDocumentStatus.EXTRACTING);
-            documents.saveAndFlush(document);
-            try {
-                String text = extraction.extract(document.getFilename(), document.getContent());
-                document.setExtractedText(text);
-                document.setStatus(AiDocumentStatus.READY);
-                document.setError(null);
-            } catch (Exception e) {
-                log.warn("Extraction failed for document {}: {}", documentId, e.getMessage());
-                document.setStatus(AiDocumentStatus.FAILED);
-                String error = e.getMessage() == null ? "Extraction failed" : e.getMessage();
-                document.setError(error.length() <= 2000 ? error : error.substring(0, 2000));
-            }
-            documents.saveAndFlush(document);
-        } finally {
-            OrgContext.clear();
-        }
-    }
-
-    public AiDocumentResponse getDocument(UUID id) {
-        return aiMapper.toResponse(ownedDocument(id));
     }
 
     // --- Feature 1: document → questions ------------------------------------

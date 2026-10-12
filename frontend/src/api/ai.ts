@@ -155,6 +155,11 @@ export function getAiDocument(id: string): Promise<AiDocument> {
   return apiFetch<AiDocument>(`${AI}/documents/${id}`).then((r) => r.data)
 }
 
+/** The organization's document library, newest first — stored for reuse and re-generation. */
+export function listAiDocuments(): Promise<AiDocument[]> {
+  return apiFetch<AiDocument[]>(`${AI}/documents`).then((r) => r.data)
+}
+
 /** Starts an async generation; poll the returned job until COMPLETED. */
 export function generateFromDocument(
   templateId: string,
