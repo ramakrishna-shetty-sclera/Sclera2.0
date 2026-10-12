@@ -615,20 +615,24 @@ export interface ImportRequest {
   name?: string
 }
 
+/** Packaged for sharing: recomputed for the export, not copied from the source version verbatim. */
 export interface ExportedVersion {
   versionNo: number
-  definition: DefinitionDocument
+  definitionJson: string
+  definitionHash: string
+  changeNote?: string | null
 }
 
+/** What GET .../export returns. Carries no org id, no property id, no FGA state. */
 export interface ExportedProcedure {
-  templateId: string
   name: string
+  description?: string | null
+  consumerKey?: string | null
   versions: ExportedVersion[]
 }
 
 export interface FavouriteResponse {
-  templateId: string
-  favourited: boolean
+  favourite: boolean
 }
 
 // ── Evaluation (feature 7) ────────────────────────────────────────────────
