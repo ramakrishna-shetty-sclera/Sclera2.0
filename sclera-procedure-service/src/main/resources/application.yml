@@ -10,6 +10,17 @@ spring:
   profiles:
     default: dev
 
+  # Prometheus exemplars deadlock startup on Boot 3.3.x: the exemplar sampler
+  # lazily resolves a bean FROM the Lettuce event-loop thread while the main
+  # thread holds the bean-factory lock waiting for the Redis connect future —
+  # main waits on the loop, the loop waits on main's lock, and the service
+  # hangs forever at "Initializing reactive Redis message listener container".
+  # Timing-dependent, so it looks flaky. Excluding the auto-config drops only
+  # exemplars (trace ids attached to Prometheus samples); metrics and tracing
+  # themselves are unaffected.
+  autoconfigure:
+    exclude: org.springframework.boot.actuate.autoconfigure.tracing.prometheus.PrometheusExemplarsAutoConfiguration
+
   security:
     oauth2:
       resourceserver:
@@ -107,6 +118,24 @@ management:
 sclera:
   async:
     enabled: true
+  # AI-assisted question generation (document → questions, chat → questions).
+  # Off unless AI_QUESTION_GENERATION_ENABLED=true; every ai.* bean is
+  # conditional on it, so when off the endpoints simply do not exist.
+  # The model is deliberately dynamic — switch via env per budget, and requests
+  # may override per call (sclera.ai.allowed-models bounds what they may pick).
+  ai:
+    enabled: ${AI_QUESTION_GENERATION_ENABLED:false}
+    api-key: ${OPENROUTER_API_KEY:${ANTHROPIC_API_KEY:}}
+    # Any OpenAI-compatible chat-completions endpoint; OpenRouter by default.
+    base-url: ${SCLERA_AI_BASE_URL:https://openrouter.ai/api/v1}
+    model: ${SCLERA_AI_MODEL:nvidia/nemotron-3-super-120b-a12b:free}
+    allowed-models: ${SCLERA_AI_ALLOWED_MODELS:nvidia/nemotron-3-super-120b-a12b:free,qwen/qwen3.8-flash}
+    max-output-tokens: ${SCLERA_AI_MAX_OUTPUT_TOKENS:8192}
+    request-timeout-seconds: ${SCLERA_AI_TIMEOUT_SECONDS:120}
+    max-retries: ${SCLERA_AI_MAX_RETRIES:2}
+    # Documents are chunked for generation; one LLM call per chunk.
+    chunk-chars: ${SCLERA_AI_CHUNK_CHARS:24000}
+    max-chunks: ${SCLERA_AI_MAX_CHUNKS:8}
   # OpenFGA fine-grained authorization. The store is resolved by NAME at first
   # use (created by setup-openfga.ps1). Set SCLERA_FGA_ENABLED=false to run
   # without OpenFGA (all checks allow; JWT + org scoping still apply).

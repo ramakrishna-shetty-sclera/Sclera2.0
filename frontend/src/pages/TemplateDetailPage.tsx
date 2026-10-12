@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import {
   archiveProcedure,
   cloneProcedure,
@@ -12,20 +12,22 @@ import {
   publishProcedure,
 } from '../api/templates'
 import { createInspection } from '../api/inspections'
-import type { ProcedureTemplate, TemplateVersion, TemplateVersionSummary } from '../api/types'
-import { StatusBadge } from '../components/StatusBadge'
-import { DefinitionView } from '../components/DefinitionView'
-import { VersionHistory } from '../components/VersionHistory'
+import type {
+  DefinitionItem,
+  ProcedureTemplate,
+  TemplateVersion,
+  TemplateVersionSummary,
+} from '../api/types'
 import { Refusal } from '../components/Refusal'
+import { ReadOnlyChecklist } from '../components/v3/ReadOnlyChecklist'
 
 /**
- * One procedure: what it is, what it can do next, and the content of whichever
- * version you are looking at.
+ * One procedure in the Sclera 2.0 design (docs/procedures-v3.html ViewPage):
+ * metrics, the checklist read-only, and a details card beside it.
  *
- * The actions follow from the model rather than from a status field. A draft is
- * the only thing that can be edited, there is at most one, and publishing
- * freezes it — so "Edit" and "Publish" appear exactly when a draft exists, and
- * "Start a draft" appears when one does not.
+ * The actions still follow from the model, not a status field: a draft is the
+ * only editable thing, so Edit/Publish/Discard appear exactly when one exists
+ * and "Start a draft" when one does not.
  */
 export function TemplateDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -34,20 +36,10 @@ export function TemplateDetailPage() {
   const [version, setVersion] = useState<TemplateVersion | null>(null)
   const [versions, setVersions] = useState<TemplateVersionSummary[]>([])
   const [error, setError] = useState<string | null>(null)
-  /** What the server refused, kept whole: a refusal can name several things at once. */
   const [refusal, setRefusal] = useState<unknown>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  /**
-   * Loads the procedure, its history, and the version worth showing by default:
-   * the draft when one is open, since that is what the author is working on,
-   * otherwise the published version. A procedure with neither has no content.
-   *
-   * Always returns to that default, including after an action — publishing or
-   * discarding changes which version the default *is*, so holding the previous
-   * selection would leave the screen showing something that no longer applies.
-   */
   const reload = useCallback(async () => {
     if (!id) return
     const p = await getProcedure(id)
@@ -62,7 +54,6 @@ export function TemplateDetailPage() {
     }
   }, [id])
 
-  /** Shows an older version from the history without changing anything. */
   async function showVersion(versionNo: number) {
     if (!id || !procedure) return
     setError(null)
@@ -81,12 +72,6 @@ export function TemplateDetailPage() {
     reload().catch((e) => setError(e instanceof Error ? e.message : 'Could not load this procedure'))
   }, [reload])
 
-  /**
-   * Runs an action, then reloads so the screen matches the server rather than
-   * what we guessed it would become. A refusal is kept whole rather than
-   * flattened to a string: publish names every reason it is not ready at once,
-   * and Refusal is what turns that back into a list.
-   */
   async function run(action: () => Promise<unknown>) {
     setBusy(true)
     setError(null)
@@ -143,48 +128,65 @@ export function TemplateDetailPage() {
   }
 
   if (!procedure) {
-    return error ? <div className="alert alert-error">{error}</div> : <p className="muted">Loading…</p>
+    return (
+      <div className="v3 v3-page" style={{ padding: 24 }}>
+        {error ? <div className="alert-error">{error}</div> : <p className="muted">Loading…</p>}
+      </div>
+    )
   }
 
   const hasDraft = procedure.draftVersionNo != null
   const published = procedure.currentPublishedVersionNo
   const archived = procedure.status === 'ARCHIVED'
+  const items = version?.definition.items ?? []
+  const flat = flattenItems(items)
+  const questions = flat.filter((f) => f.item.type !== 'SECTION')
+  const stats: [string, number, string, string][] = [
+    ['Questions', questions.filter((f) => !f.parent).length, 'Top-level checks', '☑'],
+    ['Required', questions.filter((f) => f.item.required).length, 'Must be answered', '✱'],
+    ['Follow-ups', questions.filter((f) => f.parent).length, 'Shown on a matching answer', '↳'],
+    ['Work orders', questions.filter((f) => f.item.workOrder).length, 'Raised on a failed answer', '⚠'],
+  ]
 
   return (
-    <div>
-      <div className="page-head">
-        <div>
-          <h1>{procedure.name}</h1>
-          <p className="muted">
-            <StatusBadge status={procedure.status} />
-            {published == null ? ' · never published' : ` · published v${published}`}
-            {hasDraft && (
-              <>
-                {' · '}
-                <span className="badge badge-amber">draft v{procedure.draftVersionNo}</span>
-              </>
+    <div className="v3 v3-page">
+      <div className="phead">
+        <button className="ibtn xl" aria-label="Back to procedures" onClick={() => navigate('/templates')}>
+          ‹
+        </button>
+        <div className="ptitle">
+          <span className="psub">Procedure</span>
+          <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
+            <h1>{procedure.name}</h1>
+            {archived ? (
+              <span className="tag">Archived</span>
+            ) : published != null ? (
+              <span className="tag pass">Published v{published}</span>
+            ) : (
+              <span className="tag">Never published</span>
             )}
-          </p>
+            {hasDraft && <span className="tag warn">Draft v{procedure.draftVersionNo} open</span>}
+          </div>
         </div>
-        <div className="page-actions">
+        <div className="pacts">
+          {published != null && (
+            <button className="btn btn-outline" disabled={busy} onClick={startInspection}>
+              New inspection
+            </button>
+          )}
+          <button className="btn btn-outline" disabled={busy} onClick={onClone}>
+            Duplicate
+          </button>
           {!archived && hasDraft && (
             <>
-              <Link className="btn" to={`/templates/${procedure.id}/edit`}>
-                Edit draft
-              </Link>
-              <button className="btn btn-primary" disabled={busy} onClick={onPublish}>
+              <button className="btn btn-quiet" disabled={busy} onClick={onPublish}>
                 Publish
               </button>
               <button
-                className="btn"
-                disabled={busy}
-                onClick={() => {
-                  if (confirm(`Discard draft v${procedure.draftVersionNo}? Its edits are lost.`)) {
-                    run(() => discardDraft(procedure.id))
-                  }
-                }}
+                className="btn btn-primary"
+                onClick={() => navigate(`/templates/${procedure.id}/edit`)}
               >
-                Discard draft
+                ✎ Edit
               </button>
             </>
           )}
@@ -194,61 +196,183 @@ export function TemplateDetailPage() {
               disabled={busy}
               onClick={() => run(() => createDraft(procedure.id, { fromVersionNo: published }))}
             >
-              Start a draft from v{published}
-            </button>
-          )}
-          {published != null && (
-            <button className="btn" disabled={busy} onClick={startInspection}>
-              New inspection
-            </button>
-          )}
-          <button className="btn" disabled={busy} onClick={onClone}>
-            Duplicate
-          </button>
-          {!archived && (
-            <button
-              className="btn btn-danger"
-              disabled={busy}
-              onClick={() => {
-                if (confirm('Archive this procedure? It can no longer be used for new work.')) {
-                  run(() => archiveProcedure(procedure.id))
-                }
-              }}
-            >
-              Archive
+              ✎ Edit (start a draft)
             </button>
           )}
         </div>
       </div>
 
-      {notice && <div className="alert alert-ok">{notice}</div>}
-      {error && <div className="alert alert-error">{error}</div>}
-      <Refusal error={refusal} />
+      <div className="scroll" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {notice && <div className="alert-ok">{notice}</div>}
+        {error && <div className="alert-error">{error}</div>}
+        <Refusal error={refusal} />
 
-      {procedure.description && <p>{procedure.description}</p>}
+        <div className="row" style={{ gap: 12, alignItems: 'stretch' }}>
+          {stats.map(([label, value, note, icon]) => (
+            <div key={label} className="metric">
+              <div className="mbody">
+                <span className="mlabel">{label}</span>
+                <span className="mval">{value}</span>
+                <span className="mnote">{note}</span>
+              </div>
+              <span className="ichip" aria-hidden="true">
+                {icon}
+              </span>
+            </div>
+          ))}
+        </div>
 
-      {version === null ? (
-        <p className="muted">
-          Nothing authored yet. <Link to={`/templates/${procedure.id}/edit`}>Start the draft</Link>.
-        </p>
-      ) : (
-        <>
-          <h2>
-            {version.state === 'DRAFT' ? `Draft v${version.versionNo}` : `v${version.versionNo}`}
-            {version.changeNote && <span className="muted small"> — {version.changeNote}</span>}
-          </h2>
-          <DefinitionView definition={version.definition} />
-        </>
-      )}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <section
+            style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}
+            aria-label="Checklist"
+          >
+            {hasDraft && !archived && (
+              <div className="pending-strip">
+                <span aria-hidden="true" style={{ color: 'var(--action)' }}>
+                  ✎
+                </span>
+                <span style={{ flex: 1 }}>
+                  Draft v{procedure.draftVersionNo} is open
+                  {version?.state === 'DRAFT'
+                    ? ' — this page shows the draft.'
+                    : ` — this page shows v${version?.versionNo}.`}
+                </span>
+                <button
+                  className="btn btn-quiet btn-xs"
+                  disabled={busy || published == null}
+                  title={published == null ? 'A never-published procedure is only its draft' : undefined}
+                  onClick={() => {
+                    if (confirm(`Discard draft v${procedure.draftVersionNo}? Its edits are lost.`)) {
+                      void run(() => discardDraft(procedure.id))
+                    }
+                  }}
+                >
+                  Discard draft
+                </button>
+                <button
+                  className="btn btn-primary btn-xs"
+                  onClick={() => navigate(`/templates/${procedure.id}/edit`)}
+                >
+                  Continue editing
+                </button>
+              </div>
+            )}
+            {procedure.description && (
+              <p className="muted" style={{ maxWidth: '65ch', marginBottom: 8 }}>
+                {procedure.description}
+              </p>
+            )}
+            {version == null ? (
+              <div className="empty">
+                <h2 style={{ fontSize: 16 }}>Nothing authored yet</h2>
+                <button className="btn btn-primary" onClick={() => navigate(`/templates/${procedure.id}/edit`)}>
+                  Start the draft
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="row" style={{ gap: 8 }}>
+                  <span className="small muted">
+                    Showing {version.state === 'DRAFT' ? 'draft ' : ''}v{version.versionNo}
+                    {version.changeNote ? ` — ${version.changeNote}` : ''}
+                  </span>
+                </div>
+                <ReadOnlyChecklist items={items} />
+              </>
+            )}
+          </section>
 
-      {versions.length > 0 && (
-        <VersionHistory
-          procedureId={procedure.id}
-          versions={versions}
-          viewingVersionNo={version?.versionNo ?? null}
-          onView={showVersion}
-        />
-      )}
+          <aside style={{ width: 360, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <section className="dcard" aria-labelledby="pd-t">
+              <div className="dcard-head">
+                <h2 id="pd-t">Procedure details</h2>
+                {!archived && (
+                  <button className="link" onClick={() => navigate(`/templates/${procedure.id}/edit`)}>
+                    Edit
+                  </button>
+                )}
+              </div>
+              <div className="fields">
+                {(
+                  [
+                    ['Status', archived ? 'Archived' : 'Active'],
+                    ['Consumer', procedure.consumerKey ?? 'INSPECTION'],
+                    ['Published', published != null ? `v${published}` : 'Never'],
+                    ['Draft', hasDraft ? `v${procedure.draftVersionNo}` : 'None'],
+                    ['Created', new Date(procedure.createdAt).toLocaleDateString()],
+                    ['Updated', new Date(procedure.updatedAt).toLocaleDateString()],
+                  ] as [string, string][]
+                ).map(([k, v]) => (
+                  <div key={k} className="fld">
+                    <span>{k}</span>
+                    <span>{v}</span>
+                  </div>
+                ))}
+              </div>
+              {!archived && (
+                <div style={{ padding: '0 16px 16px' }}>
+                  <button
+                    className="btn btn-danger btn-xs"
+                    disabled={busy}
+                    onClick={() => {
+                      if (confirm('Archive this procedure? It can no longer be used for new work.')) {
+                        void run(() => archiveProcedure(procedure.id))
+                      }
+                    }}
+                  >
+                    Archive procedure
+                  </button>
+                </div>
+              )}
+            </section>
+
+            {versions.length > 0 && (
+              <section className="dcard" aria-labelledby="vh-t">
+                <div className="dcard-head">
+                  <h2 id="vh-t">Versions</h2>
+                </div>
+                <div style={{ padding: 8, display: 'flex', flexDirection: 'column' }}>
+                  {versions.map((v) => (
+                    <button
+                      key={v.id}
+                      className="nitem"
+                      style={{ alignItems: 'center' }}
+                      onClick={() => void showVersion(v.versionNo)}
+                    >
+                      <span className="num">v{v.versionNo}</span>
+                      <span className="body">
+                        <span className="txt">
+                          {v.state === 'DRAFT' ? 'Draft' : v.state === 'PUBLISHED' ? 'Published' : 'Archived'}
+                          {v.changeNote ? ` — ${v.changeNote}` : ''}
+                        </span>
+                        <span className="sub">
+                          {new Date(v.publishedAt ?? v.createdAt).toLocaleString()}
+                        </span>
+                      </span>
+                      {version?.versionNo === v.versionNo && <span className="tag sel">Viewing</span>}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+          </aside>
+        </div>
+      </div>
     </div>
   )
+}
+
+interface FlatItem {
+  item: DefinitionItem
+  parent: DefinitionItem | null
+}
+
+function flattenItems(items: DefinitionItem[], parent: DefinitionItem | null = null): FlatItem[] {
+  const out: FlatItem[] = []
+  for (const item of items) {
+    out.push({ item, parent })
+    out.push(...flattenItems(item.follow, item))
+  }
+  return out
 }

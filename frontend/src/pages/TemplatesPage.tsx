@@ -1,23 +1,27 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { listProcedures } from '../api/templates'
-import type { Pagination, ProcedureStatus, ProcedureTemplate } from '../api/types'
-import { StatusBadge } from '../components/StatusBadge'
+import type { Pagination, ProcedureTemplate } from '../api/types'
 import { Pager } from '../components/Pager'
 
 /**
- * The procedure library.
+ * The procedure library, in the Sclera 2.0 design (docs/procedures-v3.html):
+ * a card grid behind All / Published / Drafts tabs.
  *
- * A procedure is identity only — its questions live in its versions — so
- * status alone says very little. The two columns that tell you where one
- * actually stands are which version is published (nothing can use a procedure
- * until something is) and whether a draft is open (someone is mid-edit).
+ * The tabs are cuts of the model, not a status field: Published means a
+ * current published version exists, Drafts means a draft is open — a
+ * procedure with both (published, being edited) appears under each and its
+ * card says "Unpublished changes". Archived is its own tab because an
+ * archived procedure is out of every other conversation.
  */
+type Cut = 'all' | 'published' | 'draft' | 'archived'
+
 export function TemplatesPage() {
   const navigate = useNavigate()
   const [procedures, setProcedures] = useState<ProcedureTemplate[]>([])
   const [pagination, setPagination] = useState<Pagination | null>(null)
-  const [status, setStatus] = useState<ProcedureStatus | ''>('')
+  const [cut, setCut] = useState<Cut>('all')
+  const [query, setQuery] = useState('')
   const [page, setPage] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -25,7 +29,7 @@ export function TemplatesPage() {
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    listProcedures({ status: status || undefined, page, size: 20 })
+    listProcedures({ status: cut === 'archived' ? 'ARCHIVED' : 'ACTIVE', page, size: 30 })
       .then((r) => {
         if (cancelled) return
         setProcedures(r.data)
@@ -37,83 +41,168 @@ export function TemplatesPage() {
     return () => {
       cancelled = true
     }
-  }, [status, page])
+  }, [cut === 'archived', page])
+
+  const needle = query.trim().toLowerCase()
+  const base = useMemo(
+    () =>
+      procedures.filter(
+        (p) => !needle || `${p.name} ${p.description ?? ''}`.toLowerCase().includes(needle),
+      ),
+    [procedures, needle],
+  )
+  const published = base.filter((p) => p.currentPublishedVersionNo != null)
+  const drafts = base.filter((p) => p.draftVersionNo != null)
+  const shown = cut === 'published' ? published : cut === 'draft' ? drafts : base
+
+  const tabs: [Cut, string, number][] = [
+    ['all', 'All', base.length],
+    ['published', 'Published', published.length],
+    ['draft', 'Drafts', drafts.length],
+    ['archived', 'Archived', cut === 'archived' ? base.length : 0],
+  ]
 
   return (
-    <div>
-      <div className="page-head">
-        <div>
+    <div className="v3 v3-page">
+      <div className="phead">
+        <div className="ptitle">
           <h1>Procedures</h1>
-          <p className="muted small">
-            Each procedure keeps every version it has ever published. Publishing freezes a version;
-            editing one afterwards starts a new draft.
-          </p>
+          <span className="psub">
+            {shown.length} procedure{shown.length === 1 ? '' : 's'} · every published version is
+            kept; editing starts a new draft
+          </span>
         </div>
-        <div className="page-actions">
-          <select
-            value={status}
-            onChange={(e) => {
-              setStatus(e.target.value as ProcedureStatus | '')
-              setPage(0)
-            }}
-          >
-            <option value="">All</option>
-            <option value="ACTIVE">Active</option>
-            <option value="ARCHIVED">Archived</option>
-          </select>
+        <div className="pacts">
           <Link className="btn btn-primary" to="/templates/new">
-            New procedure
+            + Create procedure
           </Link>
         </div>
       </div>
 
-      {error && <div className="alert alert-error">{error}</div>}
-      {loading ? (
-        <p className="muted">Loading…</p>
-      ) : procedures.length === 0 ? (
-        <p className="muted">No procedures yet. Create one to start authoring.</p>
-      ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Status</th>
-              <th>Published</th>
-              <th>Draft</th>
-              <th>Updated</th>
-            </tr>
-          </thead>
-          <tbody>
-            {procedures.map((p) => (
-              <tr key={p.id} className="clickable" onClick={() => navigate(`/templates/${p.id}`)}>
-                <td>
-                  <div className="asset-name">{p.name}</div>
-                  {p.description && <div className="muted small">{p.description}</div>}
-                </td>
-                <td>
-                  <StatusBadge status={p.status} />
-                </td>
-                <td>
-                  {p.currentPublishedVersionNo == null ? (
-                    <span className="muted">Not published</span>
-                  ) : (
-                    <>v{p.currentPublishedVersionNo}</>
-                  )}
-                </td>
-                <td>
-                  {p.draftVersionNo == null ? (
-                    <span className="muted">—</span>
-                  ) : (
-                    <span className="badge badge-amber">v{p.draftVersionNo} open</span>
-                  )}
-                </td>
-                <td>{new Date(p.updatedAt).toLocaleString()}</td>
-              </tr>
+      <div className="lib-head">
+        <div className="dtabs" role="tablist" aria-label="Status">
+          {tabs.map(([k, label, n]) => (
+            <button
+              key={k}
+              role="tab"
+              className="dtab"
+              aria-selected={cut === k}
+              onClick={() => {
+                setCut(k)
+                setPage(0)
+              }}
+            >
+              {label}
+              <span className={`count-badge${k === 'draft' && n > 0 ? '' : ' quiet'}`}>
+                {k === 'archived' && cut !== 'archived' ? '…' : n}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="row between" style={{ paddingBottom: 16 }}>
+          <label className="search">
+            <span aria-hidden="true">⌕</span>
+            <input
+              type="search"
+              aria-label="Search procedures"
+              placeholder="Search by name or description"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="scroll" style={{ padding: '0 24px 24px' }}>
+        {error && <div className="alert-error">{error}</div>}
+        {loading ? (
+          <p className="muted">Loading…</p>
+        ) : shown.length === 0 ? (
+          <div className="empty">
+            <h2 style={{ fontSize: 16 }}>
+              {cut === 'draft'
+                ? 'No open drafts'
+                : cut === 'archived'
+                  ? 'Nothing archived'
+                  : 'No procedures yet'}
+            </h2>
+            <p className="muted">
+              {cut === 'draft'
+                ? 'Editing a procedure opens a draft, and it appears here until it is published.'
+                : 'Create one to start authoring, or clear the search.'}
+            </p>
+            <Link className="btn btn-primary" to="/templates/new">
+              Create procedure
+            </Link>
+          </div>
+        ) : (
+          <div className="grid3">
+            {shown.map((p) => (
+              <ProcCard key={p.id} p={p} onOpen={() => navigate(`/templates/${p.id}`)} />
             ))}
-          </tbody>
-        </table>
-      )}
-      <Pager pagination={pagination} onPage={setPage} />
+          </div>
+        )}
+        <Pager pagination={pagination} onPage={setPage} />
+      </div>
     </div>
+  )
+}
+
+function ProcCard({ p, onOpen }: { p: ProcedureTemplate; onOpen: () => void }) {
+  const archived = p.status === 'ARCHIVED'
+  const isPublished = p.currentPublishedVersionNo != null
+  const hasDraft = p.draftVersionNo != null
+  const draftOnly = hasDraft && !isPublished
+
+  return (
+    <button className={`pcard${draftOnly ? ' draft' : ''}`} onClick={onOpen}>
+      <span className="row" style={{ alignItems: 'flex-start', gap: 14, width: '100%' }}>
+        <span className="ptile" aria-hidden="true">
+          ☑
+        </span>
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, flex: 1 }}>
+          <span className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+            {archived ? (
+              <span className="tag">Archived</span>
+            ) : isPublished ? (
+              <span className="tag pass">Published</span>
+            ) : (
+              <span className="tag">Draft</span>
+            )}
+            {isPublished && hasDraft && !archived && (
+              <span className="tag warn">Unpublished changes</span>
+            )}
+          </span>
+          <span
+            className="ellipsis"
+            style={{ fontWeight: 500, fontSize: 16, color: 'var(--heading)' }}
+          >
+            {p.name}
+          </span>
+          <span className="small muted clamp2">{p.description || 'No description yet.'}</span>
+        </span>
+      </span>
+      <span className="meta3">
+        <span>
+          <span>Published</span>
+          {p.currentPublishedVersionNo != null ? `v${p.currentPublishedVersionNo}` : '—'}
+        </span>
+        <span>
+          <span>Draft</span>
+          {p.draftVersionNo != null ? `v${p.draftVersionNo}` : '—'}
+        </span>
+        <span>
+          <span>Updated</span>
+          {new Date(p.updatedAt).toLocaleDateString()}
+        </span>
+      </span>
+      {draftOnly && !archived && (
+        <span className="row" style={{ gap: 6 }}>
+          <span className="small" style={{ marginLeft: 'auto', color: 'var(--action)', fontWeight: 500 }}>
+            Continue editing →
+          </span>
+        </span>
+      )}
+    </button>
   )
 }

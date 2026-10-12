@@ -204,6 +204,22 @@ export async function apiFetch<T>(
   return parseEnvelope<T>(res)
 }
 
+/**
+ * Multipart upload through the gateway. Same session/CSRF handling as
+ * `apiFetch`; the one difference is that Content-Type is left to the browser,
+ * which must set the multipart boundary itself.
+ */
+export async function apiUpload<T>(path: string, form: FormData): Promise<ApiResult<T>> {
+  const res = await fetch(path, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: gatewayHeaders(),
+    body: form,
+  })
+  if (res.status === 401) sessionExpired()
+  return parseEnvelope<T>(res)
+}
+
 // ── BFF auth endpoints (served in-process by the gateway) ────────────────────
 
 export async function fetchSession(): Promise<SessionUser> {
