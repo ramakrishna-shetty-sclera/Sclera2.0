@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { listProcedures } from '../api/templates'
-import type { Pagination, ProcedureStatus, ProcedureTemplate } from '../api/types'
+import type { Pagination, ProcedureStatus, ProcedureTemplate, TemplateScope } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { StatusBadge } from '../components/StatusBadge'
 import { Pager } from '../components/Pager'
@@ -20,6 +20,8 @@ export function TemplatesPage() {
   const [procedures, setProcedures] = useState<ProcedureTemplate[]>([])
   const [pagination, setPagination] = useState<Pagination | null>(null)
   const [status, setStatus] = useState<ProcedureStatus | ''>('')
+  const [scope, setScope] = useState<TemplateScope | ''>('')
+  const [favouritesOnly, setFavouritesOnly] = useState(false)
   const [page, setPage] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -27,7 +29,13 @@ export function TemplatesPage() {
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    listProcedures({ status: status || undefined, page, size: 20 })
+    listProcedures({
+      status: status || undefined,
+      scope: scope || undefined,
+      favouritesOnly: favouritesOnly || undefined,
+      page,
+      size: 20,
+    })
       .then((r) => {
         if (cancelled) return
         setProcedures(r.data)
@@ -39,7 +47,7 @@ export function TemplatesPage() {
     return () => {
       cancelled = true
     }
-  }, [status, page])
+  }, [status, scope, favouritesOnly, page])
 
   return (
     <div>
@@ -63,6 +71,29 @@ export function TemplatesPage() {
             <option value="ACTIVE">Active</option>
             <option value="ARCHIVED">Archived</option>
           </select>
+          <select
+            value={scope}
+            aria-label="Scope"
+            onChange={(e) => {
+              setScope(e.target.value as TemplateScope | '')
+              setPage(0)
+            }}
+          >
+            <option value="">Organization + property</option>
+            <option value="ORGANIZATION">Organization only</option>
+            <option value="PROPERTY">Property only</option>
+          </select>
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={favouritesOnly}
+              onChange={(e) => {
+                setFavouritesOnly(e.target.checked)
+                setPage(0)
+              }}
+            />
+            Favourites only
+          </label>
           {permissions.canManageTemplates && (
             <Link className="btn btn-primary" to="/templates/new">
               New procedure
@@ -81,6 +112,7 @@ export function TemplatesPage() {
           <thead>
             <tr>
               <th>Name</th>
+              <th>Scope</th>
               <th>Status</th>
               <th>Published</th>
               <th>Draft</th>
@@ -93,6 +125,16 @@ export function TemplatesPage() {
                 <td>
                   <div className="asset-name">{p.name}</div>
                   {p.description && <div className="muted small">{p.description}</div>}
+                  {(p.globalTemplateId != null || p.forkedFromTemplateId != null) && (
+                    <div className="muted small">
+                      {p.globalTemplateId != null ? 'From the shared library' : 'Property fork'}
+                    </div>
+                  )}
+                </td>
+                <td>
+                  <span className={`badge ${p.propertyId == null ? 'badge-blue' : 'badge-gray'}`}>
+                    {p.propertyId == null ? 'Organization-wide' : 'This property'}
+                  </span>
                 </td>
                 <td>
                   <StatusBadge status={p.status} />
