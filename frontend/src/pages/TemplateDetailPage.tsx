@@ -20,6 +20,7 @@ import type {
   TemplateVersionSummary,
 } from '../api/types'
 import { Refusal } from '../components/Refusal'
+import { PRIORITY_CLASS } from '../components/v3/procedureVocab'
 import { ReadOnlyChecklist } from '../components/v3/ReadOnlyChecklist'
 
 /**
@@ -165,6 +166,7 @@ export function TemplateDetailPage() {
   const hasDraft = procedure.draftVersionNo != null
   const published = procedure.currentPublishedVersionNo
   const archived = procedure.status === 'ARCHIVED'
+  const meta = procedure.meta ?? {}
   const draftSummary = versions.find((v) => v.state === 'DRAFT')
   const draftSavedAt = draftSummary ? new Date(draftSummary.createdAt).toLocaleDateString() : null
   const items = version?.definition.items ?? []
@@ -195,6 +197,9 @@ export function TemplateDetailPage() {
               <span className="tag">Never published</span>
             )}
             {hasDraft && <span className="tag warn">Draft v{procedure.draftVersionNo} open</span>}
+            {meta.priority && (
+              <span className={`tag ${PRIORITY_CLASS[meta.priority] ?? ''}`}>{meta.priority}</span>
+            )}
           </div>
         </div>
         <div className="pacts">
@@ -338,6 +343,14 @@ export function TemplateDetailPage() {
                 {(
                   [
                     ['Status', archived ? 'Archived' : 'Active'],
+                    ['Category', meta.category ?? '—'],
+                    ['Sub category', meta.subCategory ?? '—'],
+                    ['Standard', meta.standard ?? '—'],
+                    ['Frequency', meta.frequency ?? '—'],
+                    ['Priority', meta.priority ?? '—'],
+                    ['Code', meta.code ?? '—'],
+                    ['Availability', meta.availability === 'ORG' ? 'Entire organization' : 'This property'],
+                    ['Folder', meta.folder ?? '—'],
                     ['Consumer', procedure.consumerKey ?? 'INSPECTION'],
                     ['Published', published != null ? `v${published}` : 'Never'],
                     ['Draft', hasDraft ? `v${procedure.draftVersionNo}` : 'None'],

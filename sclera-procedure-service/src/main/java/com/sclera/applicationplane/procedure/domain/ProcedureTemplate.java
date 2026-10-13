@@ -1,6 +1,7 @@
 package com.sclera.applicationplane.procedure.domain;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -48,6 +49,10 @@ public class ProcedureTemplate {
 
     @Column(name = "consumer_key", nullable = false, length = 50)
     private String consumerKey = "INSPECTION";
+
+    /** Category, folder, frequency and the rest of the descriptive fields. */
+    @Embedded
+    private TemplateMeta meta = TemplateMeta.empty();
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -99,6 +104,10 @@ public class ProcedureTemplate {
 
     public String getConsumerKey() { return consumerKey; }
     public void setConsumerKey(String consumerKey) { this.consumerKey = consumerKey; }
+
+    /** Never null: Hibernate hydrates an all-null embeddable as null. */
+    public TemplateMeta getMeta() { return meta == null ? TemplateMeta.empty() : meta; }
+    public void setMeta(TemplateMeta meta) { this.meta = meta == null ? TemplateMeta.empty() : meta; }
 
     public TemplateStatus getStatus() { return status; }
     public void setStatus(TemplateStatus status) { this.status = status; }

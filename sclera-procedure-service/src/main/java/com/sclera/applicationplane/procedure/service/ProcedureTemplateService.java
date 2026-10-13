@@ -120,6 +120,7 @@ public class ProcedureTemplateService {
         if (!isBlank(request.consumerKey())) {
             template.setConsumerKey(request.consumerKey().strip().toUpperCase(Locale.ROOT));
         }
+        template.setMeta(request.meta());
         template.setCreatedBy(OrgContext.getUserId());
         templates.saveAndFlush(template);
 
@@ -133,7 +134,7 @@ public class ProcedureTemplateService {
         return mapper.toResponse(template, null, 1);
     }
 
-    /** Name and description are identity, not content, so they are not versioned. */
+    /** Name, description and meta are identity, not content, so they are not versioned. */
     public TemplateResponse update(UUID id, UpdateTemplateRequest request) {
         ProcedureTemplate template = getOwned(id);
         requireActive(template);
@@ -143,6 +144,9 @@ public class ProcedureTemplateService {
         }
         template.setName(name);
         template.setDescription(blankToNull(request.description()));
+        if (request.meta() != null) {
+            template.setMeta(request.meta());
+        }
         templates.flush();
         return toResponse(template);
     }
@@ -210,6 +214,7 @@ public class ProcedureTemplateService {
         copy.setName(name);
         copy.setDescription(source.getDescription());
         copy.setConsumerKey(source.getConsumerKey());
+        copy.setMeta(source.getMeta());
         copy.setKeySeq(source.getKeySeq());
         copy.setCreatedBy(OrgContext.getUserId());
         templates.saveAndFlush(copy);

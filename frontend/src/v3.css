@@ -1254,6 +1254,55 @@
   border-color: var(--action);
   background: var(--selected);
 }
+.v3 .tcard {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 14px;
+}
+.v3 .seg-tabs {
+  display: inline-flex;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.v3 .seg-tabs button {
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-right: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.25px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.v3 .seg-tabs button:last-child {
+  border-right: 0;
+}
+.v3 .seg-tabs button[aria-pressed='true'] {
+  background: var(--selected);
+  color: var(--selected-text);
+}
+.v3 .fcard {
+  height: 150px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--text);
+  cursor: pointer;
+}
+.v3 .fcard:hover {
+  border-color: var(--line-strong);
+}
 .v3 .choice {
   display: flex;
   align-items: center;

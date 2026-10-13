@@ -2,6 +2,7 @@ package com.sclera.applicationplane.procedure.dto;
 
 import com.sclera.applicationplane.procedure.definition.DefinitionDiff;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument;
+import com.sclera.applicationplane.procedure.domain.TemplateMeta;
 import com.sclera.applicationplane.procedure.domain.TemplateStatus;
 import com.sclera.applicationplane.procedure.domain.VersionOrigin;
 import com.sclera.applicationplane.procedure.domain.VersionState;
@@ -27,12 +28,25 @@ public final class ProcedureTemplateDtos {
             @NotBlank @Size(max = 200) String name,
             @Size(max = 2000) String description,
             @Size(max = 50) String consumerKey,
-            @Valid DefinitionDocument definition) {}
+            @Valid TemplateMeta meta,
+            @Valid DefinitionDocument definition) {
 
-    /** Identity only — name and description are not versioned. */
+        public CreateTemplateRequest(String name, String description, String consumerKey,
+                                     DefinitionDocument definition) {
+            this(name, description, consumerKey, null, definition);
+        }
+    }
+
+    /** Identity only — name, description and meta are not versioned. Null meta = unchanged. */
     public record UpdateTemplateRequest(
             @NotBlank @Size(max = 200) String name,
-            @Size(max = 2000) String description) {}
+            @Size(max = 2000) String description,
+            @Valid TemplateMeta meta) {
+
+        public UpdateTemplateRequest(String name, String description) {
+            this(name, description, null);
+        }
+    }
 
     /**
      * Replaces the draft's whole document. {@code rowVersion} must be the value
@@ -61,6 +75,7 @@ public final class ProcedureTemplateDtos {
             String name,
             String description,
             String consumerKey,
+            TemplateMeta meta,
             TemplateStatus status,
             UUID currentPublishedVersionId,
             Integer currentPublishedVersionNo,

@@ -4,6 +4,7 @@ import { listProcedures } from '../api/templates'
 import type { Pagination, ProcedureTemplate } from '../api/types'
 import { Pager } from '../components/Pager'
 import { DocumentLibraryDialog } from '../components/v3/DocumentLibraryDialog'
+import { FOLDERS, PRIORITY_CLASS } from '../components/v3/procedureVocab'
 
 /**
  * The procedure library, in the Sclera 2.0 design (docs/procedures-v3.html):
@@ -27,6 +28,8 @@ export function TemplatesPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [docLibOpen, setDocLibOpen] = useState(false)
+  const [view, setView] = useState<'grid' | 'folders'>('grid')
+  const [folder, setFolder] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -55,7 +58,10 @@ export function TemplatesPage() {
   )
   const published = base.filter((p) => p.currentPublishedVersionNo != null)
   const drafts = base.filter((p) => p.draftVersionNo != null)
-  const shown = cut === 'published' ? published : cut === 'draft' ? drafts : base
+  const byStatus = cut === 'published' ? published : cut === 'draft' ? drafts : base
+  const inFolder = view === 'folders' && folder != null
+  const shown = inFolder ? byStatus.filter((p) => folderOf(p) === folder) : byStatus
+  const showFolders = view === 'folders' && folder == null
 
   const tabs: [Cut, string, number][] = [
     ['all', 'All', base.length],
@@ -126,13 +132,56 @@ export function TemplatesPage() {
               onChange={(e) => setQuery(e.target.value)}
             />
           </label>
+          <div className="seg-tabs" role="group" aria-label="View">
+            <button
+              aria-pressed={view === 'grid'}
+              onClick={() => {
+                setView('grid')
+                setFolder(null)
+              }}
+            >
+              ▦ Grid
+            </button>
+            <button aria-pressed={view === 'folders'} onClick={() => setView('folders')}>
+              🗀 Folders
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="scroll" style={{ padding: '0 24px 24px' }}>
         {error && <div className="alert-error">{error}</div>}
+        {inFolder && (
+          <div className="row" style={{ gap: 8, paddingBottom: 12 }}>
+            <button className="link" onClick={() => setFolder(null)}>
+              ‹ All folders
+            </button>
+            <span className="small muted">
+              {folder} · {shown.length} procedure{shown.length === 1 ? '' : 's'}
+            </span>
+          </div>
+        )}
         {loading ? (
           <p className="muted">Loading…</p>
+        ) : showFolders ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,minmax(0,1fr))', gap: 16 }}>
+            {FOLDERS.map((f) => {
+              const inF = byStatus.filter((p) => folderOf(p) === f)
+              const dr = inF.filter((p) => p.draftVersionNo != null).length
+              return (
+                <button key={f} className="fcard" onClick={() => setFolder(f)}>
+                  <span aria-hidden="true" style={{ fontSize: 36, lineHeight: 1 }}>
+                    🗀
+                  </span>
+                  <span style={{ fontWeight: 600, color: 'var(--heading)', fontSize: 15, marginTop: 6 }}>{f}</span>
+                  <span className="small muted">
+                    {inF.length} procedure{inF.length === 1 ? '' : 's'}
+                    {dr ? ` · ${dr} draft${dr > 1 ? 's' : ''}` : ''}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
         ) : shown.length === 0 ? (
           <div className="empty">
             <h2 style={{ fontSize: 16 }}>
@@ -164,11 +213,17 @@ export function TemplatesPage() {
   )
 }
 
+/** The design's default folder — a procedure filed nowhere shows under Inspection. */
+function folderOf(p: ProcedureTemplate): string {
+  return p.meta?.folder || 'Inspection'
+}
+
 function ProcCard({ p, onOpen }: { p: ProcedureTemplate; onOpen: () => void }) {
   const archived = p.status === 'ARCHIVED'
   const isPublished = p.currentPublishedVersionNo != null
   const hasDraft = p.draftVersionNo != null
   const draftOnly = hasDraft && !isPublished
+  const meta = p.meta ?? {}
 
   return (
     <button className={`pcard${draftOnly ? ' draft' : ''}`} onClick={onOpen}>
@@ -188,6 +243,9 @@ function ProcCard({ p, onOpen }: { p: ProcedureTemplate; onOpen: () => void }) {
             {isPublished && hasDraft && !archived && (
               <span className="tag warn">Unpublished changes</span>
             )}
+            {meta.priority && !archived && (
+              <span className={`tag ${PRIORITY_CLASS[meta.priority] ?? ''}`}>{meta.priority}</span>
+            )}
           </span>
           <span
             className="ellipsis"
@@ -200,25 +258,27 @@ function ProcCard({ p, onOpen }: { p: ProcedureTemplate; onOpen: () => void }) {
       </span>
       <span className="meta3">
         <span>
-          <span>Published</span>
-          {p.currentPublishedVersionNo != null ? `v${p.currentPublishedVersionNo}` : '—'}
+          <span>{draftOnly ? 'Folder' : 'Frequency'}</span>
+          {(draftOnly ? folderOf(p) : meta.frequency) || '—'}
         </span>
         <span>
-          <span>Draft</span>
-          {p.draftVersionNo != null ? `v${p.draftVersionNo}` : '—'}
+          <span>{draftOnly ? 'Draft' : 'Published'}</span>
+          {draftOnly ? `v${p.draftVersionNo}` : `v${p.currentPublishedVersionNo}`}
         </span>
         <span>
           <span>Updated</span>
           {new Date(p.updatedAt).toLocaleDateString()}
         </span>
       </span>
-      {draftOnly && !archived && (
-        <span className="row" style={{ gap: 6 }}>
+      <span className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+        {meta.category ? <span className="tag">{meta.category}</span> : <span className="tag line">No category</span>}
+        {meta.standard && <span className="tag line">{meta.standard}</span>}
+        {draftOnly && !archived && (
           <span className="small" style={{ marginLeft: 'auto', color: 'var(--action)', fontWeight: 500 }}>
             Continue editing →
           </span>
-        </span>
-      )}
+        )}
+      </span>
     </button>
   )
 }

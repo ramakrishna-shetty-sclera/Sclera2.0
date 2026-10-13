@@ -15,8 +15,12 @@ import {
 } from '../../api/ai'
 import { ApiError } from '../../api/client'
 import { typeLabel } from '../../api/document'
+import type { TemplateMeta } from '../../api/types'
+import type { ItemDraft } from '../itemTree'
 import { DocumentLibraryDialog, formatBytes } from './DocumentLibraryDialog'
+import { CATEGORIES, FOLDERS, FREQUENCIES, PRIORITIES, STANDARDS, SUB_CATEGORIES } from './procedureVocab'
 import { resultDot } from './ReadOnlyChecklist'
+import { STARTER_TEMPLATES, toItemDraft, type StarterTemplate } from './starterTemplates'
 
 const POLL_MS = 1500
 
@@ -24,12 +28,14 @@ export interface SidePanelDetails {
   name: string
   description: string
   changeNote: string
+  meta: TemplateMeta
   onName: (v: string) => void
   onDescription: (v: string) => void
   onChangeNote: (v: string) => void
+  onMeta: (patch: Partial<TemplateMeta>) => void
 }
 
-export type SideTab = 'details' | 'docs' | 'suggest'
+export type SideTab = 'details' | 'templates' | 'docs' | 'suggest'
 
 /**
  * The builder's right rail (docs/procedures-v3.html SidePanel): Details, and
@@ -49,6 +55,7 @@ export function BuilderSidePanel({
   onTab,
   details,
   onImport,
+  onAddItems,
 }: {
   /** Null while creating: the procedure does not exist yet, so neither can AI candidates. */
   templateId: string | null
@@ -58,6 +65,8 @@ export function BuilderSidePanel({
   onTab: (tab: SideTab) => void
   details: SidePanelDetails
   onImport: (candidateIds: string[]) => Promise<ImportResult>
+  /** Starter-template questions join the checklist client-side, like typed ones. */
+  onAddItems: (items: ItemDraft[]) => void
 }) {
   /** null = still probing; false = the server answered 404, so the flag is off. */
   const [aiAvailable, setAiAvailable] = useState<boolean | null>(null)
@@ -96,9 +105,11 @@ export function BuilderSidePanel({
 
   const tabs: [SideTab, string][] = [
     ['details', 'Details'],
+    ['templates', 'Templates'],
     ['docs', '✦ Documents'],
     ['suggest', '✦ Suggestions'],
   ]
+  const aiTab = tab === 'docs' || tab === 'suggest'
   const aiReady = templateId != null && aiAvailable === true
 
   return (
@@ -107,7 +118,9 @@ export function BuilderSidePanel({
         {tabs.map(([k, label]) => (
           <button key={k} type="button" role="tab" className="stab" aria-selected={tab === k} onClick={() => onTab(k)}>
             {label}
-            {k !== 'details' && candidates.length > 0 && <span className="count-badge">{candidates.length}</span>}
+            {(k === 'docs' || k === 'suggest') && candidates.length > 0 && (
+              <span className="count-badge">{candidates.length}</span>
+            )}
           </button>
         ))}
       </div>
@@ -122,7 +135,7 @@ export function BuilderSidePanel({
           <div className="alert-ok">{notice}</div>
         </div>
       )}
-      {candidates.length > 0 && tab !== 'details' && (
+      {candidates.length > 0 && aiTab && (
         <div style={{ padding: '12px 20px 0' }}>
           <button type="button" className="btn btn-primary" style={{ width: '100%' }} onClick={() => setReview(true)}>
             Review {candidates.length} suggested question{candidates.length === 1 ? '' : 's'}
@@ -131,7 +144,8 @@ export function BuilderSidePanel({
       )}
 
       {tab === 'details' && <DetailsTab details={details} />}
-      {tab !== 'details' && !aiReady && (
+      {tab === 'templates' && <TemplatesTab onAddItems={onAddItems} />}
+      {aiTab && !aiReady && (
         <AiUnavailable templateId={templateId} aiAvailable={aiAvailable} />
       )}
       {tab === 'docs' && aiReady && (
@@ -208,7 +222,42 @@ function PanelIntro({ title, text }: { title: string; text: string }) {
   )
 }
 
+/** A labelled select over a suggested vocabulary; a stored value outside it still shows. */
+function VocabSelect({
+  id,
+  label,
+  value,
+  options,
+  emptyLabel,
+  onChange,
+}: {
+  id: string
+  label: string
+  value: string
+  options: string[]
+  emptyLabel?: string
+  onChange: (v: string) => void
+}) {
+  const known = options.includes(value)
+  return (
+    <div className="field" style={{ flex: 1 }}>
+      <label htmlFor={id}>{label}</label>
+      <select id={id} className="input" value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">{emptyLabel ?? 'Select…'}</option>
+        {!known && value !== '' && <option value={value}>{value}</option>}
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
 function DetailsTab({ details }: { details: SidePanelDetails }) {
+  const meta = details.meta
+  const set = (patch: Partial<TemplateMeta>) => details.onMeta(patch)
   return (
     <div className="side-body">
       <PanelIntro title="Procedure details" text="The name is needed to publish; the rest helps people find it." />
@@ -225,6 +274,58 @@ function DetailsTab({ details }: { details: SidePanelDetails }) {
           onChange={(e) => details.onName(e.target.value)}
         />
       </div>
+      <div className="row" style={{ gap: 12 }}>
+        <VocabSelect id="f-cat" label="Category" value={meta.category ?? ''} options={CATEGORIES}
+          onChange={(v) => set({ category: v || null })} />
+        <VocabSelect id="f-sub" label="Sub category" value={meta.subCategory ?? ''} options={SUB_CATEGORIES}
+          onChange={(v) => set({ subCategory: v || null })} />
+      </div>
+      <div className="row" style={{ gap: 12 }}>
+        <VocabSelect id="f-freq" label="Frequency" value={meta.frequency ?? ''} options={FREQUENCIES}
+          emptyLabel="Not set" onChange={(v) => set({ frequency: v || null })} />
+        <VocabSelect id="f-pri" label="Priority" value={meta.priority ?? ''} options={PRIORITIES}
+          emptyLabel="Not set" onChange={(v) => set({ priority: v || null })} />
+      </div>
+      <div className="row" style={{ gap: 12 }}>
+        <div className="field" style={{ flex: 1 }}>
+          <label htmlFor="f-code">Code</label>
+          <input
+            id="f-code"
+            className="input"
+            value={meta.code ?? ''}
+            maxLength={30}
+            placeholder="FE-M-01"
+            onChange={(e) => set({ code: e.target.value || null })}
+          />
+        </div>
+        <VocabSelect id="f-std" label="Standard" value={meta.standard ?? ''} options={STANDARDS}
+          emptyLabel="None" onChange={(v) => set({ standard: v || null })} />
+      </div>
+      <div role="radiogroup" aria-label="Availability" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <span className="small muted">Availability</span>
+        {(
+          [
+            ['PROPERTY', 'This property', 'Only the property it was authored in'],
+            ['ORG', 'Entire organization', 'All properties'],
+          ] as ['PROPERTY' | 'ORG', string, string][]
+        ).map(([key, label, sub]) => (
+          <button
+            key={key}
+            type="button"
+            role="radio"
+            className="choice"
+            aria-checked={(meta.availability ?? 'PROPERTY') === key}
+            onClick={() => set({ availability: key })}
+          >
+            <span style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={{ fontWeight: 600 }}>{label}</span>
+              <span className="small muted">{sub}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+      <VocabSelect id="f-fold" label="Folder" value={meta.folder ?? ''} options={FOLDERS}
+        onChange={(v) => set({ folder: v || null })} />
       <div className="field">
         <label htmlFor="f-desc">Description</label>
         <textarea
@@ -248,6 +349,131 @@ function DetailsTab({ details }: { details: SidePanelDetails }) {
           onChange={(e) => details.onChangeNote(e.target.value)}
         />
       </div>
+    </div>
+  )
+}
+
+function TemplatesTab({ onAddItems }: { onAddItems: (items: ItemDraft[]) => void }) {
+  const [query, setQuery] = useState('')
+  const [preview, setPreview] = useState<StarterTemplate | null>(null)
+  const [selected, setSelected] = useState<boolean[]>([])
+  const needle = query.trim().toLowerCase()
+  const list = STARTER_TEMPLATES.filter(
+    (t) => !needle || `${t.name} ${t.standard} ${t.category}`.toLowerCase().includes(needle),
+  )
+  const picked = selected.filter(Boolean).length
+
+  return (
+    <div className="side-body">
+      <PanelIntro
+        title="Add questions from a template"
+        text="Pick a ready-made checklist, choose the questions you want, and they are added to yours."
+      />
+      <div className="field">
+        <label htmlFor="tsearch">Search templates</label>
+        <input
+          id="tsearch"
+          type="search"
+          className="input"
+          placeholder="Name or standard, e.g. NFPA 72"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
+      {list.map((t) => (
+        <div key={t.key} className="tcard" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
+              <span className="tag line">{t.category}</span>
+              <span className="tag line">{t.standard}</span>
+            </div>
+            <span style={{ fontWeight: 600 }}>{t.name}</span>
+            <span className="small muted">{t.description}</span>
+          </div>
+          <div className="row between">
+            <span className="small muted">{t.specs.length} questions</span>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => {
+                setPreview(t)
+                setSelected(t.specs.map(() => true))
+              }}
+            >
+              Preview & add
+            </button>
+          </div>
+        </div>
+      ))}
+      {list.length === 0 && <p className="muted">No templates match “{query}”.</p>}
+
+      {preview && (
+        <div
+          className="scrim"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setPreview(null)
+          }}
+        >
+          <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="tp-t" style={{ width: 760, maxHeight: '90%' }}>
+            <div className="dhead">
+              <h2 id="tp-t" style={{ fontSize: 20 }}>
+                {preview.name}
+              </h2>
+              <span className="tag line">{preview.standard}</span>
+              <button className="ibtn lg" style={{ marginLeft: 'auto' }} aria-label="Close" onClick={() => setPreview(null)}>
+                ×
+              </button>
+            </div>
+            <div className="dstrip row between">
+              <span>Choose what to add. You can edit everything afterwards.</span>
+              <label className="row small" style={{ gap: 8, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={picked === selected.length}
+                  onChange={() => setSelected(selected.map(() => picked !== selected.length))}
+                />
+                Select all ({selected.length})
+              </label>
+            </div>
+            <div className="dbody" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {preview.specs.map((spec, i) => (
+                <label key={spec.text} className={`topic${selected[i] ? ' on' : ''}`} style={{ alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={selected[i] ?? false}
+                    onChange={() => setSelected(selected.map((v, j) => (j === i ? !v : v)))}
+                  />
+                  <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <span style={{ fontWeight: 500 }}>
+                      {i + 1}. {spec.text}
+                      {spec.required && <span className="req"> *</span>}
+                    </span>
+                    {spec.help && <span className="small muted">{spec.help}</span>}
+                  </span>
+                  <span className="small muted">{typeLabel(spec.type)}</span>
+                </label>
+              ))}
+            </div>
+            <div className="dfoot">
+              <span className="muted">
+                {picked} of {selected.length} selected
+              </span>
+              <button
+                className="btn btn-primary"
+                disabled={picked === 0}
+                onClick={() => {
+                  onAddItems(
+                    preview.specs.filter((_, i) => selected[i]).map((spec) => toItemDraft(spec, preview.standard)),
+                  )
+                  setPreview(null)
+                }}
+              >
+                Add {picked} question{picked === 1 ? '' : 's'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

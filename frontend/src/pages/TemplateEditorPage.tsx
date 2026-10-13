@@ -11,7 +11,7 @@ import {
 import { importQuestions, type ImportResult } from '../api/ai'
 import { ApiError } from '../api/client'
 import { isChoice, numberItems } from '../api/document'
-import type { ItemType, ResultType } from '../api/types'
+import type { ItemType, ResultType, TemplateMeta } from '../api/types'
 import { listResultTypes } from '../api/resultTypes'
 import { Refusal } from '../components/Refusal'
 import { BuilderNavigator, flattenDrafts } from '../components/v3/BuilderNavigator'
@@ -135,6 +135,7 @@ export function TemplateEditorPage() {
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [meta, setMeta] = useState<TemplateMeta>({})
   const [items, setItems] = useState<ItemDraft[]>([newItem('YES_NO')])
   const [changeNote, setChangeNote] = useState('')
   const [schema, setSchema] = useState(2)
@@ -152,7 +153,7 @@ export function TemplateEditorPage() {
   const [refusal, setRefusal] = useState<unknown>(null)
   const [busy, setBusy] = useState(false)
   const [loaded, setLoaded] = useState(!editing)
-  const [original, setOriginal] = useState({ name: '', description: '' })
+  const [original, setOriginal] = useState({ name: '', description: '', metaJson: '{}' })
   const [resultTypes, setResultTypes] = useState<ResultType[]>([])
   const [savingFor, setSavingFor] = useState<string | null>(null)
   /** The uid of the expanded card. Everything else shows as a summary. */
@@ -181,7 +182,12 @@ export function TemplateEditorPage() {
         if (cancelled) return
         setName(procedure.name)
         setDescription(procedure.description ?? '')
-        setOriginal({ name: procedure.name, description: procedure.description ?? '' })
+        setMeta(procedure.meta ?? {})
+        setOriginal({
+          name: procedure.name,
+          description: procedure.description ?? '',
+          metaJson: JSON.stringify(procedure.meta ?? {}),
+        })
         setSchema(draft.definition.schema)
         rowVersionRef.current = draft.rowVersion
         let loadedItems = fromDocument(draft.definition)
@@ -363,6 +369,7 @@ export function TemplateEditorPage() {
         const created = await createProcedure({
           name: name.trim() || 'Untitled procedure',
           description: description.trim() || undefined,
+          meta,
           definition: toDocument(schema, items),
         })
         navigate(`/templates/${created.id}/edit`, { state: { addFollowAt: path, optionIndex } })
@@ -432,6 +439,15 @@ export function TemplateEditorPage() {
 
   // --- save / publish -------------------------------------------------------
 
+  /** Name, description or meta differ from what the server has. */
+  function identityChanged(): boolean {
+    return (
+      name.trim() !== original.name ||
+      description.trim() !== original.description ||
+      JSON.stringify(meta) !== original.metaJson
+    )
+  }
+
   async function onSave(leaveAfter = false) {
     setBusy(true)
     setError(null)
@@ -443,15 +459,16 @@ export function TemplateEditorPage() {
         const created = await createProcedure({
           name: name.trim(),
           description: description.trim() || undefined,
+          meta,
           definition,
         })
         navigate(`/templates/${created.id}${leaveAfter ? '' : '/edit'}`)
         return
       }
 
-      if (name.trim() !== original.name || description.trim() !== original.description) {
-        await updateProcedure(id!, { name: name.trim(), description: description.trim() || undefined })
-        setOriginal({ name: name.trim(), description: description.trim() })
+      if (identityChanged()) {
+        await updateProcedure(id!, { name: name.trim(), description: description.trim() || undefined, meta })
+        setOriginal({ name: name.trim(), description: description.trim(), metaJson: JSON.stringify(meta) })
       }
       const saved = await enqueue(() =>
         saveDraft(id!, {
@@ -488,8 +505,8 @@ export function TemplateEditorPage() {
     setRefusal(null)
     try {
       const definition = toDocument(schema, items)
-      if (name.trim() !== original.name || description.trim() !== original.description) {
-        await updateProcedure(id!, { name: name.trim(), description: description.trim() || undefined })
+      if (identityChanged()) {
+        await updateProcedure(id!, { name: name.trim(), description: description.trim() || undefined, meta })
       }
       const saved = await enqueue(() =>
         saveDraft(id!, {
@@ -838,11 +855,16 @@ export function TemplateEditorPage() {
               name,
               description,
               changeNote,
+              meta,
               onName: setName,
               onDescription: setDescription,
               onChangeNote: setChangeNote,
+              onMeta: (patch) => setMeta((m) => ({ ...m, ...patch })),
             }}
             onImport={onAiImport}
+            onAddItems={(added) =>
+              setItems((prev) => (isEffectivelyEmpty(prev) ? added : [...prev, ...added]))
+            }
           />
         </div>
       </div>
