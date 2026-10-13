@@ -349,6 +349,9 @@ gateway — including the calls that are meant to fail.
 
 ## AI question generation (procedure-service, feature-flagged)
 
+> Full walkthrough of both flows (document → questions, chat → questions),
+> the safeguards, and the API surface: **[docs/ai-question-generation.md](docs/ai-question-generation.md)**.
+
 Generate candidate questions from an uploaded document (PDF/DOCX/TXT) or a
 chat over the draft; candidates are reviewed in the procedure editor and only
 enter the draft through the shared import path (same validation and key
