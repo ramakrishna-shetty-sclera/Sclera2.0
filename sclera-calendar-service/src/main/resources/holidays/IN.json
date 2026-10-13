@@ -1,0 +1,9 @@
+{
+  "region": "IN",
+  "holidays": [
+    { "name": "Republic Day", "category": "PUBLIC", "dateType": "FIXED", "month": 1, "dayOfMonth": 26 },
+    { "name": "Independence Day", "category": "PUBLIC", "dateType": "FIXED", "month": 8, "dayOfMonth": 15 },
+    { "name": "Gandhi Jayanti", "category": "PUBLIC", "dateType": "FIXED", "month": 10, "dayOfMonth": 2 },
+    { "name": "Christmas Day", "category": "PUBLIC", "dateType": "FIXED", "month": 12, "dayOfMonth": 25 }
+  ]
+}

@@ -35,13 +35,16 @@ public class ChecklistService {
     private final ChecklistRepository repository;
     private final InspectionConfigRepository configRepository;
     private final InspectionTaggingRepository taggingRepository;
+    private final CalendarGate calendarGate;
 
     public ChecklistService(ChecklistRepository repository,
                             InspectionConfigRepository configRepository,
-                            InspectionTaggingRepository taggingRepository) {
+                            InspectionTaggingRepository taggingRepository,
+                            CalendarGate calendarGate) {
         this.repository = repository;
         this.configRepository = configRepository;
         this.taggingRepository = taggingRepository;
+        this.calendarGate = calendarGate;
     }
 
     /** Generate one checklist per tagged procedure × target (or one per procedure with no targets). */
@@ -55,15 +58,25 @@ public class ChecklistService {
         }
 
         OffsetDateTime now = OffsetDateTime.now();
+        // calendar opt-in: a due date in unavailable time (holiday, downtime,
+        // outside working hours) moves to the next available slot — fail-open,
+        // so with calendar-service down the requested date passes through
+        OffsetDateTime requestedDue = request.dueDate();
+        OffsetDateTime dueDate = calendarGate.adjustDueDate(requestedDue, CalendarGate.FEATURE_CHECKLIST);
+        boolean dueAdjusted = requestedDue != null && dueDate != null && !requestedDue.isEqual(dueDate);
         List<Checklist> created = new ArrayList<>();
         for (TaggedProcedure tp : tagging.getTaggedProcedures()) {
             if (tp.getTargets().isEmpty()) {
-                created.add(build(config, tp, null, request.dueDate(), now));
+                created.add(build(config, tp, null, dueDate, now));
             } else {
                 for (ProcedureTarget target : tp.getTargets()) {
-                    created.add(build(config, tp, target, request.dueDate(), now));
+                    created.add(build(config, tp, target, dueDate, now));
                 }
             }
+        }
+        if (dueAdjusted) {
+            created.forEach(c -> c.log("DUE_DATE_ADJUSTED",
+                    "Requested " + requestedDue + " falls in unavailable time; moved to " + dueDate, now));
         }
         created.forEach(repository::save);
         return created.stream().map(this::toResponse).toList();

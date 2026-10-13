@@ -29,12 +29,13 @@ type organization
     define template_importer: [user]  # imports and exports templates
     define result_type_manager: [user] # manages the org's result types
     define asset_manager: [user]      # manages locations & assets
+    define calendar_manager: [user]   # manages calendar settings, holidays & downtime
     define viewer: [user]             # read-only
 
     # --- derived permissions (what the services actually check) -----------
     # Every role must be in member, or its holder can act but cannot read:
     # can_view derives from member, here and on every org-owned object type.
-    define member: viewer or admin or inspector or supervisor or template_author or template_publisher or template_importer or result_type_manager or asset_manager
+    define member: viewer or admin or inspector or supervisor or template_author or template_publisher or template_importer or result_type_manager or asset_manager or calendar_manager
     define can_view: member
     define can_manage_inspections: admin or inspector
     define can_review: admin or supervisor
@@ -43,6 +44,7 @@ type organization
     define can_import_templates: admin or template_importer
     define can_manage_result_types: admin or result_type_manager
     define can_manage_assets: admin or asset_manager
+    define can_manage_calendar: admin or calendar_manager
     define can_administer: admin
 
 type inspection

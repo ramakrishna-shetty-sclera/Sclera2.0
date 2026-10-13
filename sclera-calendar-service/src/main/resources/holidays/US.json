@@ -1,0 +1,16 @@
+{
+  "region": "US",
+  "holidays": [
+    { "name": "New Year's Day", "category": "PUBLIC", "dateType": "FIXED", "month": 1, "dayOfMonth": 1 },
+    { "name": "Martin Luther King Jr. Day", "category": "PUBLIC", "dateType": "FLOATING", "month": 1, "weekOrdinal": 3, "dayOfWeek": "MONDAY" },
+    { "name": "Presidents' Day", "category": "PUBLIC", "dateType": "FLOATING", "month": 2, "weekOrdinal": 3, "dayOfWeek": "MONDAY" },
+    { "name": "Memorial Day", "category": "PUBLIC", "dateType": "FLOATING", "month": 5, "weekOrdinal": -1, "dayOfWeek": "MONDAY" },
+    { "name": "Juneteenth", "category": "PUBLIC", "dateType": "FIXED", "month": 6, "dayOfMonth": 19 },
+    { "name": "Independence Day", "category": "PUBLIC", "dateType": "FIXED", "month": 7, "dayOfMonth": 4 },
+    { "name": "Labor Day", "category": "PUBLIC", "dateType": "FLOATING", "month": 9, "weekOrdinal": 1, "dayOfWeek": "MONDAY" },
+    { "name": "Columbus Day", "category": "PUBLIC", "dateType": "FLOATING", "month": 10, "weekOrdinal": 2, "dayOfWeek": "MONDAY" },
+    { "name": "Veterans Day", "category": "PUBLIC", "dateType": "FIXED", "month": 11, "dayOfMonth": 11 },
+    { "name": "Thanksgiving", "category": "PUBLIC", "dateType": "FLOATING", "month": 11, "weekOrdinal": 4, "dayOfWeek": "THURSDAY" },
+    { "name": "Christmas Day", "category": "PUBLIC", "dateType": "FIXED", "month": 12, "dayOfMonth": 25 }
+  ]
+}

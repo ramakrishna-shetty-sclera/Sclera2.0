@@ -1,0 +1,133 @@
+# =====================================================================
+# sclera-calendar-service — per-property date/time rules (timezone, working
+# hours, holidays, downtime) + availability queries, persisted in Postgres
+# (sclera_calendar DB, schema-per-tenant).
+# Per-environment overrides go in application-{profile}.yml (datasource and
+# Redis live there so the test profile can leave Redis unset — sclera-common's
+# RedisCacheConfig is conditional on spring.data.redis.host).
+# =====================================================================
+
+spring:
+  application:
+    name: sclera-${SCLERA_SERVICE_NAME:calendar-service}
+  profiles:
+    default: dev
+
+  # Prometheus exemplars deadlock startup on Boot 3.3.x: the exemplar sampler
+  # lazily resolves a bean FROM the Lettuce event-loop thread while the main
+  # thread holds the bean-factory lock waiting for the Redis connect future.
+  # Same mitigation as procedure-service; drops only exemplars.
+  autoconfigure:
+    exclude: org.springframework.boot.actuate.autoconfigure.tracing.prometheus.PrometheusExemplarsAutoConfiguration
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+
+  # Public-schema migrations (table copies for validate + tenant_registry).
+  # Per-tenant schemas are migrated programmatically (MultiTenancyConfig).
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_URL:http://localhost:8180}/realms/${KEYCLOAK_REALM:sclera}
+          jwk-set-uri: ${KEYCLOAK_URL:http://localhost:8180}/realms/${KEYCLOAK_REALM:sclera}/protocol/openid-connect/certs
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+      write-durations-as-timestamps: false
+    time-zone: UTC
+    default-property-inclusion: non_null
+
+server:
+  port: ${SERVER_PORT:8098}
+  shutdown: graceful
+  forward-headers-strategy: framework
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/plain
+  error:
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
+    include-exception: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+      base-path: /actuator
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState
+  tracing:
+    sampling:
+      probability: 1.0
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+# sclera-common's MultiRealmJwtDecoderConfig fetches JWKS from `keycloak.url`,
+# NOT the spring.security.oauth2.* keys above (which are kept for completeness).
+keycloak:
+  url: ${KEYCLOAK_URL:http://localhost:8180}
+  internal-url: ${KEYCLOAK_INTERNAL_URL:http://localhost:8180}
+  browser-url: ${KEYCLOAK_BROWSER_URL:http://localhost:8180}
+  realm: ${KEYCLOAK_REALM:sclera}
+
+sclera:
+  async:
+    enabled: true
+  # OpenFGA fine-grained authorization. The store is resolved by NAME at first
+  # use (created by setup-openfga.ps1). Set SCLERA_FGA_ENABLED=false to run
+  # without OpenFGA (all checks allow; JWT + org scoping still apply).
+  fga:
+    enabled: ${SCLERA_FGA_ENABLED:true}
+    api-url: ${SCLERA_FGA_API_URL:http://localhost:8085}
+    store-name: ${SCLERA_FGA_STORE:sclera}
+    store-id: ${SCLERA_FGA_STORE_ID:}
+    authorization-model-id: ${SCLERA_FGA_MODEL_ID:}
+  # Shared with every service that calls (or is called on) /internal/** — HMAC signing
+  event-listener:
+    signing-secret: ${SCLERA_INTERNAL_SIGNING_SECRET:dev-internal-signing-secret}
+  cors:
+    allowed-origins: ${SCLERA_CORS_ALLOWED_ORIGINS:https://app.sclera.com,https://admin.sclera.com}
+    allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS
+    allowed-headers: Content-Type,X-CSRF-Token,X-Requested-With,X-Correlation-ID,Authorization
+    allow-credentials: true
+    max-age-seconds: 600
+  health:
+    dapr:
+      enabled: ${SCLERA_DAPR_HEALTH_ENABLED:false}
+  calendar:
+    # Effective-settings / resolved-calendar read caches (Caffeine, per instance).
+    # Writes invalidate the local instance immediately; other instances converge
+    # within the TTL.
+    cache-ttl-seconds: ${SCLERA_CALENDAR_CACHE_TTL_SECONDS:60}
+    # getNextAvailableSlot scan horizon.
+    next-slot-horizon-days: ${SCLERA_CALENDAR_NEXT_SLOT_HORIZON_DAYS:366}
+    # Max span of a getUnavailableRanges query.
+    max-range-days: ${SCLERA_CALENDAR_MAX_RANGE_DAYS:93}
+
+springdoc:
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui/index.html
+  api-docs:
+    enabled: true
+    path: /v3/api-docs

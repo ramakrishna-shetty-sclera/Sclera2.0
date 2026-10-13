@@ -15,6 +15,7 @@
         "template_importer": { "this": {} },
         "result_type_manager": { "this": {} },
         "asset_manager": { "this": {} },
+        "calendar_manager": { "this": {} },
         "viewer": { "this": {} },
         "member": {
           "union": {
@@ -27,7 +28,8 @@
               { "computedUserset": { "object": "", "relation": "template_publisher" } },
               { "computedUserset": { "object": "", "relation": "template_importer" } },
               { "computedUserset": { "object": "", "relation": "result_type_manager" } },
-              { "computedUserset": { "object": "", "relation": "asset_manager" } }
+              { "computedUserset": { "object": "", "relation": "asset_manager" } },
+              { "computedUserset": { "object": "", "relation": "calendar_manager" } }
             ]
           }
         },
@@ -88,6 +90,14 @@
             ]
           }
         },
+        "can_manage_calendar": {
+          "union": {
+            "child": [
+              { "computedUserset": { "object": "", "relation": "admin" } },
+              { "computedUserset": { "object": "", "relation": "calendar_manager" } }
+            ]
+          }
+        },
         "can_administer": { "computedUserset": { "object": "", "relation": "admin" } }
       },
       "metadata": {
@@ -100,6 +110,7 @@
           "template_importer": { "directly_related_user_types": [{ "type": "user" }] },
           "result_type_manager": { "directly_related_user_types": [{ "type": "user" }] },
           "asset_manager": { "directly_related_user_types": [{ "type": "user" }] },
+          "calendar_manager": { "directly_related_user_types": [{ "type": "user" }] },
           "viewer": { "directly_related_user_types": [{ "type": "user" }] },
           "member": { "directly_related_user_types": [] },
           "can_view": { "directly_related_user_types": [] },
@@ -110,6 +121,7 @@
           "can_import_templates": { "directly_related_user_types": [] },
           "can_manage_result_types": { "directly_related_user_types": [] },
           "can_manage_assets": { "directly_related_user_types": [] },
+          "can_manage_calendar": { "directly_related_user_types": [] },
           "can_administer": { "directly_related_user_types": [] }
         }
       }

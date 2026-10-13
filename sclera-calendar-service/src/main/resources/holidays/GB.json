@@ -1,0 +1,11 @@
+{
+  "region": "GB",
+  "holidays": [
+    { "name": "New Year's Day", "category": "PUBLIC", "dateType": "FIXED", "month": 1, "dayOfMonth": 1 },
+    { "name": "Early May Bank Holiday", "category": "PUBLIC", "dateType": "FLOATING", "month": 5, "weekOrdinal": 1, "dayOfWeek": "MONDAY" },
+    { "name": "Spring Bank Holiday", "category": "PUBLIC", "dateType": "FLOATING", "month": 5, "weekOrdinal": -1, "dayOfWeek": "MONDAY" },
+    { "name": "Summer Bank Holiday", "category": "PUBLIC", "dateType": "FLOATING", "month": 8, "weekOrdinal": -1, "dayOfWeek": "MONDAY" },
+    { "name": "Christmas Day", "category": "PUBLIC", "dateType": "FIXED", "month": 12, "dayOfMonth": 25 },
+    { "name": "Boxing Day", "category": "PUBLIC", "dateType": "FIXED", "month": 12, "dayOfMonth": 26 }
+  ]
+}

@@ -118,6 +118,10 @@ sclera:
   # Must match procedure-service's secret or Dapr internal calls fail 401 HMAC_FAILED
   event-listener:
     signing-secret: ${SCLERA_INTERNAL_SIGNING_SECRET:dev-internal-signing-secret}
+  # Calendar opt-in (CalendarGate → calendar-service over Dapr). Fail-open:
+  # with the service down or this flag false, due dates pass through unchanged.
+  calendar:
+    enabled: ${SCLERA_CALENDAR_ENABLED:true}
   cors:
     allowed-origins: ${SCLERA_CORS_ALLOWED_ORIGINS:https://app.sclera.com,https://admin.sclera.com}
     allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS

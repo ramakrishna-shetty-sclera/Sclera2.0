@@ -190,6 +190,54 @@ services:
       keycloak:
         condition: service_started
 
+  calendar-service:
+    profiles: ["app"]
+    build:
+      context: .
+      args:
+        MODULE: sclera-calendar-service
+    container_name: sclera-calendar-service
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/sclera_calendar
+      SCLERA_REDIS_HOST: redis
+      KEYCLOAK_URL: http://keycloak:8180
+      SCLERA_DAPR_HEALTH_ENABLED: "true"
+      SCLERA_FGA_API_URL: http://openfga:8080
+      SERVER_PORT: "8098"
+    ports:
+      - "8098:8098"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+
+  calendar-dapr:
+    profiles: ["app"]
+    image: daprio/daprd:1.18.3
+    container_name: sclera-calendar-dapr
+    network_mode: "service:calendar-service"
+    # daprd's default user (nonroot) cannot create the sqlite name-resolution
+    # db on the root-owned shared volume
+    user: "0:0"
+    command:
+      [
+        "./daprd",
+        "--app-id", "sclera-calendar-service",
+        "--app-port", "8098",
+        "--dapr-http-port", "3500",
+        "--dapr-grpc-port", "50001",
+        "--config", "/dapr/config.yaml",
+      ]
+    volumes:
+      - ./docker/dapr:/dapr:ro
+      - dapr-nr:/dapr-nr
+    depends_on:
+      - calendar-service
+
   inspection-dapr:
     profiles: ["app"]
     image: daprio/daprd:1.18.3

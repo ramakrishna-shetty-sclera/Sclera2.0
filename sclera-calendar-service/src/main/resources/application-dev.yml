@@ -1,0 +1,22 @@
+# Local development profile — localhost dependencies, verbose logging, Swagger on.
+spring:
+  datasource:
+    url: jdbc:postgresql://${SCLERA_DB_HOST:localhost}:${SCLERA_DB_PORT:5432}/${SCLERA_DB_NAME:sclera_calendar}
+    username: ${SCLERA_DB_USER:sclera}
+    password: ${SCLERA_DB_PASSWORD:sclera}
+    hikari:
+      minimum-idle: 2
+      maximum-pool-size: 10
+      connection-timeout: 5000
+
+  data:
+    redis:
+      host: ${SCLERA_REDIS_HOST:localhost}
+      port: ${SCLERA_REDIS_PORT:6379}
+      timeout: 3s
+
+logging:
+  level:
+    root: INFO
+    com.sclera: DEBUG
+    org.springframework.security: DEBUG
