@@ -129,6 +129,35 @@ public final class LlmSchemas {
         }
     }
 
+    @JsonClassDescription("The inspectable topics found in a document, grouped by theme")
+    public record TopicBatch(
+            @JsonPropertyDescription("Groups of related topics, in document order")
+            List<TopicGroup> groups) {
+
+        public TopicBatch {
+            groups = groups == null ? List.of() : List.copyOf(groups);
+        }
+    }
+
+    public record TopicGroup(
+            @JsonPropertyDescription("Short heading for this group of topics, e.g. 'Seals and tags' (max 100 chars)")
+            String title,
+            List<Topic> topics) {
+
+        public TopicGroup {
+            topics = topics == null ? List.of() : List.copyOf(topics);
+        }
+    }
+
+    public record Topic(
+            @JsonPropertyDescription("Short topic name, e.g. 'Pressure check' (max 100 chars)")
+            String title,
+            @JsonPropertyDescription("The standard this topic comes from, e.g. 'NFPA 10'; null if the text names none")
+            String standard,
+            @JsonPropertyDescription("The exact sentence or phrase from the document this topic is based on (max 300 chars)")
+            String quote) {
+    }
+
     @JsonClassDescription("One turn of the question-authoring conversation")
     public record ChatTurn(
             @JsonPropertyDescription("Conversational reply to the author; clarifying questions go here")

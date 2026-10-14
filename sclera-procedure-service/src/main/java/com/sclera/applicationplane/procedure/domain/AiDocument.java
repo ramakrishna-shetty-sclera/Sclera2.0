@@ -50,6 +50,22 @@ public class AiDocument {
     @Column(length = 2000)
     private String error;
 
+    /**
+     * The topics an author can pick before generating (LlmSchemas.TopicBatch as
+     * JSON). Extracted once per document on request and cached, like the text:
+     * a re-generation later reuses the same topic list without another LLM call.
+     */
+    @Column(name = "topics_json", columnDefinition = "text")
+    private String topicsJson;
+
+    /** PENDING = never requested; EXTRACTING/READY/FAILED mirror the text lifecycle. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "topics_status", nullable = false, length = 20)
+    private AiDocumentStatus topicsStatus = AiDocumentStatus.PENDING;
+
+    @Column(name = "topics_error", length = 2000)
+    private String topicsError;
+
     @Column(name = "created_by", updatable = false)
     private UUID createdBy;
 
@@ -82,6 +98,15 @@ public class AiDocument {
 
     public String getError() { return error; }
     public void setError(String error) { this.error = error; }
+
+    public String getTopicsJson() { return topicsJson; }
+    public void setTopicsJson(String topicsJson) { this.topicsJson = topicsJson; }
+
+    public AiDocumentStatus getTopicsStatus() { return topicsStatus; }
+    public void setTopicsStatus(AiDocumentStatus topicsStatus) { this.topicsStatus = topicsStatus; }
+
+    public String getTopicsError() { return topicsError; }
+    public void setTopicsError(String topicsError) { this.topicsError = topicsError; }
 
     public UUID getCreatedBy() { return createdBy; }
     public void setCreatedBy(UUID createdBy) { this.createdBy = createdBy; }

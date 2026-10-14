@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sclera.applicationplane.procedure.ai.CandidateQuestion;
 import com.sclera.applicationplane.procedure.ai.DedupService.SimilarQuestion;
+import com.sclera.applicationplane.procedure.ai.LlmSchemas.TopicBatch;
+import com.sclera.applicationplane.procedure.domain.AiDocumentStatus;
 import com.sclera.applicationplane.procedure.domain.AiDocument;
 import com.sclera.applicationplane.procedure.domain.ChatSession;
 import com.sclera.applicationplane.procedure.domain.GeneratedQuestion;
@@ -34,7 +36,30 @@ public class AiMapper {
 
     public AiDocumentResponse toResponse(AiDocument document) {
         return new AiDocumentResponse(document.getId(), document.getFilename(), document.getMediaType(),
-                document.getSizeBytes(), document.getStatus(), document.getError(), document.getCreatedAt());
+                document.getSizeBytes(), document.getStatus(), document.getError(),
+                document.getTopicsStatus(),
+                document.getTopicsStatus() == AiDocumentStatus.READY ? readTopics(document.getTopicsJson()) : null,
+                document.getTopicsError(),
+                document.getCreatedAt());
+    }
+
+    public TopicBatch readTopics(String json) {
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(json, TopicBatch.class);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Stored document topics are not readable", e);
+        }
+    }
+
+    public String writeTopics(TopicBatch topics) {
+        try {
+            return objectMapper.writeValueAsString(topics);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Document topics are not serialisable", e);
+        }
     }
 
     public ChatSessionResponse toResponse(ChatSession session) {

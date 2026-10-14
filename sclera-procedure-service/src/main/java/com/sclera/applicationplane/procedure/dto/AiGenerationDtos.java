@@ -2,6 +2,8 @@ package com.sclera.applicationplane.procedure.dto;
 
 import com.sclera.applicationplane.procedure.ai.CandidateQuestion;
 import com.sclera.applicationplane.procedure.ai.DedupService.SimilarQuestion;
+import com.sclera.applicationplane.procedure.ai.LlmSchemas.TopicBatch;
+import com.sclera.applicationplane.procedure.ai.LlmSchemas.Topic;
 import com.sclera.applicationplane.procedure.domain.AiDocumentStatus;
 import com.sclera.applicationplane.procedure.domain.ChatSessionStatus;
 import com.sclera.applicationplane.procedure.domain.GeneratedQuestionSource;
@@ -25,11 +27,21 @@ public final class AiGenerationDtos {
 
     // --- requests -----------------------------------------------------------
 
-    /** {@code model} optionally overrides sclera.ai.model, within the allow-list. */
+    /**
+     * {@code model} optionally overrides sclera.ai.model, within the allow-list.
+     * {@code topics} narrows generation to the topics the author selected from
+     * the document's extracted topic list; empty or null means the whole document.
+     */
     public record GenerateFromDocumentRequest(
             @NotNull UUID documentId,
             @Size(max = 2000) String instructions,
-            @Size(max = 100) String model) {}
+            @Size(max = 100) String model,
+            @Size(max = 50) List<Topic> topics) {
+
+        public GenerateFromDocumentRequest(UUID documentId, String instructions, String model) {
+            this(documentId, instructions, model, null);
+        }
+    }
 
     public record ChatMessageRequest(
             @NotBlank @Size(max = 4000) String message,
@@ -39,6 +51,7 @@ public final class AiGenerationDtos {
 
     // --- responses ----------------------------------------------------------
 
+    /** {@code topics} is present only when {@code topicsStatus} is READY. */
     public record AiDocumentResponse(
             UUID id,
             String filename,
@@ -46,6 +59,9 @@ public final class AiGenerationDtos {
             long sizeBytes,
             AiDocumentStatus status,
             String error,
+            AiDocumentStatus topicsStatus,
+            TopicBatch topics,
+            String topicsError,
             OffsetDateTime createdAt) {}
 
     /**

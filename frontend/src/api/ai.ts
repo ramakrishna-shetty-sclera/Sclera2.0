@@ -95,6 +95,18 @@ export interface QuestionDraft {
   createdAt: string
 }
 
+/** One inspectable topic the LLM found in a document, with its source quote. */
+export interface DocumentTopic {
+  title: string
+  standard?: string | null
+  quote?: string | null
+}
+
+export interface DocumentTopicGroup {
+  title: string
+  topics: DocumentTopic[]
+}
+
 export interface AiDocument {
   id: string
   filename: string
@@ -102,6 +114,10 @@ export interface AiDocument {
   sizeBytes: number
   status: AiDocumentStatus
   error?: string | null
+  /** PENDING = topics never requested; READY = `topics` is present. */
+  topicsStatus: AiDocumentStatus
+  topics?: { groups: DocumentTopicGroup[] } | null
+  topicsError?: string | null
   createdAt: string
 }
 
@@ -160,10 +176,27 @@ export function listAiDocuments(): Promise<AiDocument[]> {
   return apiFetch<AiDocument[]>(`${AI}/documents`).then((r) => r.data)
 }
 
+/**
+ * Ask for the document's selectable topics (cached after the first run). Poll
+ * the document until topicsStatus is READY, then pass picked topics to
+ * `generateFromDocument`.
+ */
+export function extractTopics(documentId: string): Promise<AiDocument> {
+  return apiFetch<AiDocument>(`${AI}/documents/${documentId}/topics`, { method: 'POST' }).then(
+    (r) => r.data,
+  )
+}
+
 /** Starts an async generation; poll the returned job until COMPLETED. */
 export function generateFromDocument(
   templateId: string,
-  body: { documentId: string; instructions?: string; model?: string },
+  body: {
+    documentId: string
+    instructions?: string
+    model?: string
+    /** Narrows generation to these author-selected topics; omit for the whole document. */
+    topics?: DocumentTopic[]
+  },
 ): Promise<GenerationJob> {
   return apiFetch<GenerationJob>(`${PROCEDURES}/${templateId}/generate/document`, {
     method: 'POST',

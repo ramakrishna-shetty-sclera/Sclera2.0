@@ -78,13 +78,17 @@ public class GenerationJobRunner {
         this.aiMapper = aiMapper;
     }
 
-    /** Entry point for the executor. Owns context setup/teardown and failure capture. */
-    public void run(UUID jobId, UUID orgId, UUID userId, String instructions) {
+    /**
+     * Entry point for the executor. Owns context setup/teardown and failure
+     * capture. {@code topicsText} is the rendered author-selected topic list,
+     * or null to cover the whole document.
+     */
+    public void run(UUID jobId, UUID orgId, UUID userId, String instructions, String topicsText) {
         OrgContext.clear();
         OrgContext.setOrgId(orgId);
         OrgContext.setUserId(userId);
         try {
-            generate(jobId, orgId, instructions);
+            generate(jobId, orgId, instructions, topicsText);
         } catch (Exception e) {
             log.error("Generation job {} failed: {}", jobId, e.getMessage(), e);
             state.markFailed(jobId, e.getMessage());
@@ -93,7 +97,7 @@ public class GenerationJobRunner {
         }
     }
 
-    private void generate(UUID jobId, UUID orgId, String instructions) {
+    private void generate(UUID jobId, UUID orgId, String instructions, String topicsText) {
         GenerationJob job = state.markRunning(jobId, orgId);
         AiDocument document = documents.findByIdAndOrgId(job.getDocumentId(), orgId).orElseThrow();
         ProcedureTemplate template = templates.findByIdAndOrgId(job.getTemplateId(), orgId).orElseThrow();
@@ -117,12 +121,19 @@ public class GenerationJobRunner {
         // A question generated from chunk 1 must not come back from chunk 3.
         Set<String> seenThisRun = new HashSet<>();
 
+        String topicScope = topicsText == null || topicsText.isBlank()
+                ? "Extract every inspectable requirement from this excerpt as a question."
+                : "Generate questions ONLY for these topics the author selected; skip requirements"
+                        + " outside them. If this excerpt covers none of them, return an empty list.\n"
+                        + topicsText;
+
         for (int chunkNo = 0; chunkNo < chunks.size(); chunkNo++) {
             String user = prompts.render("document-generation.user.md", Map.of(
                     "templateName", template.getName(),
                     "instructions", instructions == null || instructions.isBlank() ? "(none)" : instructions,
                     "chunkNo", String.valueOf(chunkNo + 1),
                     "chunkCount", String.valueOf(chunks.size()),
+                    "topicScope", topicScope,
                     "documentText", chunks.get(chunkNo)));
 
             LlmClient.Result<LlmSchemas.GeneratedBatch> result = llm.complete(job.getModel(), system,

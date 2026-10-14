@@ -2,14 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import {
   createChatSession,
   discardQuestionDraft,
+  extractTopics,
   generateFromDocument,
   getAiDocument,
   getGenerationJob,
+  listAiDocuments,
   listQuestionDrafts,
   sendChatMessage,
   uploadAiDocument,
   type AiDocument,
   type CandidateQuestion,
+  type DocumentTopicGroup,
   type ImportResult,
   type QuestionDraft,
 } from '../../api/ai'
@@ -56,6 +59,8 @@ export function BuilderSidePanel({
   details,
   onImport,
   onAddItems,
+  onRequireTemplate,
+  procedureName,
 }: {
   /** Null while creating: the procedure does not exist yet, so neither can AI candidates. */
   templateId: string | null
@@ -67,6 +72,9 @@ export function BuilderSidePanel({
   onImport: (candidateIds: string[]) => Promise<ImportResult>
   /** Starter-template questions join the checklist client-side, like typed ones. */
   onAddItems: (items: ItemDraft[]) => void
+  /** Create the procedure now and reopen the builder on `tab` (docs/chat are template-scoped). */
+  onRequireTemplate: (docIds: string[], tab: SideTab) => void
+  procedureName: string
 }) {
   /** null = still probing; false = the server answered 404, so the flag is off. */
   const [aiAvailable, setAiAvailable] = useState<boolean | null>(null)
@@ -84,17 +92,22 @@ export function BuilderSidePanel({
   }, [])
 
   useEffect(() => {
-    if (!templateId) return
-    listQuestionDrafts(templateId, 'DRAFT')
-      .then((r) => {
-        if (!alive.current) return
-        setAiAvailable(true)
-        setCandidates(r.data)
-      })
-      .catch((e) => {
-        if (!alive.current) return
-        setAiAvailable(!(e instanceof ApiError && e.status === 404))
-      })
+    // The feature-flag probe. With a template, the drafts list doubles as the
+    // candidate load; without one, the org-level document list answers the
+    // same question (a 404 means the flag is off on the server).
+    const probe = templateId
+      ? listQuestionDrafts(templateId, 'DRAFT').then((r) => {
+          if (!alive.current) return
+          setAiAvailable(true)
+          setCandidates(r.data)
+        })
+      : listAiDocuments().then(() => {
+          if (alive.current) setAiAvailable(true)
+        })
+    probe.catch((e: unknown) => {
+      if (!alive.current) return
+      setAiAvailable(!(e instanceof ApiError && e.status === 404))
+    })
   }, [templateId])
 
   async function refreshCandidates() {
@@ -110,7 +123,10 @@ export function BuilderSidePanel({
     ['suggest', '✦ Suggestions'],
   ]
   const aiTab = tab === 'docs' || tab === 'suggest'
-  const aiReady = templateId != null && aiAvailable === true
+  // Uploading, the library and topic extraction are org-scoped — they work
+  // before the procedure exists. Only generation and chat are template-scoped.
+  const docsReady = aiAvailable === true
+  const suggestReady = aiAvailable === true && templateId != null
 
   return (
     <aside className="side" aria-label="Procedure details and question sources">
@@ -145,23 +161,44 @@ export function BuilderSidePanel({
 
       {tab === 'details' && <DetailsTab details={details} />}
       {tab === 'templates' && <TemplatesTab onAddItems={onAddItems} />}
-      {aiTab && !aiReady && (
-        <AiUnavailable templateId={templateId} aiAvailable={aiAvailable} />
+      {tab === 'docs' && !docsReady && <AiUnavailable aiAvailable={aiAvailable} />}
+      {tab === 'suggest' && !suggestReady && aiAvailable !== true && (
+        <AiUnavailable aiAvailable={aiAvailable} />
       )}
-      {tab === 'docs' && aiReady && (
+      {tab === 'suggest' && !suggestReady && aiAvailable === true && (
+        <div className="side-body">
+          <PanelIntro
+            title="Save the procedure to get suggestions"
+            text="Suggestions are tailored to this procedure's name, category and standard, so it has to exist first. Saving keeps everything you have typed."
+          />
+          <button type="button" className="btn btn-primary" onClick={() => onRequireTemplate([], 'suggest')}>
+            Save and get suggestions
+          </button>
+        </div>
+      )}
+      {tab === 'docs' && docsReady && (
         <DocsTab
           templateId={templateId}
           initialDocIds={initialDocIds}
           alive={alive}
           onError={setError}
           onNotice={setNotice}
+          onRequireTemplate={onRequireTemplate}
           onCandidates={() => {
             void refreshCandidates().then(() => setReview(true))
           }}
         />
       )}
-      {tab === 'suggest' && aiReady && (
-        <SuggestTab templateId={templateId} alive={alive} onError={setError} onCandidates={refreshCandidates} />
+      {tab === 'suggest' && suggestReady && (
+        <SuggestTab
+          templateId={templateId!}
+          procedureName={procedureName}
+          meta={details.meta}
+          alive={alive}
+          onError={setError}
+          onImport={onImport}
+          onChanged={refreshCandidates}
+        />
       )}
 
       {review && templateId && (
@@ -182,23 +219,10 @@ export function BuilderSidePanel({
 }
 
 /** Why a source tab cannot run yet, said plainly instead of hiding the tab. */
-function AiUnavailable({
-  templateId,
-  aiAvailable,
-}: {
-  templateId: string | null
-  aiAvailable: boolean | null
-}) {
+function AiUnavailable({ aiAvailable }: { aiAvailable: boolean | null }) {
   return (
     <div className="side-body">
-      {templateId == null ? (
-        <>
-          <PanelIntro
-            title="Create the procedure first"
-            text="AI generation works on a saved procedure. A name is enough — click Create procedure in the header, then come back to this tab."
-          />
-        </>
-      ) : aiAvailable == null ? (
+      {aiAvailable == null ? (
         <div className="row" style={{ gap: 10 }}>
           <span className="spin" />
           <span className="small muted">Checking whether AI generation is available…</span>
@@ -206,7 +230,7 @@ function AiUnavailable({
       ) : (
         <PanelIntro
           title="AI generation is switched off"
-          text="The procedure service is running without AI_QUESTION_GENERATION_ENABLED=true (and an ANTHROPIC_API_KEY). Enable it and restart the service; this panel picks it up on the next load."
+          text="The procedure service is running without AI_QUESTION_GENERATION_ENABLED=true (and an API key). Enable it and restart the service; this panel picks it up on the next load."
         />
       )}
     </div>
@@ -486,13 +510,16 @@ function DocsTab({
   alive,
   onError,
   onNotice,
+  onRequireTemplate,
   onCandidates,
 }: {
-  templateId: string
+  /** Null while creating — upload/library/topics still work; Generate saves first. */
+  templateId: string | null
   initialDocIds?: string[]
   alive: React.MutableRefObject<boolean>
   onError: (e: string | null) => void
   onNotice: (n: string | null) => void
+  onRequireTemplate: (docIds: string[], tab: SideTab) => void
   onCandidates: () => void
 }) {
   const [docs, setDocs] = useState<AiDocument[]>([])
@@ -507,17 +534,87 @@ function DocsTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const [instructions, setInstructions] = useState('')
-  const [phase, setPhase] = useState<'idle' | 'uploading' | 'generating'>('idle')
+  const [phase, setPhase] = useState<'idle' | 'uploading' | 'topics' | 'generating'>('idle')
   const [progress, setProgress] = useState<string | null>(null)
   const [libOpen, setLibOpen] = useState(false)
+  /** docId → extracted topic groups; set only once extraction is READY. */
+  const [docTopics, setDocTopics] = useState<Record<string, DocumentTopicGroup[]>>({})
+  /** docIds whose topic extraction FAILED — they generate from the whole document. */
+  const [topicsFailed, setTopicsFailed] = useState<Record<string, string>>({})
+  /** `${docId}|${group}|${topic}` → picked. Everything starts picked, per the design. */
+  const [sel, setSel] = useState<Record<string, boolean>>({})
+  const topicsReady = Object.keys(docTopics).length + Object.keys(topicsFailed).length === docs.length && docs.length > 0
   const fileInput = useRef<HTMLInputElement | null>(null)
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
+  /** Any change to the document list invalidates the extracted topic view. */
+  function resetTopics() {
+    setDocTopics({})
+    setTopicsFailed({})
+    setSel({})
+  }
+
   function addDocs(added: AiDocument[]) {
+    resetTopics()
     setDocs((d) => {
       const seen = new Set(d.map((x) => x.id))
       return [...d, ...added.filter((x) => !seen.has(x.id))].slice(0, MAX_DOCS)
     })
+  }
+
+  const topicKey = (docId: string, g: number, t: number) => `${docId}|${g}|${t}`
+  const allKeys = docs.flatMap((doc) =>
+    (docTopics[doc.id] ?? []).flatMap((group, g) => group.topics.map((_, t) => topicKey(doc.id, g, t))),
+  )
+  const pickedCount = allKeys.filter((k) => sel[k]).length
+
+  /** The topic-selection step: extract once per document (cached server-side), everything pre-selected. */
+  async function onExtractTopics() {
+    onError(null)
+    setPhase('topics')
+    try {
+      const groups: Record<string, DocumentTopicGroup[]> = {}
+      const failed: Record<string, string> = {}
+      for (const doc of docs) {
+        setProgress(`Reading ${doc.filename}…`)
+        let document = doc
+        while (alive.current && (document.status === 'PENDING' || document.status === 'EXTRACTING')) {
+          await sleep(POLL_MS)
+          document = await getAiDocument(doc.id)
+        }
+        if (!alive.current) return
+        if (document.status === 'FAILED') {
+          failed[doc.id] = document.error ?? 'the document could not be read'
+          continue
+        }
+        setProgress(`Finding topics in ${document.filename}…`)
+        document = await extractTopics(doc.id)
+        while (alive.current && document.topicsStatus === 'EXTRACTING') {
+          await sleep(POLL_MS)
+          document = await getAiDocument(doc.id)
+        }
+        if (!alive.current) return
+        if (document.topicsStatus === 'READY') {
+          groups[doc.id] = document.topics?.groups ?? []
+        } else {
+          failed[doc.id] = document.topicsError ?? 'topic extraction failed'
+        }
+      }
+      setDocTopics(groups)
+      setTopicsFailed(failed)
+      const all: Record<string, boolean> = {}
+      for (const [docId, docGroups] of Object.entries(groups)) {
+        docGroups.forEach((group, g) => group.topics.forEach((_, t) => (all[topicKey(docId, g, t)] = true)))
+      }
+      setSel(all)
+    } catch (e) {
+      if (alive.current) onError(e instanceof Error ? e.message : 'Topic extraction failed')
+    } finally {
+      if (alive.current) {
+        setPhase('idle')
+        setProgress(null)
+      }
+    }
   }
 
   async function onUpload(files: FileList | null) {
@@ -538,42 +635,47 @@ function DocsTab({
   }
 
   async function onGenerate() {
-    if (docs.length === 0) return
+    if (!topicsReady) return
+    // Generation is template-scoped: a brand-new procedure is saved first and
+    // the builder reopens here with the documents carried over (topics are
+    // cached server-side, so re-extracting them is instant).
+    if (templateId == null) {
+      onRequireTemplate(docs.map((d) => d.id), 'docs')
+      return
+    }
     onError(null)
     onNotice(null)
     setPhase('generating')
     try {
       let produced = 0
       for (const doc of docs) {
-        setProgress(`Reading ${doc.filename}…`)
-        let document = doc
-        while (alive.current && (document.status === 'PENDING' || document.status === 'EXTRACTING')) {
-          await sleep(POLL_MS)
-          document = await getAiDocument(doc.id)
-        }
-        if (!alive.current) return
-        if (document.status === 'FAILED') {
-          throw new Error(`${document.filename}: ${document.error ?? 'the document could not be read'}`)
-        }
+        // Selected topics for this document; a doc whose extraction failed
+        // falls back to whole-document generation.
+        const picked = (docTopics[doc.id] ?? []).flatMap((group, g) =>
+          group.topics.filter((_, t) => sel[topicKey(doc.id, g, t)]),
+        )
+        if (picked.length === 0 && !topicsFailed[doc.id]) continue
 
-        setProgress(`Generating questions from ${document.filename}…`)
+        setProgress(`Generating questions from ${doc.filename}…`)
         let job = await generateFromDocument(templateId, {
-          documentId: document.id,
+          documentId: doc.id,
           instructions: instructions.trim() || undefined,
+          topics: picked.length > 0 ? picked : undefined,
         })
         while (alive.current && (job.status === 'QUEUED' || job.status === 'RUNNING')) {
           await sleep(POLL_MS)
           job = await getGenerationJob(job.id)
         }
         if (!alive.current) return
-        if (job.status === 'FAILED') throw new Error(`${document.filename}: ${job.error ?? 'generation failed'}`)
+        if (job.status === 'FAILED') throw new Error(`${doc.filename}: ${job.error ?? 'generation failed'}`)
         produced += job.candidates.length
       }
 
       setDocs([])
+      resetTopics()
       if (fileInput.current) fileInput.current.value = ''
       if (produced === 0) {
-        onNotice('The documents produced no questions — they may not contain inspectable requirements.')
+        onNotice('The selected topics produced no questions — try widening the selection.')
       } else {
         onCandidates()
       }
@@ -655,13 +757,90 @@ function DocsTab({
               className="ibtn"
               aria-label={`Remove ${doc.filename}`}
               disabled={phase === 'generating'}
-              onClick={() => setDocs((d) => d.filter((x) => x.id !== doc.id))}
+              onClick={() => {
+                resetTopics()
+                setDocs((d) => d.filter((x) => x.id !== doc.id))
+              }}
             >
               ×
             </button>
           </div>
         ))}
       </div>
+
+      {docs.length > 0 && !topicsReady && (
+        <button
+          type="button"
+          className="btn btn-tonal"
+          disabled={phase !== 'idle'}
+          onClick={() => void onExtractTopics()}
+        >
+          {phase === 'topics' ? 'Extracting topics…' : 'Extract topics'}
+        </button>
+      )}
+
+      {topicsReady && (
+        <>
+          <div className="row between">
+            <span style={{ fontWeight: 600 }}>Topics ({allKeys.length})</span>
+            <label className="row small muted" style={{ gap: 6, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={allKeys.length > 0 && pickedCount === allKeys.length}
+                onChange={() => {
+                  const next: Record<string, boolean> = {}
+                  const on = pickedCount !== allKeys.length
+                  for (const k of allKeys) next[k] = on
+                  setSel(next)
+                }}
+              />
+              Select all
+            </label>
+          </div>
+          {docs.map((doc) =>
+            topicsFailed[doc.id] ? (
+              <p key={doc.id} className="small warn">
+                {doc.filename}: topics could not be extracted ({topicsFailed[doc.id]}) — generation will
+                cover the whole document.
+              </p>
+            ) : (
+              (docTopics[doc.id] ?? []).map((group, g) => (
+                <div key={`${doc.id}-${g}`} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <span className="section-nav" style={{ padding: '2px 0' }}>
+                    {group.title}
+                    {docs.length > 1 ? ` · ${doc.filename}` : ''}
+                  </span>
+                  {group.topics.map((topic, t) => {
+                    const k = topicKey(doc.id, g, t)
+                    return (
+                      <label key={k} className={`topic${sel[k] ? ' on' : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={!!sel[k]}
+                          style={{ marginTop: 2 }}
+                          onChange={() => setSel((s) => ({ ...s, [k]: !s[k] }))}
+                        />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                            {topic.standard && (
+                              <span className="tag line" style={{ height: 18, fontSize: 10 }}>
+                                {topic.standard}
+                              </span>
+                            )}
+                            <span style={{ fontWeight: 500 }}>{topic.title}</span>
+                          </span>
+                          {topic.quote && <span className="small muted">{topic.quote}</span>}
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              ))
+            ),
+          )}
+        </>
+      )}
+
       <div className="field">
         <label htmlFor="ai-instr">Instructions (optional)</label>
         <textarea
@@ -675,14 +854,20 @@ function DocsTab({
           onChange={(e) => setInstructions(e.target.value)}
         />
       </div>
-      <button
-        type="button"
-        className="btn btn-primary"
-        disabled={docs.length === 0 || phase !== 'idle'}
-        onClick={() => void onGenerate()}
-      >
-        {phase === 'generating' ? 'Generating…' : phase === 'uploading' ? 'Uploading…' : '✦ Generate questions'}
-      </button>
+      {topicsReady && (
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={phase !== 'idle' || (pickedCount === 0 && Object.keys(topicsFailed).length === 0)}
+          onClick={() => void onGenerate()}
+        >
+          {phase === 'generating'
+            ? 'Generating…'
+            : `✦ ${templateId == null ? 'Save & generate' : 'Generate'} questions${
+                pickedCount > 0 ? ` (${pickedCount} topic${pickedCount === 1 ? '' : 's'})` : ''
+              }`}
+        </button>
+      )}
       {progress && (
         <div className="row" style={{ gap: 10 }}>
           <span className="spin" />
@@ -703,92 +888,168 @@ function DocsTab({
   )
 }
 
-interface ChatEntry {
-  role: 'user' | 'assistant'
-  text: string
-}
+/** The suggestion lenses (docs/procedures-v3.html SUGGEST): generic inspectable angles. */
+const SUGGEST_LENSES = [
+  'Visual inspection',
+  'Safety & access',
+  'Readings & measurements',
+  'Records & evidence',
+  'Housekeeping & signage',
+]
 
+/**
+ * Smart suggestions, per the design: no free text — pick a topic pill and
+ * questions tailored to the procedure's name, category and standard appear,
+ * each with its own Add. The chat backend powers it (one scripted turn per
+ * pill, results cached), and Add is the same single import path as everything
+ * else.
+ */
 function SuggestTab({
   templateId,
+  procedureName,
+  meta,
   alive,
   onError,
-  onCandidates,
+  onImport,
+  onChanged,
 }: {
   templateId: string
+  procedureName: string
+  meta: TemplateMeta
   alive: React.MutableRefObject<boolean>
   onError: (e: string | null) => void
-  onCandidates: () => Promise<void>
+  onImport: (candidateIds: string[]) => Promise<ImportResult>
+  onChanged: () => Promise<void>
 }) {
   const [sessionId, setSessionId] = useState<string | null>(null)
-  const [log, setLog] = useState<ChatEntry[]>([])
-  const [input, setInput] = useState('')
-  const [sending, setSending] = useState(false)
+  const [active, setActive] = useState<string | null>(null)
+  const [byLens, setByLens] = useState<Record<string, QuestionDraft[]>>({})
+  const [loading, setLoading] = useState(false)
+  const [added, setAdded] = useState<Record<string, boolean>>({})
+  const [addingId, setAddingId] = useState<string | null>(null)
 
-  async function onSend() {
-    const message = input.trim()
-    if (!message || sending) return
+  async function pick(lens: string) {
+    setActive(lens)
+    if (byLens[lens] || loading) return
     onError(null)
-    setSending(true)
-    setLog((l) => [...l, { role: 'user', text: message }])
-    setInput('')
+    setLoading(true)
     try {
       let session = sessionId
       if (!session) {
         session = (await createChatSession(templateId)).id
         setSessionId(session)
       }
-      const turn = await sendChatMessage(session, message)
+      const detailBits = [
+        meta.category ? `category ${meta.category}` : null,
+        meta.subCategory ? `sub category ${meta.subCategory}` : null,
+        meta.standard ? `following ${meta.standard}` : null,
+      ]
+        .filter(Boolean)
+        .join(', ')
+      const nameText = procedureName.trim() || 'this procedure'
+      const before = new Set(
+        Object.values(byLens)
+          .flat()
+          .map((c) => c.id),
+      )
+      const turn = await sendChatMessage(
+        session,
+        `Suggest 3 to 5 new checklist questions about "${lens}" for the procedure "${nameText}"` +
+          `${detailBits ? ` (${detailBits})` : ''}. ` +
+          'Add them as new candidate questions; do not revise or remove existing candidates.',
+      )
       if (!alive.current) return
-      setLog((l) => [...l, { role: 'assistant', text: turn.reply }])
-      await onCandidates()
+      setByLens((m) => ({
+        ...m,
+        [lens]: turn.candidates.filter((c) => c.status === 'DRAFT' && !before.has(c.id)),
+      }))
+      void onChanged()
     } catch (e) {
-      if (alive.current) {
-        onError(e instanceof Error ? e.message : 'The message could not be sent')
-        setLog((l) => l.slice(0, -1))
-        setInput(message)
-      }
+      if (alive.current) onError(e instanceof Error ? e.message : 'Suggestions could not be fetched')
     } finally {
-      if (alive.current) setSending(false)
+      if (alive.current) setLoading(false)
     }
   }
+
+  async function add(candidate: QuestionDraft) {
+    onError(null)
+    setAddingId(candidate.id)
+    try {
+      await onImport([candidate.id])
+      if (!alive.current) return
+      setAdded((a) => ({ ...a, [candidate.id]: true }))
+      void onChanged()
+    } catch (e) {
+      if (alive.current) onError(e instanceof Error ? e.message : 'The question could not be added')
+    } finally {
+      if (alive.current) setAddingId(null)
+    }
+  }
+
+  const items = active ? byLens[active] : null
 
   return (
     <div className="side-body">
       <PanelIntro
-        title="Suggest with AI"
-        text="Describe what the procedure is for — asset, standard, depth — and refine the suggestions turn by turn."
+        title="Smart suggestions"
+        text="Suggested from the name, category and standard. Choose a topic and add what you need."
       />
-      {log.length > 0 && (
-        <div className="chatlog">
-          {log.map((entry, i) => (
-            <div key={i} className={`cmsg ${entry.role}`}>
-              {entry.text}
-            </div>
-          ))}
-          {sending && <div className="cmsg assistant muted">Thinking…</div>}
+      <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+        {SUGGEST_LENSES.map((lens) => (
+          <button
+            key={lens}
+            type="button"
+            className={`pill${active === lens ? ' on' : ''}`}
+            aria-pressed={active === lens}
+            disabled={loading && active !== lens}
+            onClick={() => void pick(lens)}
+          >
+            {lens}
+          </button>
+        ))}
+      </div>
+      {active == null && (
+        <p className="small muted">Pick a topic above — suggestions are generated for this procedure.</p>
+      )}
+      {active != null && loading && !items && (
+        <div className="row" style={{ gap: 10 }}>
+          <span className="spin" />
+          <span className="small muted">Suggesting {active.toLowerCase()} questions… This can take a minute.</span>
         </div>
       )}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-        <textarea
-          className="textarea"
-          rows={2}
-          style={{ flex: 1 }}
-          value={input}
-          maxLength={4000}
-          placeholder="e.g. Weekly fire-extinguisher checklist for a warehouse"
-          disabled={sending}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              void onSend()
-            }
-          }}
-        />
-        <button type="button" className="btn btn-primary" disabled={!input.trim() || sending} onClick={() => void onSend()}>
-          {sending ? '…' : 'Send'}
-        </button>
-      </div>
+      {items != null && items.length === 0 && (
+        <p className="small muted">Nothing new to suggest for this topic — the checklist may already cover it.</p>
+      )}
+      {items?.map((candidate) => (
+        <div
+          key={candidate.id}
+          className="row"
+          style={{ border: '1px solid var(--line)', borderRadius: 4, padding: 12, alignItems: 'flex-start' }}
+        >
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span>{candidate.question.text}</span>
+            <span className="small muted">
+              {typeLabel(candidate.question.type)}
+              {candidate.question.standard ? ` · ${candidate.question.standard}` : ''}
+              {candidate.question.help ? ` — ${candidate.question.help}` : ''}
+            </span>
+          </div>
+          {added[candidate.id] || candidate.status === 'IMPORTED' ? (
+            <span className="small" style={{ color: 'var(--pass)', fontWeight: 500, paddingTop: 6 }}>
+              Added
+            </span>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-outline btn-xs"
+              disabled={addingId != null}
+              onClick={() => void add(candidate)}
+            >
+              {addingId === candidate.id ? 'Adding…' : 'Add'}
+            </button>
+          )}
+        </div>
+      ))}
     </div>
   )
 }

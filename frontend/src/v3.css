@@ -197,12 +197,18 @@
   color: var(--dim);
   background: none;
 }
-.v3 .btn-quiet {
+.v3 .btn-quiet,
+.v3 .btn-tonal {
   background: var(--tonal);
   color: var(--selected-text);
 }
-.v3 .btn-quiet:hover {
+.v3 .btn-quiet:hover,
+.v3 .btn-tonal:hover {
   background: #453a13;
+}
+.v3 .btn-tonal:disabled {
+  background: var(--raised);
+  color: var(--dim);
 }
 .v3 .btn-danger {
   background: #b3231c;

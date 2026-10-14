@@ -149,8 +149,22 @@ public class QuestionGenerationService {
         jobs.saveAndFlush(job);
 
         UUID jobId = job.getId();
-        executor.execute(() -> runner.run(jobId, orgId, userId, request.instructions()));
+        String topicsText = renderTopics(request.topics());
+        executor.execute(() -> runner.run(jobId, orgId, userId, request.instructions(), topicsText));
         return aiMapper.toResponse(job, List.of());
+    }
+
+    /** The author's selected topics as the prompt sees them; null when generation covers everything. */
+    private static String renderTopics(List<LlmSchemas.Topic> topics) {
+        if (topics == null || topics.isEmpty()) {
+            return null;
+        }
+        return topics.stream()
+                .filter(t -> t.title() != null && !t.title().isBlank())
+                .map(t -> "- " + (t.standard() == null || t.standard().isBlank() ? "" : "[" + t.standard() + "] ")
+                        + t.title().strip()
+                        + (t.quote() == null || t.quote().isBlank() ? "" : " — \"" + t.quote().strip() + "\""))
+                .collect(Collectors.joining("\n"));
     }
 
     public GenerationJobResponse getJob(UUID jobId) {

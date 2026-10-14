@@ -59,8 +59,10 @@ const snapshotOf = (schema: number, items: ItemDraft[]): string =>
 interface PendingFollow {
   addFollowAt?: number[]
   optionIndex?: number
-  /** Documents picked in the library's "create from documents" flow. */
+  /** Documents picked before the procedure existed ("create from documents", docs-tab save-first). */
   docIds?: string[]
+  /** Which side tab to land on after the navigation a create forces. */
+  sideTab?: SideTab
 }
 
 function withFollowAt(items: ItemDraft[], path: number[], optionIndex?: number): ItemDraft[] {
@@ -164,7 +166,9 @@ export function TemplateEditorPage() {
   const [quickType, setQuickType] = useState<ItemType>('YES_NO')
   /** Documents chosen before the procedure existed ride along until the docs tab can use them. */
   const initialDocIds = useRef<string[]>((location.state as PendingFollow | null)?.docIds ?? [])
-  const [sideTab, setSideTab] = useState<SideTab>(initialDocIds.current.length ? 'docs' : 'details')
+  const [sideTab, setSideTab] = useState<SideTab>(
+    (location.state as PendingFollow | null)?.sideTab ?? (initialDocIds.current.length ? 'docs' : 'details'),
+  )
 
   useEffect(() => {
     listResultTypes(true)
@@ -421,7 +425,9 @@ export function TemplateEditorPage() {
 
   function addQuestion(type: ItemType = 'YES_NO', text = '') {
     const q = { ...newItem(type), text }
-    setItems((prev) => [...prev, q])
+    // The untouched starter question is a placeholder, not content — the first
+    // real question takes its place instead of stacking under it.
+    setItems((prev) => (isEffectivelyEmpty(prev) ? [q] : [...prev, q]))
     select(q.uid)
     return q
   }
@@ -433,8 +439,31 @@ export function TemplateEditorPage() {
       .map((line) => line.replace(/^\s*(\d+[.)]|[-*•])\s*/, '').trim())
       .filter(Boolean)
     if (lines.length === 0) return
-    setItems((prev) => [...prev, ...lines.map((text) => ({ ...newItem(quickType), text }))])
+    const added = lines.map((text) => ({ ...newItem(quickType), text }))
+    setItems((prev) => (isEffectivelyEmpty(prev) ? added : [...prev, ...added]))
     setQuick('')
+  }
+
+  /**
+   * The docs/suggest save-first path: generation and chat are template-scoped,
+   * so a brand-new procedure is created as a draft and the builder reopens on
+   * the same tab, with any picked documents riding along in navigation state.
+   */
+  async function saveAndContinue(docIds: string[], tab: SideTab) {
+    setBusy(true)
+    setRefusal(null)
+    try {
+      const created = await createProcedure({
+        name: name.trim() || 'Untitled procedure',
+        description: description.trim() || undefined,
+        meta,
+        definition: toDocument(schema, items),
+      })
+      navigate(`/templates/${created.id}/edit`, { state: { docIds, sideTab: tab } })
+    } catch (e) {
+      setRefusal(e instanceof Error ? e : new Error('Could not create the procedure'))
+      setBusy(false)
+    }
   }
 
   // --- save / publish -------------------------------------------------------
@@ -749,26 +778,33 @@ export function TemplateEditorPage() {
                 </div>
               </div>
 
-              {editing && isEffectivelyEmpty(items) && (
-                <div className="start" role="group" aria-label="Ways to build the checklist">
-                  <button type="button" onClick={() => setSideTab('docs')}>
-                    <span style={{ color: 'var(--action)', fontSize: 20 }}>✦</span>
-                    <span style={{ fontWeight: 600 }}>Generate from a document</span>
-                    <span className="small muted">Upload a standard or SOP; questions are drafted for your review.</span>
-                  </button>
-                  <button type="button" onClick={() => setSideTab('suggest')}>
-                    <span style={{ color: 'var(--action)', fontSize: 20 }}>✦</span>
-                    <span style={{ fontWeight: 600 }}>Suggest with AI</span>
-                    <span className="small muted">Describe the procedure in chat and refine the suggestions.</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => document.querySelector<HTMLTextAreaElement>('.quick textarea')?.focus()}
-                  >
-                    <span style={{ color: 'var(--action)', fontSize: 20 }}>✎</span>
-                    <span style={{ fontWeight: 600 }}>Type questions</span>
-                    <span className="small muted">Add them one by one, or paste a whole list below.</span>
-                  </button>
+              {isEffectivelyEmpty(items) && (
+                <div className="empty" style={{ padding: '28px 0 8px' }}>
+                  <h2 style={{ fontSize: 20 }}>Build your checklist</h2>
+                  <p className="muted" style={{ maxWidth: 460 }}>
+                    Start from a template or a standards document, or type questions straight in below. You can
+                    mix all three.
+                  </p>
+                  <div className="start" role="group" aria-label="Ways to build the checklist">
+                    <button type="button" onClick={() => setSideTab('templates')}>
+                      <span style={{ color: 'var(--action)', fontSize: 20 }}>▤</span>
+                      <span style={{ fontWeight: 600 }}>Use a template</span>
+                      <span className="small muted">Ready-made checklists for common standards.</span>
+                    </button>
+                    <button type="button" onClick={() => setSideTab('docs')}>
+                      <span style={{ color: 'var(--action)', fontSize: 20 }}>✦</span>
+                      <span style={{ fontWeight: 600 }}>Use a document</span>
+                      <span className="small muted">Generate questions from a standard or your SOP.</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => document.querySelector<HTMLTextAreaElement>('.quick textarea')?.focus()}
+                    >
+                      <span style={{ color: 'var(--action)', fontSize: 20 }}>✎</span>
+                      <span style={{ fontWeight: 600 }}>Type questions</span>
+                      <span className="small muted">Add them one by one, or paste a whole list below.</span>
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -785,17 +821,18 @@ export function TemplateEditorPage() {
               {refused && <div className="alert-amber">{refused}</div>}
               <Refusal error={refusal} />
 
-              {items.map((item, index) => (
-                <BuilderQuestionCard
-                  key={item.uid}
-                  item={item}
-                  parent={null}
-                  index={index}
-                  siblings={items.length}
-                  depth={0}
-                  ctx={ctx}
-                />
-              ))}
+              {!isEffectivelyEmpty(items) &&
+                items.map((item, index) => (
+                  <BuilderQuestionCard
+                    key={item.uid}
+                    item={item}
+                    parent={null}
+                    index={index}
+                    siblings={items.length}
+                    depth={0}
+                    ctx={ctx}
+                  />
+                ))}
 
               <form className="quick" onSubmit={quickAdd} aria-label="Quick add">
                 <div className="row between">
@@ -865,6 +902,8 @@ export function TemplateEditorPage() {
             onAddItems={(added) =>
               setItems((prev) => (isEffectivelyEmpty(prev) ? added : [...prev, ...added]))
             }
+            onRequireTemplate={(docIds, tab) => void saveAndContinue(docIds, tab)}
+            procedureName={name}
           />
         </div>
       </div>

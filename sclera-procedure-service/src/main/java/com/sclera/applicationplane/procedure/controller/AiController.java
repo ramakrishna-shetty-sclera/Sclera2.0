@@ -6,6 +6,7 @@ import com.sclera.applicationplane.procedure.dto.AiGenerationDtos.ChatTurnRespon
 import com.sclera.applicationplane.procedure.dto.AiGenerationDtos.GenerationJobResponse;
 import com.sclera.applicationplane.procedure.service.AiDocumentService;
 import com.sclera.applicationplane.procedure.service.QuestionGenerationService;
+import com.sclera.applicationplane.procedure.service.TopicExtractionService;
 import jakarta.validation.Valid;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
@@ -39,10 +40,13 @@ public class AiController {
 
     private final QuestionGenerationService service;
     private final AiDocumentService documents;
+    private final TopicExtractionService topics;
 
-    public AiController(QuestionGenerationService service, AiDocumentService documents) {
+    public AiController(QuestionGenerationService service, AiDocumentService documents,
+                        TopicExtractionService topics) {
         this.service = service;
         this.documents = documents;
+        this.topics = topics;
     }
 
     /** Upload a source document (PDF/DOCX/TXT). Text extraction runs in the background. */
@@ -64,6 +68,18 @@ public class AiController {
     @PreAuthorize("@fga.checkOrg('can_manage_templates')")
     public AiDocumentResponse getDocument(@PathVariable UUID id) {
         return documents.getDocument(id);
+    }
+
+    /**
+     * Extract the selectable topics from a READY document (cached after the
+     * first run). Poll the document until topicsStatus is READY, then pick
+     * topics for the generate call.
+     */
+    @PostMapping("/documents/{id}/topics")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    @PreAuthorize("@fga.checkOrg('can_manage_templates')")
+    public AiDocumentResponse extractTopics(@PathVariable UUID id) {
+        return topics.extractTopics(id);
     }
 
     /** Status + the GeneratedQuestionSet once COMPLETED. */
