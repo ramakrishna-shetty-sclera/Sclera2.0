@@ -10,7 +10,7 @@ import {
 } from '../api/templates'
 import { importQuestions, type ImportResult } from '../api/ai'
 import { ApiError } from '../api/client'
-import { isChoice, numberItems } from '../api/document'
+import { ITEM_TYPES, isChoice, numberItems, typeLabel } from '../api/document'
 import type { DocumentRef, ItemType, ResultType, TemplateMeta, Threshold } from '../api/types'
 import { listResultTypes } from '../api/resultTypes'
 import { useAuth } from '../auth/AuthContext'
@@ -48,6 +48,14 @@ import {
 
 /** How often a changed draft is saved without being asked. */
 const AUTOSAVE_MS = 30_000
+
+/**
+ * Every type Quick add can seed in bulk — everything but Section, which has
+ * its own `+ Section` button right beside it and is a heading, not a
+ * question. Previously hard-coded to just the first seven of ITEM_TYPES,
+ * leaving the five media types unreachable from Quick add for no reason.
+ */
+const QUICK_ADD_TYPES = ITEM_TYPES.filter((t) => t !== 'SECTION')
 
 /**
  * `thresholds` and `documents` have no editor here yet — nothing on this
@@ -970,13 +978,11 @@ export function TemplateEditorPage() {
                     value={quickType}
                     onChange={(e) => setQuickType(e.target.value as ItemType)}
                   >
-                    {(['YES_NO', 'YES_NO_NA', 'RADIO', 'CHECKBOX', 'DROPDOWN', 'TEXT', 'INTEGER'] as ItemType[]).map(
-                      (t) => (
-                        <option key={t} value={t}>
-                          {t === 'YES_NO' ? 'Yes / No' : t === 'YES_NO_NA' ? 'Yes / No / N/A' : t.charAt(0) + t.slice(1).toLowerCase()}
-                        </option>
-                      ),
-                    )}
+                    {QUICK_ADD_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {typeLabel(t)}
+                      </option>
+                    ))}
                   </select>
                   <button className="btn btn-primary" type="submit" disabled={!quick.trim()}>
                     Add
