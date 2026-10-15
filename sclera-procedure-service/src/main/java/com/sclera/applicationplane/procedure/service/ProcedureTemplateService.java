@@ -191,7 +191,7 @@ public class ProcedureTemplateService {
         // FGA tuples (org link + creator). A failed write throws, rolling back
         // the insert so no template exists that nobody can access.
         fga.grantCreated(FGA_TYPE, template.getId(), template.getCreatedBy(), null);
-        return mapper.toResponse(template, null, 1);
+        return mapper.toResponse(template, null, 1, false);
     }
 
     /** Name, description and meta are identity, not content, so they are not versioned. */
@@ -256,10 +256,10 @@ public class ProcedureTemplateService {
 
     private Page<TemplateResponse> withVersionNumbers(Page<ProcedureTemplate> page) {
         if (page.isEmpty()) {
-            return page.map(t -> mapper.toResponse(t, null, null));
+            return page.map(t -> mapper.toResponse(t, null, null, false));
         }
 
-        // Two queries for the whole page rather than two per template.
+        // Three queries for the whole page rather than three per template.
         List<UUID> ids = page.getContent().stream().map(ProcedureTemplate::getId).toList();
         Map<UUID, Integer> draftNos = versions.findAllByTemplateIdInAndState(ids, VersionState.DRAFT).stream()
                 .collect(Collectors.toMap(ProcedureTemplateVersion::getTemplateId, ProcedureTemplateVersion::getVersionNo));
@@ -267,10 +267,13 @@ public class ProcedureTemplateService {
                 .map(ProcedureTemplate::getCurrentPublishedVersionId).filter(Objects::nonNull).toList();
         Map<UUID, Integer> currentNos = versions.findAllById(currentIds).stream()
                 .collect(Collectors.toMap(ProcedureTemplateVersion::getId, ProcedureTemplateVersion::getVersionNo));
+        Set<UUID> favouriteIds = favourites.findAllByUserId(OrgContext.getUserId()).stream()
+                .map(ProcedureFavourite::getTemplateId).collect(Collectors.toSet());
 
         return page.map(t -> mapper.toResponse(t,
                 t.getCurrentPublishedVersionId() == null ? null : currentNos.get(t.getCurrentPublishedVersionId()),
-                draftNos.get(t.getId())));
+                draftNos.get(t.getId()),
+                favouriteIds.contains(t.getId())));
     }
 
     /**
@@ -312,7 +315,7 @@ public class ProcedureTemplateService {
         versions.saveAndFlush(draft);
 
         fga.grantCreated(FGA_TYPE, copy.getId(), copy.getCreatedBy(), null);
-        return mapper.toResponse(copy, null, 1);
+        return mapper.toResponse(copy, null, 1, false);
     }
 
     /**
@@ -370,7 +373,7 @@ public class ProcedureTemplateService {
         versions.saveAndFlush(draft);
 
         fga.grantCreated(FGA_TYPE, fork.getId(), fork.getCreatedBy(), null);
-        return mapper.toResponse(fork, null, 1);
+        return mapper.toResponse(fork, null, 1, false);
     }
 
     // --- the draft ----------------------------------------------------------
@@ -811,7 +814,7 @@ public class ProcedureTemplateService {
 
         linkToGlobal(globalTemplate, template, source.getVersionNo());
         return mapper.toResponse(template, currentVersion(template).map(ProcedureTemplateVersion::getVersionNo)
-                .orElse(null), versionNo);
+                .orElse(null), versionNo, isFavourite(template.getId()));
     }
 
     private GlobalProcedureTemplateVersion resolveGlobalVersion(GlobalProcedureTemplate globalTemplate, Integer versionNo) {
@@ -1028,7 +1031,8 @@ public class ProcedureTemplateService {
         templates.flush();
 
         return mapper.toResponse(locked,
-                currentVersion(locked).map(ProcedureTemplateVersion::getVersionNo).orElse(null), versionNo);
+                currentVersion(locked).map(ProcedureTemplateVersion::getVersionNo).orElse(null), versionNo,
+                isFavourite(locked.getId()));
     }
 
     /**
@@ -1271,7 +1275,11 @@ public class ProcedureTemplateService {
         Integer currentNo = currentVersion(template).map(ProcedureTemplateVersion::getVersionNo).orElse(null);
         Integer draftNo = versions.findByTemplateIdAndState(template.getId(), VersionState.DRAFT)
                 .map(ProcedureTemplateVersion::getVersionNo).orElse(null);
-        return mapper.toResponse(template, currentNo, draftNo);
+        return mapper.toResponse(template, currentNo, draftNo, isFavourite(template.getId()));
+    }
+
+    private boolean isFavourite(UUID templateId) {
+        return favourites.findByUserIdAndTemplateId(OrgContext.getUserId(), templateId).isPresent();
     }
 
     private Optional<ProcedureTemplateVersion> currentVersion(ProcedureTemplate template) {

@@ -425,6 +425,8 @@ export interface ProcedureTemplate {
   createdBy: string
   createdAt: string
   updatedAt: string
+  /** Whether the signed-in user has starred this procedure. Always present — a real boolean, never absent. */
+  favourite: boolean
 }
 
 /** Whether a procedure is organization-wide or scoped to one property. Independent of `status`. */

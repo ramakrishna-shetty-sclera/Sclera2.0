@@ -107,7 +107,9 @@ public final class ProcedureTemplateDtos {
             UUID forkedFromTemplateId,
             UUID createdBy,
             OffsetDateTime createdAt,
-            OffsetDateTime updatedAt) {}
+            OffsetDateTime updatedAt,
+            /** Whether the calling user has starred this procedure. */
+            boolean favourite) {}
 
     /** A version without its document, for history lists. */
     public record VersionSummary(

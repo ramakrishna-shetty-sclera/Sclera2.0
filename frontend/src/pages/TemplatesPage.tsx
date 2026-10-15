@@ -1,25 +1,29 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { listProcedures } from '../api/templates'
+import { favouriteProcedure, listProcedures, unfavouriteProcedure } from '../api/templates'
 import type { Pagination, ProcedureTemplate } from '../api/types'
+import { useAuth } from '../auth/AuthContext'
 import { Pager } from '../components/Pager'
 import { DocumentLibraryDialog } from '../components/v3/DocumentLibraryDialog'
 import { FOLDERS, PRIORITY_CLASS } from '../components/v3/procedureVocab'
 
 /**
  * The procedure library, in the Sclera 2.0 design (docs/procedures-v3.html):
- * a card grid behind All / Published / Drafts tabs.
+ * a card grid behind All / Published / Drafts / Favourites / Archived tabs.
  *
  * The tabs are cuts of the model, not a status field: Published means a
  * current published version exists, Drafts means a draft is open — a
  * procedure with both (published, being edited) appears under each and its
- * card says "Unpublished changes". Archived is its own tab because an
- * archived procedure is out of every other conversation.
+ * card says "Unpublished changes". Favourites is a star the user sets
+ * themselves, independent of everything else — the same procedure shows in
+ * "All" whether starred or not. Archived is its own tab because an archived
+ * procedure is out of every other conversation.
  */
-type Cut = 'all' | 'published' | 'draft' | 'archived'
+type Cut = 'all' | 'published' | 'draft' | 'favourites' | 'archived'
 
 export function TemplatesPage() {
   const navigate = useNavigate()
+  const { permissions, permissionsLoaded } = useAuth()
   const [procedures, setProcedures] = useState<ProcedureTemplate[]>([])
   const [pagination, setPagination] = useState<Pagination | null>(null)
   const [cut, setCut] = useState<Cut>('all')
@@ -48,6 +52,15 @@ export function TemplatesPage() {
     }
   }, [cut === 'archived', page])
 
+  function toggleFavourite(p: ProcedureTemplate) {
+    const next = !p.favourite
+    // Optimistic: flip it locally first, and only undo if the server refuses.
+    setProcedures((prev) => prev.map((x) => (x.id === p.id ? { ...x, favourite: next } : x)))
+    ;(next ? favouriteProcedure(p.id) : unfavouriteProcedure(p.id)).catch(() => {
+      setProcedures((prev) => prev.map((x) => (x.id === p.id ? { ...x, favourite: !next } : x)))
+    })
+  }
+
   const needle = query.trim().toLowerCase()
   const base = useMemo(
     () =>
@@ -58,7 +71,9 @@ export function TemplatesPage() {
   )
   const published = base.filter((p) => p.currentPublishedVersionNo != null)
   const drafts = base.filter((p) => p.draftVersionNo != null)
-  const byStatus = cut === 'published' ? published : cut === 'draft' ? drafts : base
+  const favourites = base.filter((p) => p.favourite)
+  const byStatus =
+    cut === 'published' ? published : cut === 'draft' ? drafts : cut === 'favourites' ? favourites : base
   const inFolder = view === 'folders' && folder != null
   const shown = inFolder ? byStatus.filter((p) => folderOf(p) === folder) : byStatus
   const showFolders = view === 'folders' && folder == null
@@ -67,6 +82,7 @@ export function TemplatesPage() {
     ['all', 'All', base.length],
     ['published', 'Published', published.length],
     ['draft', 'Drafts', drafts.length],
+    ['favourites', 'Favourites', favourites.length],
     ['archived', 'Archived', cut === 'archived' ? base.length : 0],
   ]
 
@@ -84,9 +100,11 @@ export function TemplatesPage() {
           <button className="btn btn-outline" onClick={() => setDocLibOpen(true)}>
             ⌸ Documents
           </button>
-          <Link className="btn btn-primary" to="/templates/new">
-            + Create procedure
-          </Link>
+          {permissionsLoaded && permissions.canManageTemplates && (
+            <Link className="btn btn-primary" to="/templates/new">
+              + Create procedure
+            </Link>
+          )}
         </div>
       </div>
 
@@ -187,23 +205,34 @@ export function TemplatesPage() {
             <h2 style={{ fontSize: 16 }}>
               {cut === 'draft'
                 ? 'No open drafts'
-                : cut === 'archived'
-                  ? 'Nothing archived'
-                  : 'No procedures yet'}
+                : cut === 'favourites'
+                  ? 'No favourites yet'
+                  : cut === 'archived'
+                    ? 'Nothing archived'
+                    : 'No procedures yet'}
             </h2>
             <p className="muted">
               {cut === 'draft'
                 ? 'Editing a procedure opens a draft, and it appears here until it is published.'
-                : 'Create one to start authoring, or clear the search.'}
+                : cut === 'favourites'
+                  ? 'Star a procedure from any tab to find it here quickly.'
+                  : 'Create one to start authoring, or clear the search.'}
             </p>
-            <Link className="btn btn-primary" to="/templates/new">
-              Create procedure
-            </Link>
+            {cut !== 'favourites' && permissionsLoaded && permissions.canManageTemplates && (
+              <Link className="btn btn-primary" to="/templates/new">
+                Create procedure
+              </Link>
+            )}
           </div>
         ) : (
           <div className="grid3">
             {shown.map((p) => (
-              <ProcCard key={p.id} p={p} onOpen={() => navigate(`/templates/${p.id}`)} />
+              <ProcCard
+                key={p.id}
+                p={p}
+                onOpen={() => navigate(`/templates/${p.id}`)}
+                onToggleFavourite={() => toggleFavourite(p)}
+              />
             ))}
           </div>
         )}
@@ -218,7 +247,15 @@ function folderOf(p: ProcedureTemplate): string {
   return p.meta?.folder || 'Inspection'
 }
 
-function ProcCard({ p, onOpen }: { p: ProcedureTemplate; onOpen: () => void }) {
+function ProcCard({
+  p,
+  onOpen,
+  onToggleFavourite,
+}: {
+  p: ProcedureTemplate
+  onOpen: () => void
+  onToggleFavourite: () => void
+}) {
   const archived = p.status === 'ARCHIVED'
   const isPublished = p.currentPublishedVersionNo != null
   const hasDraft = p.draftVersionNo != null
@@ -226,7 +263,19 @@ function ProcCard({ p, onOpen }: { p: ProcedureTemplate; onOpen: () => void }) {
   const meta = p.meta ?? {}
 
   return (
-    <button className={`pcard${draftOnly ? ' draft' : ''}`} onClick={onOpen}>
+    <div
+      className={`pcard${draftOnly ? ' draft' : ''}`}
+      role="button"
+      tabIndex={0}
+      style={{ cursor: 'pointer' }}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onOpen()
+        }
+      }}
+    >
       <span className="row" style={{ alignItems: 'flex-start', gap: 14, width: '100%' }}>
         <span className="ptile" aria-hidden="true">
           ☑
@@ -255,6 +304,18 @@ function ProcCard({ p, onOpen }: { p: ProcedureTemplate; onOpen: () => void }) {
           </span>
           <span className="small muted clamp2">{p.description || 'No description yet.'}</span>
         </span>
+        <button
+          className="ibtn"
+          aria-label={p.favourite ? 'Remove from favourites' : 'Add to favourites'}
+          aria-pressed={p.favourite}
+          style={{ color: p.favourite ? 'var(--action)' : undefined, marginLeft: 'auto' }}
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleFavourite()
+          }}
+        >
+          {p.favourite ? '★' : '☆'}
+        </button>
       </span>
       <span className="meta3">
         <span>
@@ -279,6 +340,6 @@ function ProcCard({ p, onOpen }: { p: ProcedureTemplate; onOpen: () => void }) {
           </span>
         )}
       </span>
-    </button>
+    </div>
   )
 }

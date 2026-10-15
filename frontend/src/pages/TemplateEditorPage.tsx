@@ -13,6 +13,7 @@ import { ApiError } from '../api/client'
 import { isChoice, numberItems } from '../api/document'
 import type { DocumentRef, ItemType, ResultType, TemplateMeta, Threshold } from '../api/types'
 import { listResultTypes } from '../api/resultTypes'
+import { useAuth } from '../auth/AuthContext'
 import { Refusal } from '../components/Refusal'
 import { BuilderNavigator, flattenDrafts } from '../components/v3/BuilderNavigator'
 import { BuilderQuestionCard, type BuilderCtx } from '../components/v3/BuilderQuestionCard'
@@ -143,6 +144,7 @@ export function TemplateEditorPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const location = useLocation()
+  const { permissions, permissionsLoaded } = useAuth()
   const editing = Boolean(id)
 
   const [name, setName] = useState('')
@@ -299,12 +301,15 @@ export function TemplateEditorPage() {
   }
 
   useEffect(() => {
-    if (!editing) return
+    // Without canManageTemplates the form never renders, so there is nothing
+    // for autosave to do — but the interval is wired here regardless of
+    // render state, so the check still has to be explicit.
+    if (!editing || !permissions.canManageTemplates) return
     const timer = window.setInterval(() => {
       void autosaveNow()
     }, AUTOSAVE_MS)
     return () => window.clearInterval(timer)
-  }, [editing, id])
+  }, [editing, id, permissions.canManageTemplates])
 
   const docDirty = useMemo(
     () => snapshotOf(schema, items, thresholds, documents) !== savedSnapshot,
@@ -674,6 +679,23 @@ export function TemplateEditorPage() {
     return (
       <div className="v3 v3-full" style={{ padding: 24 }}>
         {error ? <div className="alert-error">{error}</div> : <p className="muted">Loading…</p>}
+      </div>
+    )
+  }
+
+  // The form never renders without this — closes the route someone reaches
+  // by typing /templates/new or /templates/:id/edit directly, not just the
+  // button that would otherwise get them here.
+  if (permissionsLoaded && !permissions.canManageTemplates) {
+    return (
+      <div className="v3 v3-full" style={{ padding: 24 }}>
+        <div className="empty">
+          <h2 style={{ fontSize: 16 }}>You can't author procedures</h2>
+          <p className="muted">Ask an organization admin or template author for access.</p>
+          <button className="btn btn-primary" onClick={() => navigate(editing ? `/templates/${id}` : '/templates')}>
+            Back
+          </button>
+        </div>
       </div>
     )
   }

@@ -4,6 +4,7 @@ import {
   archiveProcedure,
   cloneProcedure,
   createDraft,
+  diffVersions,
   discardDraft,
   exportProcedure,
   getDraft,
@@ -15,11 +16,14 @@ import {
 import { createInspection } from '../api/inspections'
 import type {
   DefinitionItem,
+  ProcedureDiff,
   ProcedureTemplate,
   TemplateVersion,
   TemplateVersionSummary,
 } from '../api/types'
+import { useAuth } from '../auth/AuthContext'
 import { Refusal } from '../components/Refusal'
+import { DiffSummary } from '../components/v3/DiffSummary'
 import { PRIORITY_CLASS } from '../components/v3/procedureVocab'
 import { ReadOnlyChecklist } from '../components/v3/ReadOnlyChecklist'
 
@@ -34,15 +38,19 @@ import { ReadOnlyChecklist } from '../components/v3/ReadOnlyChecklist'
 export function TemplateDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { permissions, permissionsLoaded } = useAuth()
   const [procedure, setProcedure] = useState<ProcedureTemplate | null>(null)
   const [version, setVersion] = useState<TemplateVersion | null>(null)
   const [versions, setVersions] = useState<TemplateVersionSummary[]>([])
+  const [diff, setDiff] = useState<ProcedureDiff | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [refusal, setRefusal] = useState<unknown>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [exportFormat, setExportFormat] = useState<'pdf' | 'xlsx' | null>(null)
+  const canManage = permissionsLoaded && permissions.canManageTemplates
+  const canPublish = permissionsLoaded && permissions.canPublishTemplates
 
   const reload = useCallback(async () => {
     if (!id) return
@@ -78,6 +86,30 @@ export function TemplateDetailPage() {
   useEffect(() => {
     reload().catch((e) => setError(e instanceof Error ? e.message : 'Could not load this procedure'))
   }, [reload])
+
+  // What changed to produce whichever version is on screen — against the one
+  // immediately before it, so clicking back through history reads like a
+  // sequence of changes rather than one big comparison against today.
+  useEffect(() => {
+    if (!id || !version || versions.length < 2) {
+      setDiff(null)
+      return
+    }
+    const sorted = [...versions].sort((a, b) => a.versionNo - b.versionNo)
+    const at = sorted.findIndex((v) => v.versionNo === version.versionNo)
+    const previous = at > 0 ? sorted[at - 1] : null
+    if (!previous) {
+      setDiff(null)
+      return
+    }
+    let cancelled = false
+    diffVersions(id, previous.versionNo, version.versionNo)
+      .then((d) => !cancelled && setDiff(d))
+      .catch(() => !cancelled && setDiff(null))
+    return () => {
+      cancelled = true
+    }
+  }, [id, version, versions])
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true)
@@ -213,23 +245,29 @@ export function TemplateDetailPage() {
               ⤓ Export
             </button>
           )}
-          <button className="btn btn-outline" disabled={busy} onClick={onClone}>
-            Duplicate
-          </button>
+          {canManage && (
+            <button className="btn btn-outline" disabled={busy} onClick={onClone}>
+              Duplicate
+            </button>
+          )}
           {!archived && hasDraft && (
             <>
-              <button className="btn btn-quiet" disabled={busy} onClick={onPublish}>
-                Publish
-              </button>
-              <button
-                className="btn btn-primary"
-                onClick={() => navigate(`/templates/${procedure.id}/edit`)}
-              >
-                ✎ Edit
-              </button>
+              {canPublish && (
+                <button className="btn btn-quiet" disabled={busy} onClick={onPublish}>
+                  Publish
+                </button>
+              )}
+              {canManage && (
+                <button
+                  className="btn btn-primary"
+                  onClick={() => navigate(`/templates/${procedure.id}/edit`)}
+                >
+                  ✎ Edit
+                </button>
+              )}
             </>
           )}
-          {!archived && !hasDraft && published != null && (
+          {!archived && !hasDraft && published != null && canManage && (
             <button
               className="btn btn-primary"
               disabled={busy}
@@ -284,24 +322,28 @@ export function TemplateDetailPage() {
                     <>Draft v{procedure.draftVersionNo} is open — this page shows the draft.</>
                   )}
                 </span>
-                <button
-                  className="btn btn-quiet btn-xs"
-                  disabled={busy || published == null}
-                  title={published == null ? 'A never-published procedure is only its draft' : undefined}
-                  onClick={() => {
-                    if (confirm(`Discard draft v${procedure.draftVersionNo}? Its edits are lost.`)) {
-                      void run(() => discardDraft(procedure.id))
-                    }
-                  }}
-                >
-                  Discard draft
-                </button>
-                <button
-                  className="btn btn-primary btn-xs"
-                  onClick={() => navigate(`/templates/${procedure.id}/edit`)}
-                >
-                  Continue editing
-                </button>
+                {canManage && (
+                  <>
+                    <button
+                      className="btn btn-quiet btn-xs"
+                      disabled={busy || published == null}
+                      title={published == null ? 'A never-published procedure is only its draft' : undefined}
+                      onClick={() => {
+                        if (confirm(`Discard draft v${procedure.draftVersionNo}? Its edits are lost.`)) {
+                          void run(() => discardDraft(procedure.id))
+                        }
+                      }}
+                    >
+                      Discard draft
+                    </button>
+                    <button
+                      className="btn btn-primary btn-xs"
+                      onClick={() => navigate(`/templates/${procedure.id}/edit`)}
+                    >
+                      Continue editing
+                    </button>
+                  </>
+                )}
               </div>
             )}
             {procedure.description && (
@@ -312,9 +354,11 @@ export function TemplateDetailPage() {
             {version == null ? (
               <div className="empty">
                 <h2 style={{ fontSize: 16 }}>Nothing authored yet</h2>
-                <button className="btn btn-primary" onClick={() => navigate(`/templates/${procedure.id}/edit`)}>
-                  Start the draft
-                </button>
+                {canManage && (
+                  <button className="btn btn-primary" onClick={() => navigate(`/templates/${procedure.id}/edit`)}>
+                    Start the draft
+                  </button>
+                )}
               </div>
             ) : (
               <>
@@ -324,6 +368,11 @@ export function TemplateDetailPage() {
                     {version.changeNote ? ` — ${version.changeNote}` : ''}
                   </span>
                 </div>
+                {diff && (
+                  <div className="dcard" style={{ padding: 14 }}>
+                    <DiffSummary result={diff} />
+                  </div>
+                )}
                 <ReadOnlyChecklist items={items} />
               </>
             )}
@@ -333,7 +382,7 @@ export function TemplateDetailPage() {
             <section className="dcard" aria-labelledby="pd-t">
               <div className="dcard-head">
                 <h2 id="pd-t">Procedure details</h2>
-                {!archived && (
+                {!archived && canManage && (
                   <button className="link" onClick={() => navigate(`/templates/${procedure.id}/edit`)}>
                     Edit
                   </button>
@@ -364,7 +413,7 @@ export function TemplateDetailPage() {
                   </div>
                 ))}
               </div>
-              {!archived && (
+              {!archived && canManage && (
                 <div style={{ padding: '0 16px 16px' }}>
                   <button
                     className="btn btn-danger btn-xs"

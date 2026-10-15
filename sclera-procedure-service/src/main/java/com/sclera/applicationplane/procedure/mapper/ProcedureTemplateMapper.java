@@ -17,8 +17,9 @@ public class ProcedureTemplateMapper {
         this.canonicalizer = canonicalizer;
     }
 
-    /** Version numbers are looked up by the caller; either may be null. */
-    public TemplateResponse toResponse(ProcedureTemplate t, Integer currentPublishedVersionNo, Integer draftVersionNo) {
+    /** Version numbers and favourite status are looked up by the caller; either version number may be null. */
+    public TemplateResponse toResponse(ProcedureTemplate t, Integer currentPublishedVersionNo, Integer draftVersionNo,
+                                       boolean favourite) {
         return new TemplateResponse(
                 t.getId(),
                 t.getOrgId(),
@@ -35,7 +36,8 @@ public class ProcedureTemplateMapper {
                 t.getForkedFromTemplateId(),
                 t.getCreatedBy(),
                 t.getCreatedAt(),
-                t.getUpdatedAt());
+                t.getUpdatedAt(),
+                favourite);
     }
 
     public VersionSummary toSummary(ProcedureTemplateVersion v) {
