@@ -445,6 +445,15 @@ export function TemplateEditorPage() {
   }
 
   /**
+   * What goes to the server. The untouched starter question is a placeholder
+   * the canvas no longer even shows — sending it would fail the server's
+   * blank-text validation, so an effectively-empty checklist is sent empty.
+   */
+  function currentDefinition() {
+    return toDocument(schema, isEffectivelyEmpty(items) ? [] : items)
+  }
+
+  /**
    * The docs/suggest save-first path: generation and chat are template-scoped,
    * so a brand-new procedure is created as a draft and the builder reopens on
    * the same tab, with any picked documents riding along in navigation state.
@@ -457,7 +466,7 @@ export function TemplateEditorPage() {
         name: name.trim() || 'Untitled procedure',
         description: description.trim() || undefined,
         meta,
-        definition: toDocument(schema, items),
+        definition: currentDefinition(),
       })
       navigate(`/templates/${created.id}/edit`, { state: { docIds, sideTab: tab } })
     } catch (e) {
@@ -483,7 +492,7 @@ export function TemplateEditorPage() {
     setRefusal(null)
     setConflict(false)
     try {
-      const definition = toDocument(schema, items)
+      const definition = currentDefinition()
       if (!editing) {
         const created = await createProcedure({
           name: name.trim(),
@@ -533,7 +542,7 @@ export function TemplateEditorPage() {
     setError(null)
     setRefusal(null)
     try {
-      const definition = toDocument(schema, items)
+      const definition = currentDefinition()
       if (identityChanged()) {
         await updateProcedure(id!, { name: name.trim(), description: description.trim() || undefined, meta })
       }
