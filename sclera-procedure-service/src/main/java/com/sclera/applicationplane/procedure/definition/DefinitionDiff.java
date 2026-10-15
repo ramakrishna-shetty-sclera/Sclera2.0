@@ -34,10 +34,6 @@ import java.util.Set;
  *                          different versions if one of them scores 90 as a
  *                          Pass and the other does not, and the hash already
  *                          knows that.
- * @param targetTypesChanged what the procedure applies to is version-wide in the
- *                           same way: widening v1's extinguishers to v2's
- *                           extinguishers and hose reels changes the version
- *                           without touching a single question.
  * @param documentsChanged  which documents are cited, and which question each
  *                          hangs off, is version content — the same reason
  *                          {@code thresholdsChanged} is reported separately
@@ -47,7 +43,6 @@ public record DefinitionDiff(
         boolean identical,
         boolean orderChanged,
         boolean thresholdsChanged,
-        boolean targetTypesChanged,
         boolean documentsChanged,
         List<ItemChange> items
 ) {
@@ -91,15 +86,12 @@ public record DefinitionDiff(
         boolean orderChanged = relativeOrderChanged(
                 List.copyOf(before.keySet()), List.copyOf(after.keySet()));
         boolean thresholdsChanged = !from.thresholds().equals(to.thresholds());
-        boolean targetTypesChanged = !from.targetTypes().equals(to.targetTypes());
         boolean documentsChanged = !from.documents().equals(to.documents());
 
         return new DefinitionDiff(
-                changes.isEmpty() && !orderChanged && !thresholdsChanged
-                        && !targetTypesChanged && !documentsChanged,
+                changes.isEmpty() && !orderChanged && !thresholdsChanged && !documentsChanged,
                 orderChanged,
                 thresholdsChanged,
-                targetTypesChanged,
                 documentsChanged,
                 List.copyOf(changes));
     }

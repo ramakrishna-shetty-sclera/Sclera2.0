@@ -47,7 +47,7 @@ class PropertyForkIT extends PostgresIntegrationTest {
 
     private static CreateTemplateRequest request(String name) {
         return new CreateTemplateRequest(name, "A description", null,
-                new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question()), List.of(), List.of(), List.of()));
+                new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question()), List.of(), List.of()));
     }
 
     @Test
@@ -123,7 +123,7 @@ class PropertyForkIT extends PostgresIntegrationTest {
                         List.of(Item.builder().key(draftA.definition().items().get(0).key())
                                 .text("Exit clear? (property A's wording)").type(QuestionType.YES_NO).required(true)
                                 .options(draftA.definition().items().get(0).options()).build()),
-                        List.of(), List.of(), List.of()),
+                        List.of(), List.of()),
                 draftA.rowVersion(), null)));
 
         VersionResponse draftB = asProperty(org, propertyB, () -> service.getDraft(forkB.id()));
@@ -160,7 +160,7 @@ class PropertyForkIT extends PostgresIntegrationTest {
                     .type(QuestionType.YES_NO).required(true).options(original.options()).build();
             service.saveDraft(parentId, new SaveDraftRequest(
                     new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
-                            List.of(changed), List.of(), List.of(), List.of()),
+                            List.of(changed), List.of(), List.of()),
                     draft.rowVersion(), "reworded"));
             return service.publish(parentId, null);
         });
@@ -365,7 +365,7 @@ class PropertyForkIT extends PostgresIntegrationTest {
                         List.of(Item.builder().key(draft.definition().items().get(0).key())
                                 .text("Exit clear? (reworded)").type(QuestionType.YES_NO).required(true)
                                 .options(draft.definition().items().get(0).options()).build()),
-                        List.of(), List.of(), List.of()),
+                        List.of(), List.of()),
                 draft.rowVersion(), null)));
 
         var row = asProperty(org, property, () -> templates.findByIdAndOrgId(fork.id(), org)).orElseThrow();

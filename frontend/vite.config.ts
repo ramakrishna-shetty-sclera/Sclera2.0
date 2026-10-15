@@ -12,7 +12,9 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        // 8081, not the gateway's usual 8080: the sibling FDE/copilot app
+        // hard-binds 8080, and the two cannot share a machine otherwise.
+        target: 'http://localhost:8081',
         changeOrigin: true,
       },
       '/auth': {

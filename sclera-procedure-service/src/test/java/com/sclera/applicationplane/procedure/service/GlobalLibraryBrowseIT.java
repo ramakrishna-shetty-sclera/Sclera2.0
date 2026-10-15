@@ -69,7 +69,7 @@ class GlobalLibraryBrowseIT extends PostgresIntegrationTest {
 
     private static DefinitionDocument document(String questionText) {
         Item question = Item.builder().key("q1").text(questionText).type(QuestionType.YES_NO).build();
-        return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question), List.of(), List.of(),
+        return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question), List.of(),
                 List.of());
     }
 

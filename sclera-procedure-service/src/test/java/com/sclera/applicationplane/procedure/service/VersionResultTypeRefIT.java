@@ -136,7 +136,7 @@ class VersionResultTypeRefIT extends PostgresIntegrationTest {
                         List.of(new Threshold(null, null, 69, "FAIL"),
                                 new Threshold(null, 70, 89, "AMBER"),
                                 new Threshold(null, 90, null, "PASS")),
-                        List.of(), List.of()))).id();
+                        List.of()))).id();
         PublishResponse published = service.publish(id, null);
 
         assertThat(refs.findAll())
@@ -159,7 +159,7 @@ class VersionResultTypeRefIT extends PostgresIntegrationTest {
     }
 
     private static DefinitionDocument doc(List<Item> items) {
-        return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, items, List.of(), List.of(), List.of());
+        return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, items, List.of(), List.of());
     }
 
     /** The same question with points on its answers, so the document scores. */

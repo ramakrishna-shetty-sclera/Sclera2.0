@@ -10,7 +10,7 @@ Task Dashboard, Task Map, Reactive Service (QR) and Tagged Procedures.
 |---|---|---|---|---|
 | `sclera-procedure-service` | 8095 | `sclera-procedure-service` | `sclera_procedure` | Author procedure templates: draft → publish → new draft, with immutable published versions |
 | `sclera-inspection-service` | 8096 | `sclera-inspection-service` | `sclera_inspection` | Inspection configs, tagging, checklist lifecycle, reactive services (QR), tagged procedures — plus the original template-run flow |
-| `sclera-helper-service` | 8097 | `sclera-helper-service` | `sclera_helper` | Locations (building → floor → location) and assets (IP / non-IP), and the property vocabulary procedures check their target types against |
+| `sclera-helper-service` | 8097 | `sclera-helper-service` | `sclera_helper` | Locations (building → floor → location) and assets (IP / non-IP) |
 | `sclera2.0v-api-gateway` | 8080 | — (no sidecar locally) | — (Redis sessions) | Single entry point: BFF login (session cookie + CSRF), JWT relay, routing |
 
 ## Architecture
@@ -235,7 +235,7 @@ for the application-plane services:
 
 | Route id | Path predicate | Downstream (env var) |
 |---|---|---|
-| `procedure-service` | `/api/v1/procedure-templates/**,/api/v1/result-types/**,/api/v1/procedure-documents/**,/api/v1/global-procedure-templates/**,/api/v1/me/properties,/api/v1/me/permissions` | `PROCEDURE_SERVICE_URL` (`:8095`) |
+| `procedure-service` | `/api/v1/procedure-templates/**,/api/v1/result-types/**,/api/v1/procedure-documents/**,/api/v1/global-procedure-templates/**,/api/v1/me/properties,/api/v1/me/permissions,/api/v1/ai/**` | `PROCEDURE_SERVICE_URL` (`:8095`) |
 | `inspection-service` | `/api/v1/inspections/**,/api/v1/inspection-configs/**,/api/v1/checklists/**,/api/v1/tagged-procedures/**,/api/v1/reactive-services/**` | `INSPECTION_SERVICE_URL` (`:8096`) |
 
 **CORS allowed headers must also include `X-Sclera-Property`** — the header that
@@ -346,6 +346,34 @@ rather than a regression to file.
 `sclera-procedure-service/README.md` walks through steps 1–4 in full, and
 `sclera-procedure-service/http/procedure-templates.http` runs them against a live
 gateway — including the calls that are meant to fail.
+
+## AI question generation (procedure-service, feature-flagged)
+
+> Full walkthrough of both flows (document → questions, chat → questions),
+> the safeguards, and the API surface: **[docs/ai-question-generation.md](docs/ai-question-generation.md)**.
+
+Generate candidate questions from an uploaded document (PDF/DOCX/TXT) or a
+chat over the draft; candidates are reviewed in the procedure editor and only
+enter the draft through the shared import path (same validation and key
+minting as a hand edit). Off by default — with the flag off the `/api/v1/ai`
+endpoints are 404s and the editor hides the panel.
+
+```powershell
+# before .\run-procedure-service.ps1:
+$env:AI_QUESTION_GENERATION_ENABLED = 'true'
+$env:OPENROUTER_API_KEY = 'sk-or-v1-…'     # required for actual generation
+$env:SCLERA_AI_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free' # optional; bounded by SCLERA_AI_ALLOWED_MODELS
+```
+
+Generation goes through any OpenAI-compatible chat-completions endpoint
+(`SCLERA_AI_BASE_URL`, OpenRouter by default), so provider and model are config
+decisions. The structured-output schema is derived from `LlmSchemas` and sent
+with every request; replies are parsed back into those records.
+
+The gateway predicate for procedure-service must include `/api/v1/ai/**` (see
+the route table above). Candidate questions, jobs, documents and chat sessions
+live in the new `ai_document`/`generation_job`/`chat_session`/`chat_message`/
+`generated_question` tables (public V17, tenant V12).
 
 ## Kafka topics
 

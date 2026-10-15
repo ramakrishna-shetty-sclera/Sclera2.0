@@ -57,7 +57,7 @@ public final class KeyMinter {
         validateSuppliedKeys(document, highestMinted);
         return new DefinitionDocument(
                 document.schema(), assignToAll(document.items(), next), document.thresholds(),
-                   document.targetTypes(), document.documents());
+                   document.documents());
     }
 
     /**

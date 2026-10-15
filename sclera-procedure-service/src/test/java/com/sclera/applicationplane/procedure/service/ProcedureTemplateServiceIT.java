@@ -81,13 +81,13 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
                     String.class, schema);
 
             assertThat(tables).contains("procedure_template", "procedure_template_version", "version_result_type_ref",
-                    "version_target_type", "procedure_consumer", "procedure_document", "version_document_ref",
+                    "procedure_consumer", "procedure_document", "version_document_ref",
                     "procedure_favourite", "procedure_usage")
-                    .doesNotContain("question_template", "template_section", "question");
+                    .doesNotContain("question_template", "template_section", "question", "version_target_type");
             // Bump this when a tenant migration is added. Pinning it is the
             // point: it makes anyone adding one notice that every existing
             // tenant schema has to be migrated too, not just new ones.
-            assertThat(migratedTo).isEqualTo("11");
+            assertThat(migratedTo).isEqualTo("14");
             // A property-scoped table with no policy is wide open, and the
             // failure is silent — so provisioning asserts the policy arrived,
             // not merely that the migration ran.
@@ -353,7 +353,7 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
                     .build();
             UUID id = service.create(new CreateTemplateRequest("Blockers", null, null,
                     new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
-                            List.of(mappedToAmber, onlyOneAnswer), List.of(), List.of(), List.of()))).id();
+                            List.of(mappedToAmber, onlyOneAnswer), List.of(), List.of()))).id();
 
             // Both problems in one refusal: an author fixing a checklist should
             // not have to publish once per mistake to find them all.
@@ -563,7 +563,7 @@ class ProcedureTemplateServiceIT extends PostgresIntegrationTest {
     @SafeVarargs
     private static DefinitionDocument doc(List<Item>... groups) {
         return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
-                Stream.of(groups).flatMap(List::stream).toList(), List.of(), List.of(), List.of());
+                Stream.of(groups).flatMap(List::stream).toList(), List.of(), List.of());
     }
 
     private static List<Item> section(String key, String title, Item... questions) {

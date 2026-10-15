@@ -1,11 +1,10 @@
 package com.sclera.applicationplane.procedure.definition;
 
+import com.sclera.applicationplane.procedure.definition.DefinitionDocument.DocumentRef;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Item;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Option;
 import com.sclera.applicationplane.procedure.domain.QuestionType;
 import com.sclera.controlplane.common.exception.ValidationException;
-import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetType;
-import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetKind;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -29,7 +28,7 @@ class KeyMinterTest {
     }
 
     private static DefinitionDocument doc(Item... items) {
-        return new DefinitionDocument(2, List.of(items), List.of(), List.of(), List.of());
+        return new DefinitionDocument(2, List.of(items), List.of(), List.of());
     }
 
     @Test
@@ -127,15 +126,15 @@ class KeyMinterTest {
     }
 
     @Test
-    void mintingKeysLeavesWhatTheProcedureAppliesToAlone() {
+    void mintingKeysLeavesTheCitedDocumentsAlone() {
         // It rebuilds the document from its parts; a part left out of that is
         // dropped on every single save.
         DefinitionDocument document = new DefinitionDocument(2, List.of(q(null, "Present?")), List.of(),
-                List.of(new TargetType(TargetKind.ASSET_CLASS, "EXTINGUISHER")), List.of());
+                List.of(new DocumentRef("doc-1", null)));
 
         DefinitionDocument keyed = KeyMinter.assignKeys(document, 0, new java.util.concurrent.atomic.AtomicInteger()::incrementAndGet);
 
-        assertThat(keyed.targetTypes()).containsExactly(new TargetType(TargetKind.ASSET_CLASS, "EXTINGUISHER"));
+        assertThat(keyed.documents()).containsExactly(new DocumentRef("doc-1", null));
     }
 
     @Test

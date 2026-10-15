@@ -10,9 +10,7 @@ import jakarta.validation.constraints.Size;
 import lombok.Builder;
 
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
@@ -41,14 +39,6 @@ import java.util.TreeSet;
  * endpoint is a pure function over a published version, and it is the only
  * thing that reads these and decides anything.
  *
- * <p><b>What it applies to.</b> {@code targetTypes} names the kinds of place and
- * thing the procedure is for — an asset class, a hierarchy level, a location
- * type, a tag — each a key from the property vocabulary. Empty means it applies
- * to anything, which is what every version written before this field existed
- * means and must keep meaning. It belongs to the document and not the template:
- * a procedure can legitimately widen what it applies to between versions, and
- * that is a change to the version's content, so it is part of the hash.
- *
  * <p><b>Documents are cited by id, not copied in.</b> {@link DocumentRef} names
  * a row in the organization's (or one property's) reference-document library —
  * never a name, a size or a location, all of which resolve live from that row.
@@ -64,7 +54,6 @@ public record DefinitionDocument(
         int schema,
         List<@Valid Item> items,
         List<@Valid Threshold> thresholds,
-        List<@Valid TargetType> targetTypes,
         List<@Valid DocumentRef> documents) {
 
     /**
@@ -82,12 +71,11 @@ public record DefinitionDocument(
     public DefinitionDocument {
         items = items == null ? List.of() : List.copyOf(items);
         thresholds = thresholds == null ? List.of() : List.copyOf(thresholds);
-        targetTypes = targetTypes == null ? List.of() : List.copyOf(targetTypes);
         documents = documents == null ? List.of() : List.copyOf(documents);
     }
 
     public static DefinitionDocument empty() {
-        return new DefinitionDocument(CURRENT_SCHEMA, List.of(), List.of(), List.of(), List.of());
+        return new DefinitionDocument(CURRENT_SCHEMA, List.of(), List.of(), List.of());
     }
 
     /** Questions at every depth, sections excluded — what "12 questions" means on screen. */
@@ -123,24 +111,6 @@ public record DefinitionDocument(
             addIfNamed(keys, band.result());
         }
         return keys;
-    }
-
-    /**
-     * Every target type the document names, once each and trimmed, in the order
-     * the author wrote them — what publishing records in
-     * {@code version_target_type}. An empty list means the procedure applies to
-     * anything and records nothing, which is not the same as applying to nothing.
-     * A target type with no kind or no key is left out: it is refused on save,
-     * so none reaches a publish.
-     */
-    public Set<TargetType> targetTypeKeys() {
-        Set<TargetType> distinct = new LinkedHashSet<>();
-        for (TargetType target : targetTypes) {
-            if (target.kind() != null && target.key() != null && !target.key().isBlank()) {
-                distinct.add(new TargetType(target.kind(), target.key().strip()));
-            }
-        }
-        return distinct;
     }
 
     private static void addIfNamed(SortedSet<String> keys, String result) {
@@ -459,29 +429,6 @@ public record DefinitionDocument(
             Integer min,
             Integer max,
             @Size(max = 50) String result) {
-    }
-
-    /**
-     * One kind of target the procedure applies to: a key from one of the four
-     * property-vocabulary lists. Only the shape is checked on save; whether the
-     * key exists is a publish question, because a draft naming a key that has
-     * not been created yet is a normal thing to save.
-     */
-    public record TargetType(
-            @NotNull TargetKind kind,
-            @NotBlank @Size(max = 50) String key) {
-    }
-
-    /**
-     * Which vocabulary list a {@link TargetType} key belongs to. The names match
-     * the vocabulary service's and are stored on every published version that
-     * names one, so none is ever renamed.
-     */
-    public enum TargetKind {
-        HIERARCHY_LEVEL,
-        LOCATION_TYPE,
-        ASSET_CLASS,
-        ASSET_TAG
     }
 
     /** What a {@link Threshold} is measured against. */

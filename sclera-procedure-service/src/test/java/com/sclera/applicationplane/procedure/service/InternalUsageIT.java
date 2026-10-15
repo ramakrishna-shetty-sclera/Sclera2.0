@@ -61,7 +61,7 @@ class InternalUsageIT extends PostgresIntegrationTest {
                 .options(List.of(new Option(null, "Yes", "PASS", null, false), new Option(null, "No", "FAIL", null, false)))
                 .build();
         return new CreateTemplateRequest("Walk " + UUID.randomUUID(), null, null,
-                new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question), List.of(), List.of(),
+                new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question), List.of(),
                         List.of()));
     }
 
@@ -112,7 +112,7 @@ class InternalUsageIT extends PostgresIntegrationTest {
         procedures.createDraft(v1.templateId(), new NewDraftRequest(1));
         var draft = procedures.getDraft(v1.templateId());
         var changed = new DefinitionDocument(draft.definition().schema(), draft.definition().items(),
-                draft.definition().thresholds(), List.of(), List.of());
+                draft.definition().thresholds(), List.of());
         procedures.saveDraft(v1.templateId(), new com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos
                 .SaveDraftRequest(withHelp(changed), draft.rowVersion(), "second"));
         UUID v2 = procedures.publish(v1.templateId(), null).version().id();
@@ -131,7 +131,7 @@ class InternalUsageIT extends PostgresIntegrationTest {
     private static DefinitionDocument withHelp(DefinitionDocument source) {
         Item q = source.items().get(0);
         Item reworded = q.toBuilder().text("Present and tagged?").build();
-        return new DefinitionDocument(source.schema(), List.of(reworded), source.thresholds(), List.of(),
+        return new DefinitionDocument(source.schema(), List.of(reworded), source.thresholds(),
                 List.of());
     }
 

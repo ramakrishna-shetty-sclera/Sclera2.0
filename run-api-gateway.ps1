@@ -12,6 +12,12 @@
 # run. Use /actuator/health/readiness (plain /actuator/health reports DOWN
 # without the sidecar).
 
+# 8081, not the usual 8080: the sibling FDE/copilot app hard-binds 8080 and
+# keeps being relaunched, which silently steals the port and breaks login.
+# The frontend only reaches the gateway through the Vite proxy, which targets
+# 8081 too (frontend/vite.config.ts) — the browser URL does not change.
+$env:SERVER_PORT = '8081'
+
 # Application-plane services (this repo)
 $env:PROCEDURE_SERVICE_URL = 'http://localhost:8095'
 $env:INSPECTION_SERVICE_URL = 'http://localhost:8096'
@@ -23,14 +29,14 @@ $env:BFF_TENANT_CLIENT_SECRET = 'dev-bff-secret'
 $env:BFF_ADMIN_CLIENT_SECRET = 'unused-locally'   # sclera-admin realm not provisioned here
 
 # Frontend origin (Vite dev server) — OAuth callback redirects land here
-$env:APP_BASE_URL = 'http://localhost:8080'
+$env:APP_BASE_URL = 'http://localhost:8081'
 $env:FRONTEND_URL = 'http://localhost:5173'
 
 # CORS allow-list (CorsWebFilter runs at highest precedence and REJECTS any
 # request carrying an Origin the list doesn't contain — browsers always send
 # Origin on POST, so without this the SPA's login/exchange gets a 403 with an
 # empty body). Must be exact origins, no wildcards (wildcards throw at startup).
-$env:SCLERA_ALLOWED_ORIGINS = 'http://localhost:5173,http://localhost:8080'
+$env:SCLERA_ALLOWED_ORIGINS = 'http://localhost:5173,http://localhost:8081'
 
 # Local HTTP dev: non-Secure cookies, allow localhost return origins,
 # enable the test-exchange endpoint the frontend's dev login uses.

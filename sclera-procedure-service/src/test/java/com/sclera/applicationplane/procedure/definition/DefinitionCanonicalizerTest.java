@@ -3,8 +3,6 @@ package com.sclera.applicationplane.procedure.definition;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Item;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Option;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.RangeRule;
-import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetKind;
-import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetType;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Threshold;
 import com.sclera.applicationplane.procedure.domain.ItemSource;
 import com.sclera.applicationplane.procedure.domain.QuestionType;
@@ -21,7 +19,7 @@ class DefinitionCanonicalizerTest {
     private final DefinitionCanonicalizer canonicalizer = new DefinitionCanonicalizer();
 
     private static DefinitionDocument doc(Item... items) {
-        return new DefinitionDocument(1, List.of(items), List.of(), List.of(), List.of());
+        return new DefinitionDocument(1, List.of(items), List.of(), List.of());
     }
 
     private static Item question(String key, String text, QuestionType type, boolean required) {
@@ -55,7 +53,7 @@ class DefinitionCanonicalizerTest {
 
     @Test
     void ignoresTheSchemaNumberTheClientSent() {
-        var sent = new DefinitionDocument(99, List.of(), List.of(), List.of(), List.of());
+        var sent = new DefinitionDocument(99, List.of(), List.of(), List.of());
 
         assertThat(canonicalizer.canonicalize(sent).json()).isEqualTo("{\"schema\":2}");
     }
@@ -233,9 +231,9 @@ class DefinitionCanonicalizerTest {
         // to drop them from the hash and never notice until two versions that
         // score differently collided as "already published".
         Item q = question("q2", "Exit clear?", QuestionType.YES_NO, false);
-        var bare = new DefinitionDocument(2, List.of(q), List.of(), List.of(), List.of());
+        var bare = new DefinitionDocument(2, List.of(q), List.of(), List.of());
         var banded = new DefinitionDocument(2, List.of(q),
-                List.of(new Threshold(null, 0, 69, "FAIL"), new Threshold(null, 70, null, "PASS")), List.of(), List.of());
+                List.of(new Threshold(null, 0, 69, "FAIL"), new Threshold(null, 70, null, "PASS")), List.of());
 
         assertThat(canonicalizer.canonicalize(bare).hash())
                 .isNotEqualTo(canonicalizer.canonicalize(banded).hash());
@@ -256,7 +254,7 @@ class DefinitionCanonicalizerTest {
                                         .required(true).when("o4").build()))
                                 .build()),
                 List.of(new Threshold(null, null, 69, "FAIL"),
-                        new Threshold(DefinitionDocument.Scope.SECTION, 70, null, "PASS")), List.of(), List.of()));
+                        new Threshold(DefinitionDocument.Scope.SECTION, 70, null, "PASS")), List.of()));
 
         var again = canonicalizer.canonicalize(canonicalizer.parse(first.json()));
 
@@ -291,36 +289,12 @@ class DefinitionCanonicalizerTest {
     }
 
     @Test
-    void whatAProcedureAppliesToIsPartOfItsIdentity() {
-        Item question = question("q1", "Present?", QuestionType.TEXT, false);
-        DefinitionDocument anywhere = new DefinitionDocument(2, List.of(question), List.of(), List.of(), List.of());
-        DefinitionDocument extinguishers = new DefinitionDocument(2, List.of(question), List.of(),
-                List.of(new TargetType(TargetKind.ASSET_CLASS, "EXTINGUISHER")), List.of());
-
-        assertThat(canonicalizer.canonicalize(anywhere).hash())
-                .isNotEqualTo(canonicalizer.canonicalize(extinguishers).hash());
-    }
-
-    @Test
-    void aProcedureThatAppliesToAnythingIsWrittenExactlyAsBefore() {
-        // Every version published before target types existed has no such field,
+    void aProcedureIsWrittenExactlyAsBefore() {
+        // Every version published before documents existed has no such field,
         // and must keep its bytes and its hash.
         var canonical = canonicalizer.canonicalize(
-                new DefinitionDocument(2, List.of(question("q1", "Present?", QuestionType.TEXT, false)), List.of(), List.of(), List.of()));
+                new DefinitionDocument(2, List.of(question("q1", "Present?", QuestionType.TEXT, false)), List.of(), List.of()));
 
-        assertThat(canonical.json()).doesNotContain("targetTypes");
         assertThat(canonical.json()).isEqualTo("{\"items\":[{\"key\":\"q1\",\"text\":\"Present?\",\"type\":\"TEXT\"}],\"schema\":2}");
-    }
-
-    @Test
-    void targetTypesAreWrittenAndReadBack() {
-        var canonical = canonicalizer.canonicalize(new DefinitionDocument(2,
-                List.of(question("q1", "Present?", QuestionType.TEXT, false)), List.of(),
-                List.of(new TargetType(TargetKind.HIERARCHY_LEVEL, "FLOOR"), new TargetType(TargetKind.ASSET_CLASS, "EXTINGUISHER")), List.of()));
-
-        assertThat(canonical.json()).contains("\"targetTypes\":[{\"key\":\"FLOOR\",\"kind\":\"HIERARCHY_LEVEL\"},"
-                + "{\"key\":\"EXTINGUISHER\",\"kind\":\"ASSET_CLASS\"}]");
-        assertThat(canonicalizer.parse(canonical.json()).targetTypes())
-                .containsExactly(new TargetType(TargetKind.HIERARCHY_LEVEL, "FLOOR"), new TargetType(TargetKind.ASSET_CLASS, "EXTINGUISHER"));
     }
 }

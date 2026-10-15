@@ -7,7 +7,6 @@ import type {
   ItemType,
   RangeRule,
   Rollup,
-  TargetType,
   Threshold,
 } from '../api/types'
 
@@ -153,22 +152,19 @@ function toDraft(item: DefinitionItem): ItemDraft {
 
 /**
  * Keys ride through untouched; a blank one is simply absent, so the server
- * mints it. `thresholds` and `targetTypes` are document-level, not per item, so
+ * mints it. `thresholds` and `documents` are document-level, not per item, so
  * they ride through exactly as they were loaded — no screen edits either yet.
- * An empty `targetTypes` is left out, the way the server stores it.
  */
 export function toDocument(
   schema: number,
   items: ItemDraft[],
   thresholds: Threshold[] = [],
-  targetTypes: TargetType[] = [],
   documents: DocumentRef[] = [],
 ): DefinitionDocument {
   return {
     schema,
     items: items.map(toItem),
     thresholds,
-    ...(targetTypes.length > 0 ? { targetTypes } : {}),
     ...(documents.length > 0 ? { documents } : {}),
   }
 }

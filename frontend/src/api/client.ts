@@ -209,6 +209,49 @@ export async function apiFetch<T>(
   return parseEnvelope<T>(res)
 }
 
+/**
+ * Multipart upload through the gateway. Same session/CSRF handling as
+ * `apiFetch`; the one difference is that Content-Type is left to the browser,
+ * which must set the multipart boundary itself.
+ */
+export async function apiUpload<T>(path: string, form: FormData): Promise<ApiResult<T>> {
+  const res = await fetch(path, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: gatewayHeaders(),
+    body: form,
+  })
+  if (res.status === 401) sessionExpired()
+  return parseEnvelope<T>(res)
+}
+
+/**
+ * Binary download through the gateway. Errors still arrive as the JSON
+ * envelope, so a non-OK response is parsed the same way `apiFetch` would.
+ */
+export async function apiDownload(
+  path: string,
+  query: Record<string, string | number | undefined> = {},
+): Promise<{ blob: Blob; filename: string | null }> {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== '') params.set(key, String(value))
+  }
+  const qs = params.toString()
+  const res = await fetch(qs ? `${path}?${qs}` : path, {
+    credentials: 'same-origin',
+    headers: gatewayHeaders(),
+  })
+  if (res.status === 401) sessionExpired()
+  if (!res.ok) {
+    await parseEnvelope<never>(res) // throws with the envelope's error details
+    throw new ApiError('REQUEST_FAILED', `Request failed with status ${res.status}`, res.status)
+  }
+  const disposition = res.headers.get('Content-Disposition') ?? ''
+  const match = /filename="?([^";]+)"?/.exec(disposition)
+  return { blob: await res.blob(), filename: match ? match[1] : null }
+}
+
 // ── BFF auth endpoints (served in-process by the gateway) ────────────────────
 
 export async function fetchSession(): Promise<SessionUser> {

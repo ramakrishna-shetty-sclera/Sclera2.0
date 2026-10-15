@@ -4,8 +4,6 @@ import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Group
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Item;
 import com.sclera.applicationplane.procedure.domain.QuestionType;
 import org.assertj.core.groups.Tuple;
-import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetKind;
-import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetType;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -30,7 +28,7 @@ class DefinitionDocumentTest {
     }
 
     private static DefinitionDocument doc(Item... items) {
-        return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(items), List.of(), List.of(), List.of());
+        return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(items), List.of(), List.of());
     }
 
     /** Each group as (section key or null, its question keys) — enough to see the shape at a glance. */
@@ -105,21 +103,5 @@ class DefinitionDocumentTest {
         Group group = doc(section("s1"), q("q2")).groups().get(0);
 
         assertThat(group.questions()).isUnmodifiable();
-    }
-
-    @Test
-    void theTargetTypesToRecordAreDistinctTrimmedAndInTheOrderWritten() {
-        DefinitionDocument document = new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(q("q1")), List.of(),
-                List.of(new TargetType(TargetKind.ASSET_CLASS, "EXTINGUISHER"),
-                        new TargetType(TargetKind.HIERARCHY_LEVEL, "FLOOR"),
-                        new TargetType(TargetKind.ASSET_CLASS, " EXTINGUISHER ")), List.of());
-
-        assertThat(document.targetTypeKeys()).containsExactly(
-                new TargetType(TargetKind.ASSET_CLASS, "EXTINGUISHER"), new TargetType(TargetKind.HIERARCHY_LEVEL, "FLOOR"));
-    }
-
-    @Test
-    void aDocumentThatNamesNoTargetTypesRecordsNone() {
-        assertThat(doc(q("q1")).targetTypeKeys()).isEmpty();
     }
 }

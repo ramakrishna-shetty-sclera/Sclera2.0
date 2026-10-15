@@ -4,14 +4,8 @@ import com.sclera.applicationplane.procedure.authz.FgaAuthorizationService;
 import com.sclera.applicationplane.procedure.definition.DefinitionCanonicalizer;
 import com.sclera.applicationplane.procedure.definition.DefinitionCanonicalizer.Canonical;
 import com.sclera.applicationplane.procedure.definition.DefinitionDiff;
-import com.sclera.applicationplane.procedure.client.vocabulary.CachedVocabulary;
-import com.sclera.applicationplane.procedure.client.vocabulary.Vocabulary;
-import com.sclera.applicationplane.procedure.client.vocabulary.VocabularyKind;
-import com.sclera.applicationplane.procedure.client.vocabulary.VocabularyUnavailableException;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument;
 import com.sclera.applicationplane.procedure.definition.DefinitionDocument.DocumentRef;
-import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetKind;
-import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetType;
 import com.sclera.applicationplane.procedure.definition.DefinitionValidator;
 import com.sclera.applicationplane.procedure.definition.KeyMinter;
 import com.sclera.applicationplane.procedure.domain.GlobalProcedureTemplate;
@@ -27,7 +21,6 @@ import com.sclera.applicationplane.procedure.domain.TemplateScope;
 import com.sclera.applicationplane.procedure.domain.TemplateStatus;
 import com.sclera.applicationplane.procedure.domain.VersionDocumentRef;
 import com.sclera.applicationplane.procedure.domain.VersionResultTypeRef;
-import com.sclera.applicationplane.procedure.domain.VersionTargetType;
 import com.sclera.applicationplane.procedure.domain.VersionState;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.CloneRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.CreateTemplateRequest;
@@ -67,7 +60,6 @@ import com.sclera.applicationplane.procedure.repository.ProcedureTemplateVersion
 import com.sclera.applicationplane.procedure.repository.ResultTypeRepository;
 import com.sclera.applicationplane.procedure.repository.VersionDocumentRefRepository;
 import com.sclera.applicationplane.procedure.repository.VersionResultTypeRefRepository;
-import com.sclera.applicationplane.procedure.repository.VersionTargetTypeRepository;
 import com.sclera.applicationplane.procedure.tenancy.PropertyContext;
 import com.sclera.applicationplane.procedure.tenancy.TenantSchemas;
 import com.sclera.controlplane.common.exception.BusinessRuleException;
@@ -119,9 +111,7 @@ public class ProcedureTemplateService {
     private final FgaAuthorizationService fga;
     private final ResultTypeRepository resultTypes;
     private final VersionResultTypeRefRepository resultTypeRefs;
-    private final VersionTargetTypeRepository targetTypeRefs;
     private final ProcedureConsumerRepository consumers;
-    private final CachedVocabulary vocabulary;
     private final ProcedureDocumentRepository documents;
     private final VersionDocumentRefRepository documentRefs;
     private final GlobalProcedureTemplateRepository globalTemplates;
@@ -138,9 +128,7 @@ public class ProcedureTemplateService {
                                     FgaAuthorizationService fga,
                                     ResultTypeRepository resultTypes,
                                     VersionResultTypeRefRepository resultTypeRefs,
-                                    VersionTargetTypeRepository targetTypeRefs,
                                     ProcedureConsumerRepository consumers,
-                                    CachedVocabulary vocabulary,
                                     ProcedureDocumentRepository documents,
                                     VersionDocumentRefRepository documentRefs,
                                     GlobalProcedureTemplateRepository globalTemplates,
@@ -156,9 +144,7 @@ public class ProcedureTemplateService {
         this.fga = fga;
         this.resultTypes = resultTypes;
         this.resultTypeRefs = resultTypeRefs;
-        this.targetTypeRefs = targetTypeRefs;
         this.consumers = consumers;
-        this.vocabulary = vocabulary;
         this.documents = documents;
         this.documentRefs = documentRefs;
         this.globalTemplates = globalTemplates;
@@ -194,6 +180,7 @@ public class ProcedureTemplateService {
         if (!isBlank(request.consumerKey())) {
             template.setConsumerKey(requireActiveConsumer(request.consumerKey()));
         }
+        template.setMeta(request.meta());
         template.setCreatedBy(OrgContext.getUserId());
         templates.saveAndFlush(template);
 
@@ -207,7 +194,7 @@ public class ProcedureTemplateService {
         return mapper.toResponse(template, null, 1);
     }
 
-    /** Name and description are identity, not content, so they are not versioned. */
+    /** Name, description and meta are identity, not content, so they are not versioned. */
     public TemplateResponse update(UUID id, UpdateTemplateRequest request) {
         ProcedureTemplate template = getOwned(id);
         requireActive(template);
@@ -217,6 +204,9 @@ public class ProcedureTemplateService {
         }
         template.setName(name);
         template.setDescription(blankToNull(request.description()));
+        if (request.meta() != null) {
+            template.setMeta(request.meta());
+        }
         templates.flush();
         return toResponse(template);
     }
@@ -262,19 +252,6 @@ public class ProcedureTemplateService {
         ProcedureTemplate template = getOwned(id);
         favourites.findByUserIdAndTemplateId(OrgContext.getUserId(), template.getId()).ifPresent(favourites::delete);
         return new FavouriteResponse(false);
-    }
-
-    /**
-     * The active procedures that apply to one target — "which checklists does an
-     * extinguisher get?". One that names no target types applies to anything and
-     * is always included. Row-level security still hides a procedure that belongs
-     * to a property the caller is not standing in.
-     */
-    @Transactional(readOnly = true)
-    public Page<TemplateResponse> discover(String consumerKey, TargetKind kind, String key, Pageable pageable) {
-        Page<ProcedureTemplate> page = templates.findApplicableTo(OrgContext.getOrgId(),
-                consumerKey.trim().toUpperCase(Locale.ROOT), kind, key.strip(), pageable);
-        return withVersionNumbers(page);
     }
 
     private Page<TemplateResponse> withVersionNumbers(Page<ProcedureTemplate> page) {
@@ -325,6 +302,7 @@ public class ProcedureTemplateService {
         copy.setName(name);
         copy.setDescription(source.getDescription());
         copy.setConsumerKey(source.getConsumerKey());
+        copy.setMeta(source.getMeta());
         copy.setKeySeq(source.getKeySeq());
         copy.setCreatedBy(OrgContext.getUserId());
         templates.saveAndFlush(copy);
@@ -526,7 +504,7 @@ public class ProcedureTemplateService {
         // built for a list.
         DefinitionDocument document = canonicalizer.parse(draft.getDefinitionJson());
         List<String> blockers = DefinitionValidator.publishBlockers(document, activeResultKeys(template.getOrgId()),
-                unknownTargetTypes(document, template.getOrgId()), citableDocumentIds(template));
+                citableDocumentIds(template));
         if (!blockers.isEmpty()) {
             throw new BusinessRuleException("This procedure cannot be published yet: "
                     + String.join("; ", blockers));
@@ -553,12 +531,6 @@ public class ProcedureTemplateService {
         // it names stays deletable.
         resultTypeRefs.saveAll(document.resultTypeKeys().stream()
                 .map(key -> new VersionResultTypeRef(draft.getId(), key))
-                .toList());
-        // The same rule for what the version applies to: first freeze only, never
-        // a draft. A version that names no target types writes nothing, because
-        // that means it applies to anything, not to nothing.
-        targetTypeRefs.saveAll(document.targetTypeKeys().stream()
-                .map(target -> new VersionTargetType(draft.getId(), target.kind(), target.key()))
                 .toList());
         documentRefs.saveAll(document.citedDocumentIds().stream()
                 .map(docId -> new VersionDocumentRef(draft.getId(), UUID.fromString(docId)))
@@ -663,7 +635,7 @@ public class ProcedureTemplateService {
                     version.getDefinitionHash(), version.getChangeNote());
         }
         DefinitionDocument stripped = new DefinitionDocument(document.schema(), document.items(),
-                document.thresholds(), document.targetTypes(), List.of());
+                document.thresholds(), List.of());
         Canonical canonical = canonicalizer.canonicalize(stripped);
         return new ExportedVersion(version.getVersionNo(), canonical.json(), canonical.hash(), version.getChangeNote());
     }
@@ -751,7 +723,7 @@ public class ProcedureTemplateService {
         List<DocumentRef> kept = document.documents().stream().filter(ref -> citable.contains(ref.id())).toList();
         int dropped = document.documents().size() - kept.size();
         DefinitionDocument usable = new DefinitionDocument(document.schema(), document.items(),
-                document.thresholds(), document.targetTypes(), kept);
+                document.thresholds(), kept);
 
         createMissingResultTypes(usable.resultTypeKeys());
 
@@ -1249,43 +1221,6 @@ public class ProcedureTemplateService {
                     + (active.isEmpty() ? "" : ": " + String.join(", ", active)));
         }
         return key;
-    }
-
-    /**
-     * The document's target types that the organization's vocabulary does not
-     * have, for the publish check.
-     *
-     * <p><b>Only asked when the version declares any.</b> A procedure that
-     * applies to anything never touches the vocabulary service, so every
-     * existing procedure publishes exactly as before and does not start
-     * depending on the helper being up.
-     *
-     * <p><b>Fails closed, and says which problem it is.</b> If the vocabulary
-     * cannot be read, nothing can be said about whether a key exists, so the
-     * publish is refused — but with a message about the vocabulary, not about the
-     * key. "EXTINGUISHER is not an asset class" would send an author to fix a
-     * procedure that is fine. It is a business-rule refusal rather than the
-     * shared external-service error because that one answers with a fixed
-     * generic sentence and would throw this wording away.
-     *
-     * <p>A key that exists but has been retired counts as present: refusing it
-     * would block an unrelated edit to a procedure that already names it.
-     */
-    private List<TargetType> unknownTargetTypes(DefinitionDocument document, UUID orgId) {
-        if (document.targetTypes().isEmpty()) {
-            return List.of();
-        }
-        Vocabulary known;
-        try {
-            known = vocabulary.forOrg(orgId);
-        } catch (VocabularyUnavailableException e) {
-            throw new BusinessRuleException("This procedure cannot be published right now: it names target "
-                    + "types, and the property vocabulary they are checked against could not be read. "
-                    + "Nothing is wrong with the procedure; try again shortly");
-        }
-        return document.targetTypes().stream()
-                .filter(target -> !known.contains(VocabularyKind.valueOf(target.kind().name()), target.key().strip()))
-                .toList();
     }
 
     /**

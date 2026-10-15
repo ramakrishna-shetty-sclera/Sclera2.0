@@ -344,11 +344,6 @@ export interface DefinitionDocument {
   /** Score bands that turn a final percentage into a result type. Empty means scoring is not configured. */
   thresholds: Threshold[]
   /**
-   * What the procedure applies to. Absent or empty means anything — every
-   * version written before this existed.
-   */
-  targetTypes?: TargetType[]
-  /**
    * The reference documents this version cites, by library id. Never a name,
    * size or location: those resolve live from the library, so renaming a
    * document reaches every version citing it.
@@ -382,14 +377,6 @@ export interface DocumentRef {
   questionKey?: string | null
 }
 
-/** One key from one of the property-vocabulary lists the procedure applies to. */
-export interface TargetType {
-  kind: TargetKind
-  key: string
-}
-
-export type TargetKind = 'HIERARCHY_LEVEL' | 'LOCATION_TYPE' | 'ASSET_CLASS' | 'ASSET_TAG'
-
 /**
  * **Every optional field below arrives absent, not null.**
  *
@@ -398,6 +385,24 @@ export type TargetKind = 'HIERARCHY_LEVEL' | 'LOCATION_TYPE' | 'ASSET_CLASS' | '
  * therefore reads as `undefined`, and `=== null` never matches it. Compare
  * these with `== null` / `!= null`, which catch both.
  */
+export type TemplateAvailability = 'PROPERTY' | 'ORG'
+
+/**
+ * Descriptive, unversioned fields of a procedure (docs/procedures-v3.html
+ * DetailsTab): categorization, filing and scheduling. All free text except
+ * availability; the dropdown values in the UI are suggestions, not an enum.
+ */
+export interface TemplateMeta {
+  category?: string | null
+  subCategory?: string | null
+  frequency?: string | null
+  priority?: string | null
+  code?: string | null
+  standard?: string | null
+  availability?: TemplateAvailability | null
+  folder?: string | null
+}
+
 export interface ProcedureTemplate {
   id: string
   orgId: string
@@ -406,6 +411,7 @@ export interface ProcedureTemplate {
   name: string
   description?: string | null
   consumerKey?: string | null
+  meta?: TemplateMeta | null
   status: ProcedureStatus
   /** Absent until something is published — which is how you tell a procedure is usable. */
   currentPublishedVersionId?: string | null
@@ -487,8 +493,6 @@ export interface ItemChange {
 export interface DefinitionDiff {
   identical: boolean
   orderChanged: boolean
-  /** What the procedure applies to differs between the two versions. */
-  targetTypesChanged?: boolean
   /** Which documents are cited, or which question each hangs off, differs between the two versions. */
   documentsChanged?: boolean
   items: ItemChange[]
@@ -504,14 +508,17 @@ export interface CreateProcedureRequest {
   name: string
   description?: string
   consumerKey?: string
+  meta?: TemplateMeta
   /** Optional: omitting it creates an empty draft v1. */
   definition?: DefinitionDocument
 }
 
-/** Identity only — name and description are not versioned. */
+/** Identity only — name, description and meta are not versioned. */
 export interface UpdateProcedureRequest {
   name: string
   description?: string
+  /** Omit to leave the stored meta unchanged. */
+  meta?: TemplateMeta
 }
 
 export interface SaveDraftRequest {

@@ -1,4 +1,4 @@
-import { apiFetch, type ApiResult } from './client'
+import { apiDownload, apiFetch, type ApiResult } from './client'
 import type {
   CloneProcedureRequest,
   CreateProcedureRequest,
@@ -97,6 +97,18 @@ export function publishProcedure(id: string, rowVersion?: number): Promise<Publi
   }).then((r) => r.data)
 }
 
+/**
+ * Download the checklist as a file. Exports the published version unless a
+ * versionNo is named; the draft only when nothing was ever published.
+ */
+export function exportProcedure(
+  id: string,
+  format: 'pdf' | 'xlsx',
+  versionNo?: number,
+): Promise<{ blob: Blob; filename: string | null }> {
+  return apiDownload(`${PROCEDURES}/${id}/export`, { format, versionNo })
+}
+
 // --- history ---
 
 /** Newest first, draft included when there is one. */
@@ -155,12 +167,18 @@ export function forkProcedure(id: string): Promise<ProcedureTemplate> {
   return apiFetch<ProcedureTemplate>(`${PROCEDURES}/${id}/fork`, { method: 'POST' }).then((r) => r.data)
 }
 
-/** Omitting `versions` exports the current published version only. */
-export function exportProcedure(
+/**
+ * The JSON shape `/import-file` reads back — distinct from `exportProcedure`
+ * above, which downloads a formatted PDF/XLSX for a person to read. This one
+ * is the machine-readable round trip the Sclera-wide sharing library and
+ * import-from-file both use. Omitting `versions` exports the current
+ * published version only.
+ */
+export function exportProcedureJson(
   id: string,
   params: { versions?: number[]; includeDocuments?: boolean } = {},
 ): Promise<ExportedProcedure> {
-  return apiFetch<ExportedProcedure>(`${PROCEDURES}/${id}/export`, {
+  return apiFetch<ExportedProcedure>(`${PROCEDURES}/${id}/export-json`, {
     query: {
       versions: params.versions?.join(','),
       includeDocuments: params.includeDocuments === undefined ? undefined : String(params.includeDocuments),

@@ -55,7 +55,7 @@ class GlobalProcedureTemplateServiceIT extends PostgresIntegrationTest {
     }
 
     private static DefinitionDocument withOneQuestion() {
-        return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question()), List.of(), List.of(), List.of());
+        return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question()), List.of(), List.of());
     }
 
     @Test
@@ -85,7 +85,7 @@ class GlobalProcedureTemplateServiceIT extends PostgresIntegrationTest {
         // Sending the minted keys back changes nothing about them.
         GlobalVersionResponse resaved = service.saveDraft(created.id(),
                 new SaveGlobalDraftRequest(new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
-                        List.of(minted), List.of(), List.of(), List.of()), "reworded"));
+                        List.of(minted), List.of(), List.of()), "reworded"));
         assertThat(resaved.definition().items().get(0).key()).isEqualTo("q1");
         assertThat(resaved.changeNote()).isEqualTo("reworded");
     }
@@ -127,7 +127,7 @@ class GlobalProcedureTemplateServiceIT extends PostgresIntegrationTest {
                 .type(QuestionType.YES_NO).required(true).options(original.options()).build();
         service.saveDraft(created.id(), new SaveGlobalDraftRequest(
                 new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
-                        List.of(changed), List.of(), List.of(), List.of()), "reworded"));
+                        List.of(changed), List.of(), List.of()), "reworded"));
         GlobalPublishResponse second = service.publish(created.id());
 
         assertThat(second.newVersion()).isTrue();
@@ -205,7 +205,7 @@ class GlobalProcedureTemplateServiceIT extends PostgresIntegrationTest {
         GlobalVersionResponse draft = service.getDraft(created.id());
         GlobalVersionResponse saved = service.saveDraft(created.id(), new SaveGlobalDraftRequest(
                 new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
-                        List.of(draft.definition().items().get(0), second), List.of(), List.of(), List.of()), null));
+                        List.of(draft.definition().items().get(0), second), List.of(), List.of()), null));
 
         // q1/o2/o3 already minted for the first question; the second must not reuse any of them.
         assertThat(saved.definition().items().get(1).key()).isEqualTo("q4");

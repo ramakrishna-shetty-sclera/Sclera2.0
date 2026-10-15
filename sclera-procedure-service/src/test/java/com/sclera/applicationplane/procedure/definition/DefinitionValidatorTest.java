@@ -8,8 +8,6 @@ import com.sclera.applicationplane.procedure.definition.DefinitionDocument.Thres
 import com.sclera.applicationplane.procedure.domain.QuestionType;
 import com.sclera.applicationplane.procedure.domain.Rollup;
 import com.sclera.controlplane.common.exception.ValidationException;
-import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetType;
-import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetKind;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -33,7 +31,7 @@ class DefinitionValidatorTest {
     }
 
     private static DefinitionDocument doc(Item... items) {
-        return new DefinitionDocument(2, List.of(items), List.of(), List.of(), List.of());
+        return new DefinitionDocument(2, List.of(items), List.of(), List.of());
     }
 
     // --- structure: refused on save ------------------------------------------
@@ -358,7 +356,7 @@ class DefinitionValidatorTest {
     }
 
     private static DefinitionDocument scored(List<Threshold> bands, Item... items) {
-        return new DefinitionDocument(2, List.of(items), bands, List.of(), List.of());
+        return new DefinitionDocument(2, List.of(items), bands, List.of());
     }
 
     /**
@@ -604,78 +602,10 @@ class DefinitionValidatorTest {
         return item.toBuilder().critical(true).rules(List.of()).build();
     }
 
-    // --- target types ----------------------------------------------------------
-
-    private static DefinitionDocument withTargets(TargetType... targets) {
-        return new DefinitionDocument(2, List.of(yesNo("q1", "Extinguisher present?")), List.of(), List.of(targets), List.of());
-    }
-
-    private static TargetType asset(String key) {
-        return new TargetType(TargetKind.ASSET_CLASS, key);
-    }
-
-    @Test
-    void aTargetTypeListedTwiceIsRefusedOnSave() {
-        assertThatThrownBy(() -> DefinitionValidator.validateStructure(withTargets(asset("EXTINGUISHER"), asset("EXTINGUISHER"))))
-                .isInstanceOf(ValidationException.class)
-                .hasMessage("The target type 'EXTINGUISHER' (asset class) is listed more than once");
-    }
-
-    @Test
-    void aTargetTypeWithNoKeyIsRefusedOnSave() {
-        assertThatThrownBy(() -> DefinitionValidator.validateStructure(withTargets(asset("  "))))
-                .isInstanceOf(ValidationException.class)
-                .hasMessage("A target type needs both a kind and a key");
-    }
-
-    @Test
-    void theSameKeyInTwoDifferentListsIsNotADuplicate() {
-        assertThatCode(() -> DefinitionValidator.validateStructure(withTargets(
-                asset("ROOM"), new TargetType(TargetKind.LOCATION_TYPE, "ROOM"))))
-                .doesNotThrowAnyException();
-    }
-
-    @Test
-    void aKeyTheVocabularyDoesNotHaveStillSavesBecauseThatIsAPublishQuestion() {
-        assertThatCode(() -> DefinitionValidator.validateStructure(withTargets(asset("NOT_CREATED_YET"))))
-                .doesNotThrowAnyException();
-    }
-
-    @Test
-    void everyTargetTypeTheVocabularyLacksIsAPublishBlockerNamingItAndItsList() {
-        TargetType extinguisher = asset("EXTINGUISHER");
-        TargetType floor = new TargetType(TargetKind.HIERARCHY_LEVEL, "FLOOR_9");
-        TargetType tag = new TargetType(TargetKind.ASSET_TAG, "OUTDOOR");
-        TargetType room = new TargetType(TargetKind.LOCATION_TYPE, "VAULT");
-
-        assertThat(DefinitionValidator.publishBlockers(withTargets(extinguisher, floor, tag, room), PASS_FAIL,
-                List.of(extinguisher, floor, tag, room)))
-                .containsExactly(
-                        "The target type 'EXTINGUISHER' (asset class) is not one of this organization's asset classes",
-                        "The target type 'FLOOR_9' (hierarchy level) is not one of this organization's hierarchy levels",
-                        "The target type 'OUTDOOR' (asset tag) is not one of this organization's asset tags",
-                        "The target type 'VAULT' (location type) is not one of this organization's location types");
-    }
-
-    @Test
-    void whenTheVocabularyHasEveryKeyThereIsNothingToBlock() {
-        assertThat(DefinitionValidator.publishBlockers(withTargets(asset("EXTINGUISHER")), PASS_FAIL, List.of())).isEmpty();
-    }
-
-    @Test
-    void unknownTargetTypesAreListedBesideTheOtherReasonsNotInsteadOfThem() {
-        DefinitionDocument unfinished = new DefinitionDocument(2,
-                List.of(item("q1", "Exit clear?", QuestionType.YES_NO)), List.of(), List.of(asset("EXTINGUISHER")), List.of());
-
-        assertThat(DefinitionValidator.publishBlockers(unfinished, PASS_FAIL, List.of(asset("EXTINGUISHER"))))
-                .anySatisfy(b -> assertThat(b).contains("needs at least two answers"))
-                .anySatisfy(b -> assertThat(b).contains("'EXTINGUISHER' (asset class)"));
-    }
-
     // --- documents a version cites -------------------------------------------
 
     private static DefinitionDocument docWithRefs(List<DocumentRef> refs, Item... items) {
-        return new DefinitionDocument(2, List.of(items), List.of(), List.of(), refs);
+        return new DefinitionDocument(2, List.of(items), List.of(), refs);
     }
 
     @Test

@@ -71,7 +71,7 @@ class ImportFileIT extends PostgresIntegrationTest {
     }
 
     private static DefinitionDocument document(List<Item> items, DocumentRef... refs) {
-        return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, items, List.of(), List.of(), List.of(refs));
+        return new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, items, List.of(), List.of(refs));
     }
 
     private UUID publishedProcedure(String name, DocumentRef... refs) {

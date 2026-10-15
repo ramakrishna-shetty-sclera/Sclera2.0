@@ -40,6 +40,12 @@ springdoc:
     path: /v3/api-docs
 
 sclera:
+  # AI question generation defaults ON in local dev (base default is off), so
+  # the run script needs no flag. The API key is still env-only, never here:
+  # without ANTHROPIC_API_KEY the endpoints exist and generation jobs fail
+  # with a clear message.
+  ai:
+    enabled: ${AI_QUESTION_GENERATION_ENABLED:true}
   health:
     dapr:
       # Flip to true when running under `dapr run` with a sidecar

@@ -73,6 +73,24 @@
             <artifactId>openfga-sdk</artifactId>
         </dependency>
 
+        <!-- AI question generation: OpenAI-compatible LLM API + document text extraction -->
+        <dependency>
+            <groupId>com.github.victools</groupId>
+            <artifactId>jsonschema-generator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.victools</groupId>
+            <artifactId>jsonschema-module-jackson</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+        </dependency>
+
         <!-- Database -->
         <dependency>
             <groupId>org.flywaydb</groupId>

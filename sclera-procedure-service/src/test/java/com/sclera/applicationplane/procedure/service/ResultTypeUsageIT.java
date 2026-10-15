@@ -128,6 +128,6 @@ class ResultTypeUsageIT extends PostgresIntegrationTest {
                 .options(List.of(new Option(null, "Yes", "PASS", null, false), new Option(null, "Borderline", key, null, false)))
                 .build();
         return new CreateTemplateRequest(name, null, null,
-                new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question), List.of(), List.of(), List.of()));
+                new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question), List.of(), List.of()));
     }
 }

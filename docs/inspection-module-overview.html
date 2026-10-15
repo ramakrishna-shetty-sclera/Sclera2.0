@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sclera VDMS — Inspection Module: Features &amp; Service Ownership</title>
+<style>
+  :root {
+    --ink: #1a2332;
+    --muted: #5b6b7f;
+    --line: #dde4ec;
+    --bg: #f5f7fa;
+    --card: #ffffff;
+    --accent: #0f62fe;
+    --accent-soft: #e8f0fe;
+    --green: #1e8e5a;
+    --green-soft: #e4f5ec;
+    --amber: #b07508;
+    --amber-soft: #fdf3dd;
+    --red: #c23b3b;
+    --red-soft: #fdeaea;
+    --purple: #6b41c7;
+    --purple-soft: #f0eafb;
+    --teal: #0a7d8c;
+    --teal-soft: #e2f4f6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 28px 80px; }
+
+  /* ---------- header ---------- */
+  header {
+    background: linear-gradient(135deg, #10233f 0%, #163a63 55%, #0f62fe 130%);
+    color: #fff;
+    padding: 44px 0 38px;
+    margin-bottom: 34px;
+  }
+  header .wrap { padding-bottom: 0; }
+  header .kicker { text-transform: uppercase; letter-spacing: .18em; font-size: 12px; opacity: .75; margin-bottom: 10px; }
+  header h1 { font-size: 32px; font-weight: 650; line-height: 1.2; }
+  header p.sub { margin-top: 12px; max-width: 780px; font-size: 15.5px; opacity: .88; }
+  header .meta { margin-top: 18px; font-size: 12.5px; opacity: .6; }
+
+  /* ---------- section scaffolding ---------- */
+  section { margin-bottom: 46px; }
+  h2 {
+    font-size: 21px; font-weight: 650; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  h2 .num {
+    background: var(--accent); color: #fff; font-size: 13px; font-weight: 700;
+    width: 26px; height: 26px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center; flex: none;
+  }
+  .lede { color: var(--muted); font-size: 14.5px; margin-bottom: 18px; max-width: 860px; }
+
+  /* ---------- architecture ---------- */
+  .arch { display: grid; grid-template-columns: 1fr; gap: 14px; }
+  .arch-row { display: grid; gap: 14px; }
+  .arch-row.services { grid-template-columns: repeat(3, 1fr); }
+  .arch-row.infra { grid-template-columns: repeat(5, 1fr); }
+  .node {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px 16px; box-shadow: 0 1px 3px rgba(16,35,63,.06);
+  }
+  .node.hero { border-left: 4px solid var(--accent); }
+  .node.owned { border: 2px solid var(--green); background: var(--green-soft); }
+  .node h4 { font-size: 14.5px; font-weight: 650; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .node .port { font-family: Consolas, monospace; font-size: 11.5px; background: var(--accent-soft); color: var(--accent); padding: 1px 7px; border-radius: 20px; }
+  .node.owned .port { background: #fff; color: var(--green); }
+  .node p { font-size: 12.8px; color: var(--muted); margin-top: 5px; }
+  .node.owned p { color: #2c5545; }
+  .own-flag { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--green); background: #fff; border: 1px solid var(--green); padding: 1px 7px; border-radius: 20px; }
+  .arch-connector { text-align: center; color: var(--muted); font-size: 12px; letter-spacing: .05em; }
+
+  /* ---------- feature cards ---------- */
+  .features { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .feature {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px 20px; box-shadow: 0 1px 3px rgba(16,35,63,.06);
+    border-top: 4px solid var(--accent);
+  }
+  .feature.owner-inspection { border-top-color: var(--green); }
+  .feature.owner-procedure { border-top-color: var(--purple); }
+  .feature.owner-helper { border-top-color: var(--teal); }
+  .feature h3 { font-size: 16px; font-weight: 650; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .feature .icon { font-size: 18px; }
+  .feature .owner-tag { margin-left: auto; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 2px 9px; border-radius: 20px; align-self: center; }
+  .owner-inspection .owner-tag { background: var(--green-soft); color: var(--green); }
+  .owner-procedure .owner-tag { background: var(--purple-soft); color: var(--purple); }
+  .owner-helper .owner-tag { background: var(--teal-soft); color: var(--teal); }
+  .feature p { font-size: 13.5px; color: var(--muted); margin: 8px 0 10px; }
+  .feature ul { list-style: none; }
+  .feature li { font-size: 13px; padding: 3px 0 3px 20px; position: relative; }
+  .feature li::before { content: "▸"; position: absolute; left: 4px; color: var(--accent); }
+  .api {
+    font-family: Consolas, monospace; font-size: 11.5px; background: #f0f3f7;
+    border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; margin-top: 10px;
+    color: #33445c; word-break: break-all;
+  }
+
+  /* ---------- lifecycle ---------- */
+  .lifecycle { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 22px; }
+  .flow { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .state { font-size: 13px; font-weight: 650; padding: 6px 16px; border-radius: 20px; border: 2px solid; }
+  .st-todo { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+  .st-complete { color: var(--green); border-color: var(--green); background: var(--green-soft); }
+  .st-failed { color: var(--red); border-color: var(--red); background: var(--red-soft); }
+  .st-exception { color: var(--amber); border-color: var(--amber); background: var(--amber-soft); }
+  .st-incomplete { color: var(--muted); border-color: var(--muted); background: #eef1f5; }
+  .arrow { color: var(--muted); font-size: 15px; }
+  .flow-note { font-size: 12.5px; color: var(--muted); }
+  .rules { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 24px; margin-top: 14px; }
+  .rules div { font-size: 13px; padding-left: 20px; position: relative; }
+  .rules div::before { content: "•"; position: absolute; left: 6px; color: var(--accent); }
+
+  /* ---------- responsibilities table ---------- */
+  table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(16,35,63,.06); }
+  th { background: #10233f; color: #fff; text-align: left; font-size: 12.5px; text-transform: uppercase; letter-spacing: .06em; padding: 12px 16px; }
+  td { padding: 12px 16px; font-size: 13.5px; border-top: 1px solid var(--line); vertical-align: top; }
+  td:first-child { font-weight: 650; white-space: nowrap; }
+  tr:nth-child(even) td { background: #fafbfd; }
+  td .mono { font-family: Consolas, monospace; font-size: 12px; color: #33445c; }
+
+  /* ---------- responsibility cards ---------- */
+  .resp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .resp {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px;
+    box-shadow: 0 1px 3px rgba(16,35,63,.06);
+  }
+  .resp h3 { font-size: 14.5px; font-weight: 650; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  .resp ul { list-style: none; }
+  .resp li { font-size: 12.8px; color: #33445c; padding: 3px 0 3px 18px; position: relative; }
+  .resp li::before { content: "✓"; position: absolute; left: 0; color: var(--green); font-weight: 700; }
+
+  .callout {
+    background: var(--accent-soft); border: 1px solid #bcd2fb; border-left: 4px solid var(--accent);
+    border-radius: 8px; padding: 14px 18px; font-size: 13.5px; margin-top: 18px;
+  }
+  .callout strong { color: var(--accent); }
+
+  footer { margin-top: 50px; color: var(--muted); font-size: 12px; text-align: center; }
+
+  @media (max-width: 900px) {
+    .features, .resp-grid, .rules { grid-template-columns: 1fr; }
+    .arch-row.services { grid-template-columns: 1fr; }
+    .arch-row.infra { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media print {
+    body { background: #fff; }
+    header { background: #10233f !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    section { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="kicker">Sclera VDMS &middot; Application Plane &middot; Microservices Review</div>
+    <h1>Inspection Module — Features &amp; Service Ownership</h1>
+    <p class="sub">Digital inspection of building assets (IT + OT) for compliance. Property, facility and security teams
+    configure recurring inspections over procedures tagged to assets and locations, fill checklists (including via QR scan),
+    and track everything through a task dashboard and map views.</p>
+    <div class="meta">Prepared for the microservices sync &middot; owners of <b>sclera-inspection-service</b> (+ procedure &amp; helper services)</div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<!-- ================= ARCHITECTURE ================= -->
+<section>
+  <h2><span class="num">1</span> Where we sit — service landscape</h2>
+  <p class="lede">Everything is fronted by the API gateway (BFF session-cookie auth + CSRF; relays the Keycloak JWT downstream).
+  The three application-plane services below are <b>ours</b>. All state is Postgres, <b>schema-per-tenant</b>.</p>
+
+  <div class="arch">
+    <div class="arch-row" style="grid-template-columns: 1fr 1fr;">
+      <div class="node hero">
+        <h4>Frontend SPA <span class="port">:5173</span></h4>
+        <p>React 18 + Vite. Talks only to the gateway. Pages: Home, Locations, Assets, Inspections (configs), Task Dashboard, Task Map, Reactive, Scan.</p>
+      </div>
+      <div class="node hero">
+        <h4>API Gateway <span class="port">:8080</span></h4>
+        <p>Spring Cloud Gateway. BFF login (HttpOnly session cookie + CSRF header), routes <span style="font-family:Consolas,monospace">/api/v1/**</span> to services, relays Bearer token so services get org context.</p>
+      </div>
+    </div>
+    <div class="arch-connector">▼ &nbsp; routed by path predicate, JWT relayed &nbsp; ▼</div>
+    <div class="arch-row services">
+      <div class="node owned">
+        <h4>sclera-inspection-service <span class="port">:8096</span> <span class="own-flag">We own</span></h4>
+        <p>The core of the module: inspection configs, tagging, checklist lifecycle, reactive services (QR), tagged procedures. 5 persisted aggregates.</p>
+      </div>
+      <div class="node owned">
+        <h4>sclera-procedure-service <span class="port">:8095</span> <span class="own-flag">We own</span></h4>
+        <p>Procedures = question templates (sections → questions). Author, publish, version. Serves template snapshots to inspection-service over Dapr.</p>
+      </div>
+      <div class="node owned">
+        <h4>sclera-helper-service <span class="port">:8097</span> <span class="own-flag">We own</span></h4>
+        <p>Locations (building → floor → location tree) and Assets (IP / NON-IP) CRUD. Namespaced at <span style="font-family:Consolas,monospace">/api/v1/helper/**</span>.</p>
+      </div>
+    </div>
+    <div class="arch-connector">▼ &nbsp; shared platform infrastructure &nbsp; ▼</div>
+    <div class="arch-row infra">
+      <div class="node"><h4>Postgres</h4><p>Schema-per-tenant (<span style="font-family:Consolas,monospace">t_&lt;org&gt;</span>), per-tenant Flyway.</p></div>
+      <div class="node"><h4>Kafka</h4><p>Template events in, inspection-completed events out.</p></div>
+      <div class="node"><h4>Dapr</h4><p>Sidecar service invocation, HMAC-signed internal calls.</p></div>
+      <div class="node"><h4>Keycloak <span class="port">:8180</span></h4><p>Multi-realm JWT; org_id / org_type claims.</p></div>
+      <div class="node"><h4>OpenFGA <span class="port">:8085</span></h4><p>Fine-grained authz, fail-closed org checks.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FEATURES ================= -->
+<section>
+  <h2><span class="num">2</span> Main features (all live, gateway-fronted, E2E verified)</h2>
+  <p class="lede">The full KT feature set for the Inspection module is implemented and Postgres-persisted. Card colour = owning service.</p>
+
+  <div class="features">
+
+    <div class="feature owner-procedure">
+      <h3><span class="icon">📋</span> Procedures (checklist templates) <span class="owner-tag">procedure-svc</span></h3>
+      <p>A Procedure is a reusable checklist: sections containing typed questions (boolean, single/multi-choice, text, number), each with required flag and options.</p>
+      <ul>
+        <li>Author → Publish → Archive lifecycle with versioning</li>
+        <li>Published templates are what tagging and checklists snapshot from</li>
+        <li>Publish emits a Kafka event; snapshots served internally over Dapr (HMAC-signed)</li>
+      </ul>
+      <div class="api">GET/POST /api/v1/question-templates &nbsp;·&nbsp; POST …/{id}/publish</div>
+    </div>
+
+    <div class="feature owner-helper">
+      <h3><span class="icon">🏢</span> Locations &amp; Assets <span class="owner-tag">helper-svc</span></h3>
+      <p>The physical targets of inspection. Locations form a building → floor → location hierarchy; assets (IP / NON-IP) live at locations.</p>
+      <ul>
+        <li>Full CRUD, tree UI for locations, filterable asset list</li>
+        <li>Every asset/location row can open the Tagged-Procedures modal (tag &amp; fill in place)</li>
+        <li>Persisted schema-per-tenant like the rest of the plane</li>
+      </ul>
+      <div class="api">/api/v1/helper/locations &nbsp;·&nbsp; /api/v1/helper/assets</div>
+    </div>
+
+    <div class="feature owner-inspection">
+      <h3><span class="icon">⚙️</span> Inspection Configuration <span class="owner-tag">inspection-svc</span></h3>
+      <p>The recurring-inspection definition: who inspects what, how often, under which rules.</p>
+      <ul>
+        <li>Name, unique Code (422 on duplicate), description, category, priority</li>
+        <li>Primary + secondary assignee (must differ — validated)</li>
+        <li>Frequency + schedule days (Mon–Sun)</li>
+        <li>Toggles: Bypass Scan, Check-in/out, Enable Points, Merged View</li>
+      </ul>
+      <div class="api">GET/POST/PUT/DELETE /api/v1/inspection-configs</div>
+    </div>
+
+    <div class="feature owner-inspection">
+      <h3><span class="icon">🔗</span> Procedure Tagging <span class="owner-tag">inspection-svc</span></h3>
+      <p>Associates procedures with assets/locations inside a config. Each procedure × target combo carries its <b>own</b> condition and assignee.</p>
+      <ul>
+        <li>Tagged procedures + targets (ASSET | LOCATION) as sub-resources of a config</li>
+        <li>Outer conditions on the whole inspection → email alert / auto work-order</li>
+        <li>Single GET returns the whole tagging tree; deleting a config clears it</li>
+      </ul>
+      <div class="api">/api/v1/inspection-configs/{id}/tagged-procedures | targets | conditions | tagging</div>
+    </div>
+
+    <div class="feature owner-inspection">
+      <h3><span class="icon">✅</span> Checklist Lifecycle <span class="owner-tag">inspection-svc</span></h3>
+      <p>Generate one checklist per tagged-procedure × target; fill against the live template; every action appends to an audit history.</p>
+      <ul>
+        <li>Check-in gate (422 if required and skipped), save vs save-and-checkout</li>
+        <li>Submit: any failed answer ⇒ whole checklist <b>FAILED</b></li>
+        <li>Exception (with reason), mark-incomplete, reopen, reassign, work orders</li>
+        <li>Answers stored per question; procedure snapshot preserved</li>
+      </ul>
+      <div class="api">POST /api/v1/checklists/generate &nbsp;·&nbsp; …/{id}/check-in | answers | submit | exception | reopen | work-order</div>
+    </div>
+
+    <div class="feature owner-inspection">
+      <h3><span class="icon">📱</span> Reactive Service (QR) <span class="owner-tag">inspection-svc</span></h3>
+      <p>On-demand inspection: associate a procedure to a location, print the QR, scan to raise a request.</p>
+      <ul>
+        <li>Create mints an opaque QR token; QR rendered + downloadable in UI</li>
+        <li>Scan resolves org-scoped; raise request = assignee + due date</li>
+        <li>Produces a checklist (source = REACTIVE_SERVICE) that flows through the same lifecycle, dashboard and map automatically</li>
+        <li>Deep-link survives the login redirect</li>
+      </ul>
+      <div class="api">/api/v1/reactive-services &nbsp;·&nbsp; GET …/by-token/{token} &nbsp;·&nbsp; POST …/{id}/requests</div>
+    </div>
+
+    <div class="feature owner-inspection">
+      <h3><span class="icon">🏷️</span> Tagged Procedures (standalone) <span class="owner-tag">inspection-svc</span></h3>
+      <p>Tag a procedure directly to an asset/location outside any config — both KT modes implemented exactly.</p>
+      <ul>
+        <li><b>Reusable template</b>: persistent link, each Fill spawns a fresh checklist, link stays in To-Do forever</li>
+        <li><b>One-time</b>: creates a single checklist directly, nothing remains after completion</li>
+        <li>Default assignee = the caller's JWT email; duplicate tag → 422</li>
+      </ul>
+      <div class="api">/api/v1/tagged-procedures &nbsp;·&nbsp; POST …/{id}/fill &nbsp;·&nbsp; POST …/one-time</div>
+    </div>
+
+    <div class="feature owner-inspection">
+      <h3><span class="icon">📊</span> Task Dashboard &amp; Maps <span class="owner-tag">inspection-svc + SPA</span></h3>
+      <p>Every checklist from every source in one operational view, fillable inline.</p>
+      <ul>
+        <li>Stat row (incl. overdue), search, filters: status, source (Inspection / Reactive / Tagged / Scheduled), inspection</li>
+        <li>Row click → inline fill modal (shared fill panel component)</li>
+        <li>Task Map: building → floor → location spatial view with status-coloured checklist markers, roll-up counts, fill-in-place</li>
+        <li>Covers both KT "Task Map" and "Inspection Map" requirements</li>
+      </ul>
+      <div class="api">GET /api/v1/checklists?status=&amp;source=&amp;configId=</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ================= LIFECYCLE ================= -->
+<section>
+  <h2><span class="num">3</span> Checklist status model (the contract other teams see)</h2>
+  <div class="lifecycle">
+    <div class="flow">
+      <span class="state st-todo">TO-DO</span>
+      <span class="arrow">→ check-in → fill → submit →</span>
+      <span class="state st-complete">COMPLETE</span>
+      <span class="arrow">/</span>
+      <span class="state st-failed">FAILED</span>
+    </div>
+    <div class="flow">
+      <span class="flow-note">side states:</span>
+      <span class="state st-exception">EXCEPTION</span>
+      <span class="flow-note">(issue raised while filling, with reason)</span>
+      <span class="state st-incomplete">INCOMPLETE</span>
+      <span class="flow-note">(missed due date) — both can <b>reopen → TO-DO</b>, logged in history</span>
+    </div>
+    <div class="rules">
+      <div>Any single failed answer fails the <b>entire</b> checklist</div>
+      <div>Check-in required (if enabled on the config) before save/submit — else 422</div>
+      <div>Finalized checklists cannot be edited</div>
+      <div>Every transition appends an immutable history entry</div>
+      <div>Work orders can be raised manually per checklist</div>
+      <div>Assignee resolution: target assignee → config assignee → caller</div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= INTEGRATION CONTRACTS ================= -->
+<section>
+  <h2><span class="num">4</span> Integration contracts we publish &amp; consume</h2>
+  <table>
+    <tr><th>Contract</th><th>Direction</th><th>Detail</th></tr>
+    <tr>
+      <td>REST API</td><td>Inbound</td>
+      <td>All routes versioned under <span class="mono">/api/v1/**</span>, reached only via the gateway. Uniform response envelope <span class="mono">{success, data, pagination, error, meta}</span> with correlation IDs.</td>
+    </tr>
+    <tr>
+      <td>Template snapshot</td><td>Internal (Dapr)</td>
+      <td>inspection-service → procedure-service service-invocation, HMAC-signed. Checklists snapshot the template at generation time — template edits never mutate in-flight checklists.</td>
+    </tr>
+    <tr>
+      <td>Kafka events</td><td>Both</td>
+      <td>Consume: template published/updated. Produce: <span class="mono">InspectionCompletedEvent</span> — downstream teams (CMMS, ESG, reporting) can subscribe without touching our DB.</td>
+    </tr>
+    <tr>
+      <td>AuthN / AuthZ</td><td>Inbound</td>
+      <td>JWT (multi-realm Keycloak) with <span class="mono">org_id / org_type</span> claims; OpenFGA org checks on top (<b>fail-closed</b>). Internal endpoints HMAC-only, wrapped in tenant context.</td>
+    </tr>
+    <tr>
+      <td>Tenancy</td><td>Cross-cutting</td>
+      <td>Schema-per-tenant Postgres. First request from a new org auto-provisions its schema + runs tenant Flyway migrations. No <span class="mono">org_id</span> columns leak into queries — isolation is physical.</td>
+    </tr>
+  </table>
+</section>
+
+<!-- ================= RESPONSIBILITIES ================= -->
+<section>
+  <h2><span class="num">5</span> Our responsibilities as service owners</h2>
+  <p class="lede">What the rest of the org can hold us accountable for — and what we hold ourselves to.</p>
+
+  <div class="resp-grid">
+    <div class="resp">
+      <h3>🧭 API &amp; data ownership</h3>
+      <ul>
+        <li>Sole owners of the inspection data model: configs, tagging, checklists, reactive services, tagged-procedure links</li>
+        <li>Backward-compatible, versioned REST contracts; breaking changes only via a new version</li>
+        <li>Validation at the boundary (unique code 422, assignee rules 400, dup-tag 422)</li>
+        <li>No other service reads our tables — integration is API + events only</li>
+      </ul>
+    </div>
+    <div class="resp">
+      <h3>🔒 Security &amp; tenancy</h3>
+      <ul>
+        <li>Every endpoint authenticated (JWT) and org-scoped; OpenFGA checks fail closed</li>
+        <li>Internal endpoints HMAC-signed, never exposed through the gateway</li>
+        <li>Tenant isolation is schema-level; we own tenant provisioning + per-tenant migrations</li>
+        <li>Cross-tenant access verified to 404 (tested with a second org)</li>
+      </ul>
+    </div>
+    <div class="resp">
+      <h3>📡 Events &amp; integrations</h3>
+      <ul>
+        <li>We publish <b>InspectionCompletedEvent</b> — schema stability is on us</li>
+        <li>We tolerate procedure-service unavailability gracefully (snapshot at generate-time, not fill-time)</li>
+        <li>Consumer-group hygiene on template events; idempotent handling</li>
+      </ul>
+    </div>
+    <div class="resp">
+      <h3>🩺 Operability</h3>
+      <ul>
+        <li>Liveness/readiness on <span style="font-family:Consolas,monospace">/actuator/health/readiness</span> per service</li>
+        <li>Flyway-managed schema — no manual DDL, repeatable from zero</li>
+        <li>Run scripts + docker-compose profile for full local bring-up; documented cold-start</li>
+        <li>Audit history on every checklist action for supportability</li>
+      </ul>
+    </div>
+    <div class="resp">
+      <h3>🧪 Quality</h3>
+      <ul>
+        <li>E2E verified through the gateway for every feature: config → tag → generate → fill → submit, QR scan flow, both tagged-procedure modes</li>
+        <li>Persistence proven across full service restarts</li>
+        <li>Lifecycle guards tested (check-in gate, finalized immutability)</li>
+      </ul>
+    </div>
+    <div class="resp">
+      <h3>🗺️ Roadmap items we own</h3>
+      <ul>
+        <li>Legacy ETL from the VDMS edge server (design doc committed: <span style="font-family:Consolas,monospace">docs/inspection-schema-migration.md</span>)</li>
+        <li>FGA tuple backfill for pre-FGA objects</li>
+        <li>Scheduled generation (frequency/schedule-days currently config-only — cron generation is next)</li>
+        <li>Work-order handoff to CMMS once its API lands</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout">
+    <strong>One-line summary for the meeting:</strong> the Inspection module's full KT feature set is live behind the gateway,
+    Postgres-persisted schema-per-tenant, and E2E verified. As owners of the three application-plane services we guarantee the
+    API contracts, event schemas, tenant isolation and checklist lifecycle semantics — everyone else integrates through
+    <b>/api/v1/**</b> and Kafka, never through our database.
+  </div>
+</section>
+
+<footer>Sclera VDMS · Inspection Module overview · generated from the live codebase (sclera-inspection-service, sclera-procedure-service, sclera-helper-service)</footer>
+
+</div>
+</body>
+</html>

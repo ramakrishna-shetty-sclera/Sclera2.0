@@ -1,6 +1,8 @@
 target/
 *.class
 *.log
+# local service run logs (dumps etc.)
+logs/
 .idea/
 *.iml
 .vscode/

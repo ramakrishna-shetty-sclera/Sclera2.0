@@ -26,6 +26,7 @@ public class ProcedureTemplateMapper {
                 t.getName(),
                 t.getDescription(),
                 t.getConsumerKey(),
+                t.getMeta(),
                 t.getStatus(),
                 t.getCurrentPublishedVersionId(),
                 currentPublishedVersionNo,

@@ -1,6 +1,5 @@
 package com.sclera.applicationplane.procedure.controller;
 
-import com.sclera.applicationplane.procedure.definition.DefinitionDocument.TargetKind;
 import com.sclera.applicationplane.procedure.domain.TemplateScope;
 import com.sclera.applicationplane.procedure.domain.TemplateStatus;
 import com.sclera.applicationplane.procedure.dto.EvaluationDtos.EvaluateRequest;
@@ -22,13 +21,19 @@ import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.VersionRe
 import com.sclera.applicationplane.procedure.dto.ProcedureTemplateDtos.VersionSummary;
 import com.sclera.applicationplane.procedure.dto.UpdateDtos.UpdateStatus;
 import com.sclera.applicationplane.procedure.dto.UsageDtos.VersionUsageSummary;
+import com.sclera.applicationplane.procedure.export.ExportFile;
+import com.sclera.applicationplane.procedure.export.TemplateExportService;
 import com.sclera.applicationplane.procedure.service.ProcedureTemplateService;
 import com.sclera.applicationplane.procedure.service.ProcedureUsageService;
 import jakarta.validation.Valid;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -54,10 +59,13 @@ public class ProcedureTemplateController {
 
     private final ProcedureTemplateService service;
     private final ProcedureUsageService usage;
+    private final TemplateExportService exports;
 
-    public ProcedureTemplateController(ProcedureTemplateService service, ProcedureUsageService usage) {
+    public ProcedureTemplateController(ProcedureTemplateService service, ProcedureUsageService usage,
+                                       TemplateExportService exports) {
         this.service = service;
         this.usage = usage;
+        this.exports = exports;
     }
 
     // --- template identity --------------------------------------------------
@@ -78,23 +86,26 @@ public class ProcedureTemplateController {
         return service.list(status, scope, favouritesOnly, pageable);
     }
 
-    /**
-     * The procedures that apply to one target, for the consumer that will run
-     * them. Organization-wide like {@link #list}, so the same permission.
-     */
-    @GetMapping("/discover")
-    @PreAuthorize("@fga.checkOrg('can_view')")
-    public Page<TemplateResponse> discover(@RequestParam String consumer,
-                                           @RequestParam TargetKind kind,
-                                           @RequestParam String key,
-                                           @PageableDefault(size = 20) Pageable pageable) {
-        return service.discover(consumer, kind, key, pageable);
-    }
-
     @GetMapping("/{id}")
     @PreAuthorize("@fga.check('procedure_template', #id, 'can_view')")
     public TemplateResponse get(@PathVariable UUID id) {
         return service.get(id);
+    }
+
+    /**
+     * Download the checklist as a file. Exports the published version unless a
+     * versionNo is named; the draft only when nothing was ever published.
+     */
+    @GetMapping("/{id}/export")
+    @PreAuthorize("@fga.check('procedure_template', #id, 'can_view')")
+    public ResponseEntity<ByteArrayResource> export(@PathVariable UUID id,
+                                                    @RequestParam String format,
+                                                    @RequestParam(required = false) Integer versionNo) {
+        ExportFile file = exports.export(id, format, versionNo);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.filename() + "\"")
+                .contentType(MediaType.parseMediaType(file.mediaType()))
+                .body(new ByteArrayResource(file.bytes()));
     }
 
     @PutMapping("/{id}")
@@ -186,11 +197,17 @@ public class ProcedureTemplateController {
 
     // --- sharing --------------------------------------------------------------
 
-    @GetMapping("/{id}/export")
+    /**
+     * The JSON shape {@code /import-file} reads back — distinct from
+     * {@code /{id}/export}, which downloads a formatted PDF/XLSX for a person
+     * to read. This one is the machine-readable round trip the Sclera-wide
+     * sharing library and import-from-file both use.
+     */
+    @GetMapping("/{id}/export-json")
     @PreAuthorize("@fga.check('procedure_template', #id, 'can_view')")
-    public ExportedProcedure export(@PathVariable UUID id,
-                                    @RequestParam(required = false) List<Integer> versions,
-                                    @RequestParam(defaultValue = "false") boolean includeDocuments) {
+    public ExportedProcedure exportJson(@PathVariable UUID id,
+                                        @RequestParam(required = false) List<Integer> versions,
+                                        @RequestParam(defaultValue = "false") boolean includeDocuments) {
         return service.export(id, versions, includeDocuments);
     }
 
@@ -208,7 +225,7 @@ public class ProcedureTemplateController {
     }
 
     /**
-     * Recreates a procedure from a file {@code /export} produced. Guarded like
+     * Recreates a procedure from a file {@code /export-json} produced. Guarded like
      * {@link #create}, not like the library import above: this is authoring, pasting
      * in a document the caller already has, which feature 3 keeps apart from pulling
      * from the shared library. The body is the export's own shape, so downloading and

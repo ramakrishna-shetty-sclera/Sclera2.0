@@ -1,17 +1,22 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { createProcedure, getDraft, getProcedure, saveDraft, updateProcedure } from '../api/templates'
+import {
+  createProcedure,
+  getDraft,
+  getProcedure,
+  publishProcedure,
+  saveDraft,
+  updateProcedure,
+} from '../api/templates'
+import { importQuestions, type ImportResult } from '../api/ai'
 import { ApiError } from '../api/client'
-import { numberItems } from '../api/document'
-import type { DocumentRef, ItemType, ResultType, TargetType, Threshold } from '../api/types'
+import { isChoice, numberItems } from '../api/document'
+import type { DocumentRef, ItemType, ResultType, TemplateMeta, Threshold } from '../api/types'
 import { listResultTypes } from '../api/resultTypes'
-import { useAuth } from '../auth/AuthContext'
-import { ItemEditor } from '../components/ItemEditor'
 import { Refusal } from '../components/Refusal'
-import { EvaluationPreview } from '../components/EvaluationPreview'
-import { AppliesToCard } from '../components/AppliesToCard'
-import { ReferenceDocumentsCard } from '../components/ReferenceDocumentsCard'
-import { ThresholdsEditor } from '../components/ThresholdsEditor'
+import { BuilderNavigator, flattenDrafts } from '../components/v3/BuilderNavigator'
+import { BuilderQuestionCard, type BuilderCtx } from '../components/v3/BuilderQuestionCard'
+import { BuilderSidePanel, type SideTab } from '../components/v3/BuilderSidePanel'
 import {
   addFollowIn,
   addOptionIn,
@@ -33,7 +38,6 @@ import {
   replaceIn,
   retype,
   retypeBlockedBy,
-  thresholdsBlockedBy,
   toDocument,
   triggerOptions,
   type ItemDraft,
@@ -43,132 +47,142 @@ import {
 /** How often a changed draft is saved without being asked. */
 const AUTOSAVE_MS = 30_000
 
-/** The document as it would be sent — what "has this changed since the last save" compares. */
+/**
+ * `thresholds` and `documents` have no editor here yet — nothing on this
+ * screen edits them — but they still have to ride through every load/save
+ * round trip untouched, or saving a procedure that already has scoring
+ * thresholds or cited documents would silently wipe them.
+ */
 const snapshotOf = (
   schema: number,
   items: ItemDraft[],
-  thresholds: Threshold[],
-  targetTypes: TargetType[] = [],
+  thresholds: Threshold[] = [],
   documents: DocumentRef[] = [],
-): string => JSON.stringify(toDocument(schema, items, thresholds, targetTypes, documents))
+): string => JSON.stringify(toDocument(schema, items, thresholds, documents))
 
 /**
- * Carried through the navigation that creating a procedure forces.
- *
- * Clicking "+ Follow-up" on an unsaved procedure has to create it first, which
- * changes the route — so the position of the question being followed up rides
- * along and the follow-up is added once the saved draft has loaded.
+ * Carried through the navigation that creating a procedure forces: the
+ * position of the question being followed up, and which of its answers the
+ * follow-up should point at, ride along so the click finishes after the
+ * saved draft has loaded.
  */
 interface PendingFollow {
   addFollowAt?: number[]
+  optionIndex?: number
+  /** Documents picked before the procedure existed ("create from documents", docs-tab save-first). */
+  docIds?: string[]
+  /** Which side tab to land on after the navigation a create forces. */
+  sideTab?: SideTab
 }
 
-/**
- * Hangs a new follow-up off the question at `path`, pointed at its first
- * answer — the usual intent, and changeable from the dropdown.
- *
- * Returns the tree unchanged if that question has gone or still has no keyed
- * answer. Losing the click is better than guessing at a different question:
- * the author's own edits are all still there, and clicking again costs nothing.
- */
-function withFollowAt(items: ItemDraft[], path: number[]): ItemDraft[] {
+function withFollowAt(items: ItemDraft[], path: number[], optionIndex?: number): ItemDraft[] {
   const target = atPath(items, path)
-  const when = target ? triggerOptions(target)[0]?.key : undefined
-  if (!target || !when) return items
+  if (!target) return items
+  const keyed = triggerOptions(target)
+  const when =
+    optionIndex != null && target.options[optionIndex]?.key
+      ? target.options[optionIndex].key
+      : keyed[0]?.key
+  if (!when) return items
   return addFollowIn(items, target.uid, { ...newItem(), when })
 }
 
 /**
- * Authors the one editable thing a procedure has: its draft.
+ * The problems an author can see without asking the server — shown in the
+ * navigator and on the cards, and summed into the Ready chip. Advisory only:
+ * the server's validator and publish blockers remain the authority, and its
+ * refusals are still rendered whole.
+ */
+/** True when the checklist is only the blank starter question — nothing authored yet. */
+function isEffectivelyEmpty(items: ItemDraft[]): boolean {
+  return (
+    items.length === 1 &&
+    items[0].text.trim() === '' &&
+    items[0].follow.length === 0 &&
+    items[0].type !== 'SECTION'
+  )
+}
+
+function clientIssues(items: ItemDraft[]): Map<string, string[]> {
+  const issues = new Map<string, string[]>()
+  const walk = (list: ItemDraft[], parent: ItemDraft | null) => {
+    for (const item of list) {
+      if (item.type !== 'SECTION') {
+        const mine: string[] = []
+        if (!item.text.trim()) mine.push('No question text')
+        if (isChoice(item.type)) {
+          const labeled = item.options.filter((o) => o.label.trim() !== '')
+          if (labeled.length < 2) mine.push('Needs at least two answers')
+          else if (labeled.every((o) => o.result === '')) mine.push('No answer mapped to a result')
+        }
+        if (parent && !item.when) mine.push('No trigger answer chosen')
+        if (item.type === 'INTEGER' && item.min !== '' && item.max !== '' && Number(item.min) > Number(item.max)) {
+          mine.push('Min is above Max')
+        }
+        if (mine.length) issues.set(item.uid, mine)
+      }
+      walk(item.follow, item)
+    }
+  }
+  walk(items, null)
+  return issues
+}
+
+/**
+ * The procedure builder, in the Sclera 2.0 design (docs/procedures-v3.html):
+ * a full-screen shell with the question navigator on the left, the checklist
+ * canvas in the middle — cards collapsed to summaries, the active one
+ * expanded — and Details plus the AI sources on the right.
  *
- * Two modes. Creating makes the procedure and its draft v1 in a single call.
- * Editing loads the open draft and replaces it wholesale, under an optimistic
- * lock — name and description are identity rather than version content, so they
- * go through a separate call and only when they actually changed.
- *
- * The document is one flat list: a section is an item that happens to be a
- * heading, and the questions after it are its siblings. The one thing that
- * nests is a follow-up, which hangs off the answer that shows it.
+ * All persistence behaviour is unchanged from the previous editor: autosave
+ * every 30s through one save queue, optimistic lock via rowVersion, keys
+ * minted by the server and matched back after every save, and AI imports
+ * riding the same queue so they cannot race an autosave.
  */
 export function TemplateEditorPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const location = useLocation()
   const editing = Boolean(id)
-  const { permissions, permissionsLoaded } = useAuth()
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [items, setItems] = useState<ItemDraft[]>([newItem()])
-  /**
-   * Score bands that turn a final percentage into a result type. Document-level,
-   * not per item. No screen edits them yet — they ride through untouched, the
-   * same way an INTEGER question's rules do — so this state exists only to
-   * make sure they survive a load-and-save round trip rather than being
-   * silently dropped.
-   */
-  const [thresholds, setThresholds] = useState<Threshold[]>([])
-  /**
-   * What the procedure applies to, document-level like the thresholds. State, so
-   * that editing it counts as a change: it is part of the snapshot, so it makes
-   * the draft dirty and autosave carries it. Replaced from every response the
-   * server sends back.
-   */
-  const [targetTypes, setTargetTypes] = useState<TargetType[]>([])
-  /**
-   * The library documents this version cites, document-level in the same way.
-   * Held beside targetTypes so that a save from a screen that does not edit it
-   * still sends it back instead of dropping it.
-   */
-  const [documents, setDocuments] = useState<DocumentRef[]>([])
+  const [meta, setMeta] = useState<TemplateMeta>({})
+  const [items, setItems] = useState<ItemDraft[]>([newItem('YES_NO')])
   const [changeNote, setChangeNote] = useState('')
   const [schema, setSchema] = useState(2)
-  /**
-   * The open draft's own version number — distinct from `rowVersion`, the
-   * optimistic lock. The evaluation endpoint is addressed by this, not by the
-   * in-memory document, so the preview can only exist once it is known.
-   */
-  const [draftVersionNo, setDraftVersionNo] = useState<number | null>(null)
-  /**
-   * The draft's optimistic lock. A ref, not state: autosave runs from a timer
-   * and must always send the value the previous save returned, and a closure
-   * over state would hand it a stale one — which then 409s against the author's
-   * own autosave. Null means no draft has loaded, so nothing may be saved.
-   */
+  // No screen edits these yet; they ride through untouched so a save never
+  // strips a procedure's existing scoring thresholds or cited documents.
+  const [thresholds, setThresholds] = useState<Threshold[]>([])
+  const [documents, setDocuments] = useState<DocumentRef[]>([])
   const rowVersionRef = useRef<number | null>(null)
-  /**
-   * Every save goes through here, one at a time. An autosave and a manual save
-   * that overlapped would both send the same rowVersion, and the second would
-   * conflict with the first.
-   */
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve())
-  /** What the server holds, as a snapshot — the thing "unsaved changes" is measured against. */
-  const [savedSnapshot, setSavedSnapshot] = useState(() => snapshotOf(2, [newItem()], []))
-  /** The snapshot an autosave was refused on, so a deterministic refusal is not retried every tick. */
+  const [savedSnapshot, setSavedSnapshot] = useState(() => snapshotOf(2, [newItem('YES_NO')]))
   const failedSnapshot = useRef<string | null>(null)
   const [autosave, setAutosave] = useState<{ phase: 'idle' | 'saving' | 'failed'; at: Date | null }>({
     phase: 'idle',
     at: null,
   })
-  /** Set separately from `error`: a conflict needs a reload, not a retry. */
   const [conflict, setConflict] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  /** Why an edit was refused before it reached the server. Cleared on the next one. */
   const [refused, setRefused] = useState<string | null>(null)
-  /** What the server refused, kept whole: a refusal can name several things at once. */
   const [refusal, setRefusal] = useState<unknown>(null)
   const [busy, setBusy] = useState(false)
   const [loaded, setLoaded] = useState(!editing)
-  /** What identity looked like when loaded, so an unchanged name costs no write. */
-  const [original, setOriginal] = useState({ name: '', description: '' })
-  /**
-   * The organization's vocabulary for what an answer means. Only the active
-   * ones are offered; a mapping to a deactivated one is kept and marked, since
-   * that is a publish blocker the author needs to see rather than lose.
-   */
+  const [original, setOriginal] = useState({ name: '', description: '', metaJson: '{}' })
   const [resultTypes, setResultTypes] = useState<ResultType[]>([])
-  /** The uid whose "+ Follow-up" click is currently saving, so its button can say so. */
   const [savingFor, setSavingFor] = useState<string | null>(null)
+  /** The uid of the expanded card. Everything else shows as a summary. */
+  const [active, setActive] = useState<string | null>(null)
+  const [showErrors, setShowErrors] = useState(false)
+  const [readyOpen, setReadyOpen] = useState(false)
+  const [quick, setQuick] = useState('')
+  const [quickType, setQuickType] = useState<ItemType>('YES_NO')
+  /** Documents chosen before the procedure existed ride along until the docs tab can use them. */
+  const initialDocIds = useRef<string[]>((location.state as PendingFollow | null)?.docIds ?? [])
+  const [sideTab, setSideTab] = useState<SideTab>(
+    (location.state as PendingFollow | null)?.sideTab ?? (initialDocIds.current.length ? 'docs' : 'details'),
+  )
 
   useEffect(() => {
     listResultTypes(true)
@@ -178,47 +192,32 @@ export function TemplateEditorPage() {
 
   useEffect(() => {
     if (!id) return
-    // Until this draft has loaded there is nothing to save to. Clearing it
-    // matters when creating a procedure hands over to its edit route without
-    // remounting, so the previous screen's state is briefly still on show.
     rowVersionRef.current = null
-    setDraftVersionNo(null)
-    // StrictMode runs this effect twice in development, and both loads resolve.
-    // Without this the later response overwrote whatever had been typed since the
-    // first one landed — items, rowVersion and the saved-snapshot baseline all —
-    // so a draft could appear to lose its edits, or to have none. Only the
-    // effect that is still current may apply its result.
     let cancelled = false
-    const pending = (location.state as PendingFollow | null)?.addFollowAt
+    const pending = location.state as PendingFollow | null
     Promise.all([getProcedure(id), getDraft(id)])
       .then(([procedure, draft]) => {
         if (cancelled) return
         setName(procedure.name)
         setDescription(procedure.description ?? '')
-        setOriginal({ name: procedure.name, description: procedure.description ?? '' })
+        setMeta(procedure.meta ?? {})
+        setOriginal({
+          name: procedure.name,
+          description: procedure.description ?? '',
+          metaJson: JSON.stringify(procedure.meta ?? {}),
+        })
         setSchema(draft.definition.schema)
-        setDraftVersionNo(draft.versionNo)
-        const loadedThresholds = draft.definition.thresholds ?? []
-        setThresholds(loadedThresholds)
-        const loadedTargetTypes = draft.definition.targetTypes ?? []
-        const loadedDocuments = draft.definition.documents ?? []
-        setTargetTypes(loadedTargetTypes)
-        setDocuments(loadedDocuments)
         rowVersionRef.current = draft.rowVersion
+        const loadedThresholds = draft.definition.thresholds ?? []
+        const loadedDocuments = draft.definition.documents ?? []
+        setThresholds(loadedThresholds)
+        setDocuments(loadedDocuments)
         let loadedItems = fromDocument(draft.definition)
-        if (loadedItems.length === 0) loadedItems = [newItem()]
-        // What the server holds, taken BEFORE any pending follow-up is added:
-        // that follow-up is not saved yet, so it should read as a change.
-        setSavedSnapshot(
-          snapshotOf(draft.definition.schema, loadedItems, loadedThresholds, loadedTargetTypes, loadedDocuments),
-        )
+        if (loadedItems.length === 0) loadedItems = [newItem('YES_NO')]
+        setSavedSnapshot(snapshotOf(draft.definition.schema, loadedItems, loadedThresholds, loadedDocuments))
         failedSnapshot.current = null
-        // Finishes a "+ Follow-up" that had to create the procedure first. The
-        // answers now carry the keys the server minted, so the follow-up has
-        // something to point at.
-        if (pending) {
-          loadedItems = withFollowAt(loadedItems, pending)
-          // Clear it, or a reload adds a second one.
+        if (pending?.addFollowAt) {
+          loadedItems = withFollowAt(loadedItems, pending.addFollowAt, pending.optionIndex)
           navigate(location.pathname, { replace: true, state: null })
         }
         setItems(loadedItems)
@@ -239,41 +238,24 @@ export function TemplateEditorPage() {
     }
   }, [id])
 
-  // --- autosave -------------------------------------------------------------
-  //
-  // Authoring makes no requests, so a session that expires mid-edit is only
-  // discovered by the Save click that matters, and the whole draft lived in
-  // React state. Saving while dirty protects the work, and as a side effect
-  // every save is an authenticated request, which slides the session's idle
-  // timeout — a person who is working is not idle.
-  //
-  // Edit mode only. Creating has no draft to save to, and making a procedure
-  // the author has not asked for out of half a typed name is worse than the
-  // problem it solves.
+  // --- the save queue (unchanged mechanics) ---------------------------------
 
-  /** Runs a save after every save already queued, so no two share a rowVersion. */
   function enqueue<T>(job: () => Promise<T>): Promise<T> {
     const run = saveQueue.current.then(job)
     saveQueue.current = run.catch(() => undefined)
     return run
   }
 
-  /**
-   * The timer fires with whatever the closure that started it saw, so it reads
-   * the current values from here instead.
-   */
   const latest = useRef({
-    id, editing, items, schema, thresholds, targetTypes, documents, changeNote, conflict, busy, savingFor,
-    savedSnapshot,
+    id, editing, items, schema, thresholds, documents, changeNote, conflict, busy, savingFor, savedSnapshot,
   })
   latest.current = {
-    id, editing, items, schema, thresholds, targetTypes, documents, changeNote, conflict, busy, savingFor,
-    savedSnapshot,
+    id, editing, items, schema, thresholds, documents, changeNote, conflict, busy, savingFor, savedSnapshot,
   }
 
   async function autosaveNow() {
     const s = latest.current
-    const snapshot = snapshotOf(s.schema, s.items, s.thresholds, s.targetTypes, s.documents)
+    const snapshot = snapshotOf(s.schema, s.items, s.thresholds, s.documents)
     const skip = autosaveSkipReason({
       ready: s.editing && rowVersionRef.current !== null,
       conflict: s.conflict,
@@ -286,37 +268,20 @@ export function TemplateEditorPage() {
     })
     if (skip) return
 
-    // Exactly what is sent, kept so the keys the server mints can be matched
-    // back to it even if the author keeps typing while the request is out.
     const sent = s.items
     setAutosave((a) => ({ ...a, phase: 'saving' }))
     try {
       const saved = await enqueue(() =>
         saveDraft(s.id!, {
-          definition: toDocument(s.schema, sent, s.thresholds, s.targetTypes, s.documents),
+          definition: toDocument(s.schema, sent, s.thresholds, s.documents),
           rowVersion: rowVersionRef.current!,
           changeNote: s.changeNote.trim() || undefined,
         }),
       )
       rowVersionRef.current = saved.rowVersion
-
-      // The editor does not otherwise learn the keys a save minted, and the
-      // server mints a fresh one for anything unkeyed — so without this every
-      // autosave would re-key every new question and answer.
       const minted = keysFromSaved(sent, saved.definition.items)
       setItems((prev) => applyKeys(prev, minted))
-      setThresholds(saved.definition.thresholds ?? [])
-      setTargetTypes(saved.definition.targetTypes ?? [])
-      setDocuments(saved.definition.documents ?? [])
-      setSavedSnapshot(
-        snapshotOf(
-          s.schema,
-          applyKeys(sent, minted),
-          saved.definition.thresholds ?? [],
-          saved.definition.targetTypes ?? [],
-          saved.definition.documents ?? [],
-        ),
-      )
+      setSavedSnapshot(snapshotOf(s.schema, applyKeys(sent, minted), s.thresholds, s.documents))
       failedSnapshot.current = null
       setAutosave({ phase: 'idle', at: new Date() })
     } catch (e) {
@@ -325,13 +290,8 @@ export function TemplateEditorPage() {
         setError('Someone else saved this draft while you were editing it.')
         setAutosave((a) => ({ ...a, phase: 'idle' }))
       } else if (e instanceof ApiError && e.status === 401) {
-        // The session has ended and the app is already heading to the sign-in
-        // screen. Say nothing more here.
         setAutosave((a) => ({ ...a, phase: 'idle' }))
       } else {
-        // Not shown as a refusal: this was never asked for, and the author may
-        // be mid-thought. Remembered, so the same document is not retried every
-        // tick, and the manual Save will say why in full.
         failedSnapshot.current = snapshot
         setAutosave((a) => ({ ...a, phase: 'failed' }))
       }
@@ -339,30 +299,22 @@ export function TemplateEditorPage() {
   }
 
   useEffect(() => {
-    // Without canManageTemplates the form never renders, so there is nothing
-    // an autosave could be protecting — only a periodic PUT the server would
-    // refuse anyway. Checked here rather than left to the server, so an
-    // account that cannot edit never tries to.
-    if (!editing || !permissions.canManageTemplates) return
+    if (!editing) return
     const timer = window.setInterval(() => {
       void autosaveNow()
     }, AUTOSAVE_MS)
     return () => window.clearInterval(timer)
-  }, [editing, id, permissions.canManageTemplates])
+  }, [editing, id])
 
   const docDirty = useMemo(
-    () => snapshotOf(schema, items, thresholds, targetTypes, documents) !== savedSnapshot,
-    [schema, items, thresholds, targetTypes, documents, savedSnapshot],
+    () => snapshotOf(schema, items, thresholds, documents) !== savedSnapshot,
+    [schema, items, thresholds, documents, savedSnapshot],
   )
   const identityDirty = editing
     ? name.trim() !== original.name || description.trim() !== original.description
     : name.trim() !== '' || description.trim() !== ''
   const dirty = docDirty || identityDirty
 
-  // Closing the tab or refreshing is the one way left to lose a draft that is
-  // not yet saved — notably the name and description, which autosave does not
-  // touch, and everything while creating. Only ever asks when there is
-  // something to lose.
   useEffect(() => {
     if (!dirty) return
     const warn = (e: BeforeUnloadEvent) => {
@@ -373,15 +325,21 @@ export function TemplateEditorPage() {
     return () => window.removeEventListener('beforeunload', warn)
   }, [dirty])
 
+  // --- edits ----------------------------------------------------------------
+
+  function select(uid: string | null) {
+    setActive(uid)
+    if (uid) {
+      requestAnimationFrame(() => {
+        document.getElementById(`card-${uid}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      })
+    }
+  }
+
   function onPatch(uid: string, patch: Partial<ItemDraft>) {
     setItems((prev) => patchIn(prev, uid, patch))
   }
 
-  /**
-   * A type change can invalidate a follow-up, so it is refused rather than
-   * applied destructively — losing a question to a dropdown nobody meant to
-   * touch is worse than being told no.
-   */
   function onRetype(uid: string, type: ItemType) {
     const item = findIn(items, uid)
     if (!item) return
@@ -393,9 +351,10 @@ export function TemplateEditorPage() {
 
   function onRemove(uid: string) {
     setRefused(null)
+    if (active === uid) setActive(null)
     setItems((prev) => {
       const next = removeIn(prev, uid)
-      return next.length === 0 ? [newItem()] : next
+      return next.length === 0 ? [newItem('YES_NO')] : next
     })
   }
 
@@ -404,32 +363,23 @@ export function TemplateEditorPage() {
   }
 
   /**
-   * Adds a follow-up, saving the draft first when it has to.
-   *
-   * A follow-up names the answer that shows it by key, and KeyMinter assigns
-   * option keys on save and refuses any key the template never issued — so an
-   * answer typed a moment ago has nothing a follow-up can point at. Rather than
-   * leave the button dead and make the author work that out, this does the save
-   * and carries on.
-   *
-   * The round trip loses the uids, so the question is found again by position:
-   * `toDocument` preserves order and so does the server.
+   * Adds a follow-up pointed at `whenKey` (the per-answer button), or at the
+   * first keyed answer when none is named. Answers typed a moment ago have no
+   * key yet, so that path saves the draft first and carries the click across.
    */
-  async function onAddFollow(uid: string) {
+  async function onAddFollow(uid: string, whenKey?: string) {
     setRefused(null)
     const parent = findIn(items, uid)
     if (!parent) return
 
-    const when = triggerOptions(parent)[0]?.key
+    const when = whenKey ?? triggerOptions(parent)[0]?.key
     if (when) {
-      setItems((prev) => addFollowIn(prev, uid, { ...newItem(), when }))
+      const follow = { ...newItem(), when }
+      setItems((prev) => addFollowIn(prev, uid, follow))
+      select(follow.uid)
       return
     }
 
-    // Nothing written yet, so the save below would drop every blank row, mint
-    // no key, and leave the follow-up with nothing to point at — a save that
-    // changes nothing and a click that appears to do nothing. Say so instead.
-    // Matters more now that Radio, Checkbox and Dropdown start with blank rows.
     if (!parent.options.some((o) => o.label.trim() !== '')) {
       setRefused('Write at least one answer first — a follow-up is shown when one of them is picked.')
       return
@@ -437,23 +387,23 @@ export function TemplateEditorPage() {
 
     const path = pathTo(items, uid)
     if (!path) return
+    const optionIndex = whenKey === undefined ? undefined : parent.options.findIndex((o) => o.key === whenKey)
 
     setSavingFor(uid)
     setRefusal(null)
     try {
       if (!editing) {
-        // Nothing exists server-side yet, so this click is the first save. The
-        // route changes with it, and the position rides along.
         const created = await createProcedure({
-          name: name.trim(),
+          name: name.trim() || 'Untitled procedure',
           description: description.trim() || undefined,
-          definition: toDocument(schema, items, thresholds, targetTypes, documents),
+          meta,
+          definition: toDocument(schema, items, thresholds, documents),
         })
-        navigate(`/templates/${created.id}/edit`, { state: { addFollowAt: path } })
+        navigate(`/templates/${created.id}/edit`, { state: { addFollowAt: path, optionIndex } })
         return
       }
 
-      const definition = toDocument(schema, items, thresholds, targetTypes, documents)
+      const definition = toDocument(schema, items, thresholds, documents)
       const saved = await enqueue(() =>
         saveDraft(id!, {
           definition,
@@ -462,18 +412,12 @@ export function TemplateEditorPage() {
         }),
       )
       rowVersionRef.current = saved.rowVersion
-      // The follow-up added below is not saved yet, so the snapshot is taken
-      // from what came back and not from what is about to be shown.
       const reloaded = fromDocument(saved.definition)
-      const reloadedThresholds = saved.definition.thresholds ?? []
-      setThresholds(reloadedThresholds)
-      const reloadedTargetTypes = saved.definition.targetTypes ?? []
-      const reloadedDocuments = saved.definition.documents ?? []
-      setTargetTypes(reloadedTargetTypes)
-      setDocuments(reloadedDocuments)
-      setSavedSnapshot(snapshotOf(schema, reloaded, reloadedThresholds, reloadedTargetTypes, reloadedDocuments))
+      setThresholds(saved.definition.thresholds ?? [])
+      setDocuments(saved.definition.documents ?? [])
+      setSavedSnapshot(snapshotOf(schema, reloaded, saved.definition.thresholds, saved.definition.documents))
       failedSnapshot.current = null
-      setItems(withFollowAt(reloaded, path))
+      setItems(withFollowAt(reloaded, path, optionIndex))
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         setConflict(true)
@@ -495,7 +439,6 @@ export function TemplateEditorPage() {
     setItems((prev) => patchOptionIn(prev, uid, option, patch))
   }
 
-  /** Refused rather than applied, for the same reason a type change is. */
   function onRemoveOption(uid: string, option: string) {
     const item = findIn(items, uid)
     if (!item) return
@@ -505,232 +448,506 @@ export function TemplateEditorPage() {
     setItems((prev) => removeOptionIn(prev, uid, option))
   }
 
-  async function onSubmit(e: FormEvent) {
+  function addQuestion(type: ItemType = 'YES_NO', text = '') {
+    const q = { ...newItem(type), text }
+    // The untouched starter question is a placeholder, not content — the first
+    // real question takes its place instead of stacking under it.
+    setItems((prev) => (isEffectivelyEmpty(prev) ? [q] : [...prev, q]))
+    select(q.uid)
+    return q
+  }
+
+  function quickAdd(e: React.FormEvent) {
     e.preventDefault()
+    const lines = quick
+      .split(/\n+/)
+      .map((line) => line.replace(/^\s*(\d+[.)]|[-*•])\s*/, '').trim())
+      .filter(Boolean)
+    if (lines.length === 0) return
+    const added = lines.map((text) => ({ ...newItem(quickType), text }))
+    setItems((prev) => (isEffectivelyEmpty(prev) ? added : [...prev, ...added]))
+    setQuick('')
+  }
+
+  /**
+   * What goes to the server. The untouched starter question is a placeholder
+   * the canvas no longer even shows — sending it would fail the server's
+   * blank-text validation, so an effectively-empty checklist is sent empty.
+   */
+  function currentDefinition() {
+    return toDocument(schema, isEffectivelyEmpty(items) ? [] : items, thresholds, documents)
+  }
+
+  /**
+   * The docs/suggest save-first path: generation and chat are template-scoped,
+   * so a brand-new procedure is created as a draft and the builder reopens on
+   * the same tab, with any picked documents riding along in navigation state.
+   */
+  async function saveAndContinue(docIds: string[], tab: SideTab) {
+    setBusy(true)
+    setRefusal(null)
+    try {
+      const created = await createProcedure({
+        name: name.trim() || 'Untitled procedure',
+        description: description.trim() || undefined,
+        meta,
+        definition: currentDefinition(),
+      })
+      navigate(`/templates/${created.id}/edit`, { state: { docIds, sideTab: tab } })
+    } catch (e) {
+      setRefusal(e instanceof Error ? e : new Error('Could not create the procedure'))
+      setBusy(false)
+    }
+  }
+
+  // --- save / publish -------------------------------------------------------
+
+  /** Name, description or meta differ from what the server has. */
+  function identityChanged(): boolean {
+    return (
+      name.trim() !== original.name ||
+      description.trim() !== original.description ||
+      JSON.stringify(meta) !== original.metaJson
+    )
+  }
+
+  async function onSave(leaveAfter = false) {
     setBusy(true)
     setError(null)
     setRefusal(null)
     setConflict(false)
     try {
-      const definition = toDocument(schema, items, thresholds, targetTypes, documents)
-
+      const definition = currentDefinition()
       if (!editing) {
         const created = await createProcedure({
           name: name.trim(),
           description: description.trim() || undefined,
+          meta,
           definition,
         })
-        navigate(`/templates/${created.id}`)
+        navigate(`/templates/${created.id}${leaveAfter ? '' : '/edit'}`)
         return
       }
 
-      if (name.trim() !== original.name || description.trim() !== original.description) {
-        await updateProcedure(id!, { name: name.trim(), description: description.trim() || undefined })
+      if (identityChanged()) {
+        await updateProcedure(id!, { name: name.trim(), description: description.trim() || undefined, meta })
+        setOriginal({ name: name.trim(), description: description.trim(), metaJson: JSON.stringify(meta) })
       }
-      // Through the queue, so an autosave already in flight finishes first and
-      // this sends the rowVersion it returned rather than conflicting with it.
-      await enqueue(() =>
+      const saved = await enqueue(() =>
         saveDraft(id!, {
           definition,
           rowVersion: rowVersionRef.current!,
           changeNote: changeNote.trim() || undefined,
         }),
       )
+      rowVersionRef.current = saved.rowVersion
+      const minted = keysFromSaved(items, saved.definition.items)
+      setItems((prev) => applyKeys(prev, minted))
+      setThresholds(saved.definition.thresholds ?? [])
+      setDocuments(saved.definition.documents ?? [])
+      setSavedSnapshot(snapshotOf(schema, applyKeys(items, minted), saved.definition.thresholds, saved.definition.documents))
+      failedSnapshot.current = null
+      setAutosave({ phase: 'idle', at: new Date() })
+      if (leaveAfter) navigate(`/templates/${id}`)
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        setConflict(true)
+        setError('Someone else saved this draft while you were editing it.')
+      } else {
+        setRefusal(e instanceof Error ? e : new Error('Could not save'))
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** Saves, then publishes. The server's blockers come back as one refusal list. */
+  async function onPublish() {
+    if (!editing) return
+    setShowErrors(true)
+    setBusy(true)
+    setError(null)
+    setRefusal(null)
+    try {
+      const definition = currentDefinition()
+      if (identityChanged()) {
+        await updateProcedure(id!, { name: name.trim(), description: description.trim() || undefined, meta })
+      }
+      const saved = await enqueue(() =>
+        saveDraft(id!, {
+          definition,
+          rowVersion: rowVersionRef.current!,
+          changeNote: changeNote.trim() || undefined,
+        }),
+      )
+      rowVersionRef.current = saved.rowVersion
+      await publishProcedure(id!, saved.rowVersion)
       navigate(`/templates/${id}`)
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         setConflict(true)
         setError('Someone else saved this draft while you were editing it.')
       } else {
-        // The server names every structural problem at once; Refusal unpacks
-        // them, because an author fixing four things wants four lines.
-        setRefusal(e instanceof Error ? e : new Error('Could not save'))
+        setRefusal(e instanceof Error ? e : new Error('Could not publish'))
+        setReadyOpen(true)
       }
       setBusy(false)
     }
   }
 
-  // One answer for the whole tree, so a section never pushes the count along
-  // and a follow-up reads as 2.1 rather than as another question 1.
+  async function onAiImport(candidateIds: string[]): Promise<ImportResult> {
+    try {
+      return await enqueue(async () => {
+        const s = latest.current
+        if (snapshotOf(s.schema, s.items, s.thresholds, s.documents) !== s.savedSnapshot) {
+          const saved = await saveDraft(s.id!, {
+            definition: toDocument(s.schema, s.items, s.thresholds, s.documents),
+            rowVersion: rowVersionRef.current!,
+            changeNote: s.changeNote.trim() || undefined,
+          })
+          rowVersionRef.current = saved.rowVersion
+        }
+        const result = await importQuestions(s.id!, candidateIds)
+        rowVersionRef.current = result.draft.rowVersion
+        const reloaded = fromDocument(result.draft.definition)
+        setThresholds(result.draft.definition.thresholds ?? [])
+        setDocuments(result.draft.definition.documents ?? [])
+        setSavedSnapshot(snapshotOf(
+          result.draft.definition.schema, reloaded,
+          result.draft.definition.thresholds, result.draft.definition.documents,
+        ))
+        failedSnapshot.current = null
+        setItems(reloaded)
+        return result
+      })
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        setConflict(true)
+        setError('Someone else saved this draft while you were editing it.')
+      }
+      throw e
+    }
+  }
+
+  // --- derived --------------------------------------------------------------
+
   const numbers = numberItems(items)
+  const flat = useMemo(() => flattenDrafts(items), [items])
+  const issues = useMemo(() => clientIssues(items), [items])
+  const questionCount = flat.filter((f) => f.item.type !== 'SECTION').length
+  const issueCount = issues.size
+  const firstIssue = flat.find((f) => issues.has(f.item.uid))
 
-  const waitingOn = docDirty ? (autosaveBlockedBy(items) ?? thresholdsBlockedBy(thresholds, items)) : null
-  // Sections are items, not a separate list — the thresholds editor only
-  // offers "Each section" once one exists, since a SECTION-scoped band is
-  // refused on every write while the document has none.
-  const hasSections = items.some((item) => item.type === 'SECTION')
+  const checks: { label: string; ok: boolean; fix?: () => void }[] = [
+    { label: 'Procedure name', ok: name.trim() !== '' },
+    { label: 'At least one question', ok: questionCount > 0, fix: () => addQuestion() },
+    {
+      label: issueCount
+        ? `${issueCount} question${issueCount > 1 ? 's need' : ' needs'} attention`
+        : 'All questions complete',
+      ok: issueCount === 0,
+      fix: firstIssue
+        ? () => {
+            setShowErrors(true)
+            select(firstIssue.item.uid)
+          }
+        : undefined,
+    },
+  ]
+  const readyN = checks.filter((c) => !c.ok).length
+
+  const waitingOn = docDirty ? autosaveBlockedBy(items) : null
   let saveStatus: string
-  if (!editing) {
-    saveStatus = 'Not saved yet — nothing is kept until you save.'
-  } else if (conflict) {
-    // Autosave stops for good on a conflict, so "saving shortly" would be false.
-    saveStatus = 'Not saved — someone else saved this draft first. Reload to see their version.'
-  } else if (autosave.phase === 'saving') {
-    saveStatus = 'Saving…'
-  } else if (autosave.phase === 'failed' && docDirty) {
-    saveStatus = 'Could not save automatically — use Save draft to see why.'
-  } else if (waitingOn) {
-    // Said out loud, because "Unsaved changes" with no end in sight reads as
-    // broken when it is only waiting for a half-written question to finish.
-    saveStatus = `Not saved yet — ${waitingOn}.`
-  } else if (docDirty) {
-    saveStatus = 'Unsaved changes — saving shortly.'
-  } else if (autosave.at) {
-    saveStatus = `Saved ${autosave.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
-  } else {
-    saveStatus = 'No unsaved changes.'
-  }
+  if (!editing) saveStatus = 'Not saved yet'
+  else if (conflict) saveStatus = 'Not saved — reload to see their version'
+  else if (autosave.phase === 'saving' || busy) saveStatus = 'Saving…'
+  else if (autosave.phase === 'failed' && docDirty) saveStatus = 'Could not autosave — use Save draft'
+  else if (waitingOn) saveStatus = `Waiting: ${waitingOn}`
+  else if (dirty) saveStatus = 'Unsaved changes — saving shortly'
+  else if (autosave.at)
+    saveStatus = `Saved ${autosave.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+  else saveStatus = 'No unsaved changes'
 
-  // Checked after every hook above has run, so the two early returns below
-  // never change which hooks this component calls. Nothing gated renders
-  // until permissions have loaded — a form that flashes and then disappears
-  // is worse than one that arrives a moment late.
-  if (!permissionsLoaded) {
-    return <p className="muted center-note">Checking permissions…</p>
-  }
-  if (!permissions.canManageTemplates) {
+  const activeNumber = active ? numbers.get(findIn(items, active) ?? ({} as ItemDraft)) : undefined
+
+  if (!loaded) {
     return (
-      <div className="alert alert-error">
-        You do not have permission to author procedures. This closes the route whether you clicked
-        here or typed it directly — ask an organization admin for the template author role.
+      <div className="v3 v3-full" style={{ padding: 24 }}>
+        {error ? <div className="alert-error">{error}</div> : <p className="muted">Loading…</p>}
       </div>
     )
   }
 
-  if (!loaded) {
-    return error ? <div className="alert alert-error">{error}</div> : <p className="muted">Loading…</p>
+  const ctx: BuilderCtx = {
+    numbers,
+    resultTypes,
+    active,
+    issues,
+    savingFor,
+    showErrors,
+    onSelect: select,
+    onPatch,
+    onRetype,
+    onRemove,
+    onMove,
+    onAddFollow: (uid, whenKey) => void onAddFollow(uid, whenKey),
+    onAddOption,
+    onPatchOption,
+    onRemoveOption,
+  }
+
+  function tryClose() {
+    if (dirty && !confirm('Leave the builder? Unsaved changes are kept locally until the next autosave, but the safest path is Save draft first.')) {
+      return
+    }
+    navigate(editing ? `/templates/${id}` : '/templates')
   }
 
   return (
-    <form onSubmit={onSubmit}>
-      <div className="page-head">
-        <div>
-          <h1>{editing ? 'Edit draft' : 'New procedure'}</h1>
-          <p className="muted small">
-            {editing
-              ? 'The draft saves itself as you work. Publishing it from the detail screen is what freezes it.'
-              : 'This creates the procedure and opens draft v1. Nothing is published until you say so.'}
-          </p>
-          <p className="muted small" role="status" aria-live="polite">
-            {saveStatus}
-          </p>
-        </div>
-        <div className="page-actions">
-          <button type="button" className="btn" onClick={() => navigate(-1)}>
-            Cancel
+    <div className="v3 v3-full">
+      <div className="bshell">
+        <header className="bhead">
+          <button className="ibtn xl" aria-label="Close builder" onClick={tryClose}>
+            ‹
           </button>
-          <button type="submit" className="btn btn-primary" disabled={busy || conflict}>
-            {busy ? 'Saving…' : 'Save draft'}
-          </button>
-        </div>
-      </div>
-
-      {conflict ? (
-        <div className="alert alert-error">
-          {error} Reload to see their version — saving over it would lose their work.{' '}
-          <button type="button" className="btn small" onClick={() => window.location.reload()}>
-            Reload
-          </button>
-        </div>
-      ) : (
-        error && <div className="alert alert-error">{error}</div>
-      )}
-
-      {refused && <div className="alert alert-amber">{refused}</div>}
-      <Refusal error={refusal} />
-
-      <div className="card">
-        <label>
-          Name *
-          <input value={name} onChange={(e) => setName(e.target.value)} required maxLength={200} />
-        </label>
-        <label>
-          Description
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            maxLength={2000}
-            rows={2}
-          />
-        </label>
-        {editing && (
-          <label>
-            What changed
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span className="small muted">{editing ? 'Editing draft' : 'New procedure'}</span>
             <input
-              value={changeNote}
-              onChange={(e) => setChangeNote(e.target.value)}
-              maxLength={2000}
-              placeholder="Shown in the version history"
+              className="title-input"
+              aria-label="Procedure name"
+              value={name}
+              maxLength={200}
+              placeholder="Untitled procedure"
+              onChange={(e) => setName(e.target.value)}
             />
-          </label>
-        )}
-      </div>
+          </div>
+          <span className="saved" role="status" aria-live="polite">
+            {saveStatus}
+          </span>
+          <div className="row" style={{ marginLeft: 'auto', gap: 10 }}>
+            <div style={{ position: 'relative' }}>
+              <button
+                className={`ready${readyN ? '' : ' ok'}`}
+                aria-expanded={readyOpen}
+                onClick={() => setReadyOpen(!readyOpen)}
+              >
+                {readyN ? `⚠ ${readyN} to fix` : '✓ Ready to publish'}
+              </button>
+              {readyOpen && (
+                <div
+                  className="popover"
+                  style={{ right: 0, top: 40, width: 320, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}
+                >
+                  <h3 style={{ fontSize: 14 }}>{readyN ? 'Before you publish' : 'Everything is ready'}</h3>
+                  {checks.map((c) => (
+                    <div key={c.label} className="check">
+                      {c.ok ? <span className="ok">✓</span> : <span className="no">⚠</span>}
+                      <span style={{ flex: 1 }}>{c.label}</span>
+                      {!c.ok && c.fix && (
+                        <button
+                          className="link"
+                          onClick={() => {
+                            setReadyOpen(false)
+                            c.fix!()
+                          }}
+                        >
+                          Fix
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <p className="hint">Publishing also runs the server's own checks; anything it refuses is listed here.</p>
+                </div>
+              )}
+            </div>
+            <button className="btn btn-quiet" disabled={busy || conflict} onClick={() => void onSave(true)}>
+              Save draft
+            </button>
+            {editing && (
+              <button className="btn btn-primary" disabled={busy || conflict} onClick={() => void onPublish()}>
+                Publish
+              </button>
+            )}
+            {!editing && (
+              <button className="btn btn-primary" disabled={busy || !name.trim()} onClick={() => void onSave(false)}>
+                Create procedure
+              </button>
+            )}
+          </div>
+        </header>
 
-      <div className="card">
-        {items.map((item, index) => (
-          <ItemEditor
-            key={item.uid}
-            item={item}
-            parent={null}
-            index={index}
-            siblings={items.length}
+        <div className="bbody">
+          <BuilderNavigator
+            flat={flat}
             numbers={numbers}
-            resultTypes={resultTypes}
-            savingFor={savingFor}
-            onPatch={onPatch}
-            onRetype={onRetype}
-            onRemove={onRemove}
-            onMove={onMove}
-            onAddFollow={onAddFollow}
-            onAddOption={onAddOption}
-            onPatchOption={onPatchOption}
-            onRemoveOption={onRemoveOption}
+            active={active}
+            issues={issues}
+            onSelect={select}
+            onAdd={() => addQuestion()}
           />
-        ))}
 
-        <div className="rt-actions">
-          <button
-            type="button"
-            className="btn"
-            onClick={() => setItems((prev) => [...prev, newItem('SECTION')])}
-          >
-            + Add section
-          </button>
-          <button type="button" className="btn" onClick={() => setItems((prev) => [...prev, newItem()])}>
-            + Add question
-          </button>
+          <main className="canvas" aria-label="Checklist">
+            <div className="canvas-in">
+              <div className="stepper">
+                <span style={{ fontWeight: 600, color: 'var(--heading)', fontSize: 16 }}>Checklist</span>
+                <span className="small muted" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {activeNumber
+                    ? `Question ${activeNumber} of ${questionCount}`
+                    : `${questionCount} question${questionCount === 1 ? '' : 's'}`}
+                </span>
+                <div className="row" style={{ marginLeft: 'auto', gap: 8 }}>
+                  {editing && (
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      title="Generate questions from a document or by chatting"
+                      onClick={() => setSideTab('docs')}
+                    >
+                      ✦ Generate with AI
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-quiet"
+                    onClick={() => setItems((prev) => [...prev, newItem('SECTION')])}
+                  >
+                    § Section
+                  </button>
+                  <button type="button" className="btn btn-primary" onClick={() => addQuestion()}>
+                    + Question
+                  </button>
+                </div>
+              </div>
+
+              {isEffectivelyEmpty(items) && (
+                <div className="empty" style={{ padding: '28px 0 8px' }}>
+                  <h2 style={{ fontSize: 20 }}>Build your checklist</h2>
+                  <p className="muted" style={{ maxWidth: 460 }}>
+                    Start from a template or a standards document, or type questions straight in below. You can
+                    mix all three.
+                  </p>
+                  <div className="start" role="group" aria-label="Ways to build the checklist">
+                    <button type="button" onClick={() => setSideTab('templates')}>
+                      <span style={{ color: 'var(--action)', fontSize: 20 }}>▤</span>
+                      <span style={{ fontWeight: 600 }}>Use a template</span>
+                      <span className="small muted">Ready-made checklists for common standards.</span>
+                    </button>
+                    <button type="button" onClick={() => setSideTab('docs')}>
+                      <span style={{ color: 'var(--action)', fontSize: 20 }}>✦</span>
+                      <span style={{ fontWeight: 600 }}>Use a document</span>
+                      <span className="small muted">Generate questions from a standard or your SOP.</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => document.querySelector<HTMLTextAreaElement>('.quick textarea')?.focus()}
+                    >
+                      <span style={{ color: 'var(--action)', fontSize: 20 }}>✎</span>
+                      <span style={{ fontWeight: 600 }}>Type questions</span>
+                      <span className="small muted">Add them one by one, or paste a whole list below.</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {conflict ? (
+                <div className="alert-error">
+                  {error} Reload to see their version — saving over it would lose their work.{' '}
+                  <button type="button" className="btn btn-quiet btn-xs" onClick={() => window.location.reload()}>
+                    Reload
+                  </button>
+                </div>
+              ) : (
+                error && <div className="alert-error">{error}</div>
+              )}
+              {refused && <div className="alert-amber">{refused}</div>}
+              <Refusal error={refusal} />
+
+              {!isEffectivelyEmpty(items) &&
+                items.map((item, index) => (
+                  <BuilderQuestionCard
+                    key={item.uid}
+                    item={item}
+                    parent={null}
+                    index={index}
+                    siblings={items.length}
+                    depth={0}
+                    ctx={ctx}
+                  />
+                ))}
+
+              <form className="quick" onSubmit={quickAdd} aria-label="Quick add">
+                <div className="row between">
+                  <span style={{ fontWeight: 600 }}>Quick add</span>
+                  <span className="hint">One question per line; numbers and bullets are stripped</span>
+                </div>
+                <div className="row" style={{ alignItems: 'flex-start' }}>
+                  <textarea
+                    className="textarea"
+                    rows={2}
+                    style={{ flex: 1 }}
+                    value={quick}
+                    placeholder={'Type a question — or paste a list:\nIs the exit sign lit?\nIs the fire door closed?'}
+                    onChange={(e) => setQuick(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        quickAdd(e)
+                      }
+                    }}
+                  />
+                  <select
+                    className="select"
+                    style={{ width: 170, flexShrink: 0 }}
+                    aria-label="Answer type"
+                    value={quickType}
+                    onChange={(e) => setQuickType(e.target.value as ItemType)}
+                  >
+                    {(['YES_NO', 'YES_NO_NA', 'RADIO', 'CHECKBOX', 'DROPDOWN', 'TEXT', 'INTEGER'] as ItemType[]).map(
+                      (t) => (
+                        <option key={t} value={t}>
+                          {t === 'YES_NO' ? 'Yes / No' : t === 'YES_NO_NA' ? 'Yes / No / N/A' : t.charAt(0) + t.slice(1).toLowerCase()}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                  <button className="btn btn-primary" type="submit" disabled={!quick.trim()}>
+                    Add
+                  </button>
+                </div>
+              </form>
+
+              {resultTypes.length === 0 && (
+                <p className="hint warn">
+                  No active result types, so no answer can be given a meaning. Add them under Settings → Result types.
+                </p>
+              )}
+            </div>
+          </main>
+
+          <BuilderSidePanel
+            templateId={editing ? id! : null}
+            initialDocIds={initialDocIds.current}
+            tab={sideTab}
+            onTab={setSideTab}
+            details={{
+              name,
+              description,
+              changeNote,
+              meta,
+              onName: setName,
+              onDescription: setDescription,
+              onChangeNote: setChangeNote,
+              onMeta: (patch) => setMeta((m) => ({ ...m, ...patch })),
+            }}
+            onImport={onAiImport}
+            onAddItems={(added) =>
+              setItems((prev) => (isEffectivelyEmpty(prev) ? added : [...prev, ...added]))
+            }
+            onRequireTemplate={(docIds, tab) => void saveAndContinue(docIds, tab)}
+            procedureName={name}
+          />
         </div>
       </div>
-
-      <AppliesToCard targetTypes={targetTypes} onChange={setTargetTypes} />
-
-      <ReferenceDocumentsCard documents={documents} items={items} onChange={setDocuments} />
-
-      <ThresholdsEditor
-        thresholds={thresholds}
-        resultTypes={resultTypes}
-        hasSections={hasSections}
-        onChange={setThresholds}
-      />
-
-      {/* Only once a draft is open and has a version number to address —
-          there is nothing to evaluate against while creating. */}
-      {editing && id && draftVersionNo != null && (
-        <EvaluationPreview
-          templateId={id}
-          versionNo={draftVersionNo}
-          items={items}
-          resultTypes={resultTypes}
-          savedAt={autosave.at}
-        />
-      )}
-
-      {resultTypes.length === 0 && (
-        <p className="field-hint">
-          No active result types, so no answer can be given a meaning. Add them under Settings →
-          Result types.
-        </p>
-      )}
-    </form>
+    </div>
   )
 }

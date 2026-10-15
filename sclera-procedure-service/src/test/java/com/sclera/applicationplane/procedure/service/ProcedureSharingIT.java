@@ -93,7 +93,7 @@ class ProcedureSharingIT extends PostgresIntegrationTest {
 
     private static CreateTemplateRequest request(String name, DocumentRef... refs) {
         return new CreateTemplateRequest(name, "A description", null,
-                new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question()), List.of(), List.of(), List.of(refs)));
+                new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA, List.of(question()), List.of(), List.of(refs)));
     }
 
     /** A published global template — there is no authoring flow for the
@@ -109,7 +109,7 @@ class ProcedureSharingIT extends PostgresIntegrationTest {
         DefinitionDocument document = new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
                 List.of(Item.builder().key("q1").text("Exit clear?").type(QuestionType.YES_NO).required(true)
                         .options(List.of(options)).build()),
-                List.of(), List.of(), List.of());
+                List.of(), List.of());
         DefinitionCanonicalizer.Canonical canonical = canonicalizer.canonicalize(document);
 
         GlobalProcedureTemplateVersion v = new GlobalProcedureTemplateVersion();
@@ -172,7 +172,7 @@ class ProcedureSharingIT extends PostgresIntegrationTest {
             VersionResponse draft = service.createDraft(id, new NewDraftRequest(1));
             service.saveDraft(id, new SaveDraftRequest(
                     new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
-                            List.of(question()), List.of(), List.of(), List.of()),
+                            List.of(question()), List.of(), List.of()),
                     draft.rowVersion(), "v2"));
             service.publish(id, null);
 
@@ -257,11 +257,11 @@ class ProcedureSharingIT extends PostgresIntegrationTest {
             Item keyed = first.definition().items().get(0);
             VersionResponse withSecond = service.saveDraft(id, new SaveDraftRequest(
                     new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
-                            List.of(keyed, question()), List.of(), List.of(), List.of()),
+                            List.of(keyed, question()), List.of(), List.of()),
                     first.rowVersion(), "add"));                                    // q4 o5 o6: counter 6
             service.saveDraft(id, new SaveDraftRequest(
                     new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
-                            List.of(keyed), List.of(), List.of(), List.of()),
+                            List.of(keyed), List.of(), List.of()),
                     withSecond.rowVersion(), "remove"));                            // back to one question
             service.publish(id, null);
 
@@ -283,7 +283,7 @@ class ProcedureSharingIT extends PostgresIntegrationTest {
             VersionResponse draft = service.createDraft(id, new NewDraftRequest(1));
             service.saveDraft(id, new SaveDraftRequest(
                     new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
-                            List.of(draft.definition().items().get(0), question()), List.of(), List.of(), List.of()),
+                            List.of(draft.definition().items().get(0), question()), List.of(), List.of()),
                     draft.rowVersion(), "v2"));
             service.publish(id, null);
 
@@ -442,7 +442,7 @@ class ProcedureSharingIT extends PostgresIntegrationTest {
                                     .required(true)
                                     .options(List.of(opt("o2", "Yes", "PASS"), opt("o3", "No", "FAIL")))
                                     .build()),
-                            List.of(), List.of(), List.of()),
+                            List.of(), List.of()),
                     draft.rowVersion(), null));
 
             var copy = orgCopies.findByGlobalTemplateIdAndOrgId(global.getId(), org).orElseThrow();
@@ -691,7 +691,7 @@ class ProcedureSharingIT extends PostgresIntegrationTest {
                     .type(QuestionType.YES_NO).required(true).options(original.options()).build();
             globalService.saveDraft(globalTemplateId, new SaveGlobalDraftRequest(
                     new DefinitionDocument(DefinitionDocument.CURRENT_SCHEMA,
-                            List.of(changed), List.of(), List.of(), List.of()),
+                            List.of(changed), List.of(), List.of()),
                     "reworded"));
             globalService.publish(globalTemplateId);
         }

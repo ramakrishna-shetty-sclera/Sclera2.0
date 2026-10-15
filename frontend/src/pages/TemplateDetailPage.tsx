@@ -1,109 +1,66 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import {
-  applyUpdate,
   archiveProcedure,
   cloneProcedure,
   createDraft,
-  deferUpdate,
   discardDraft,
   exportProcedure,
-  favouriteProcedure,
-  forkProcedure,
   getDraft,
   getProcedure,
-  getUpdateDiff,
-  getUpdateStatus,
   getVersion,
-  listProcedures,
   listVersions,
   publishProcedure,
-  unfavouriteProcedure,
-  unlinkProcedure,
 } from '../api/templates'
 import { createInspection } from '../api/inspections'
-import { getSelectedProperty } from '../api/client'
-import type { ProcedureDiff, ProcedureTemplate, TemplateVersion, TemplateVersionSummary, UpdateStatus } from '../api/types'
-import { useAuth } from '../auth/AuthContext'
-import { StatusBadge } from '../components/StatusBadge'
-import { DefinitionView } from '../components/DefinitionView'
-import { DiffView } from '../components/DiffView'
-import { VersionHistory } from '../components/VersionHistory'
+import type {
+  DefinitionItem,
+  ProcedureTemplate,
+  TemplateVersion,
+  TemplateVersionSummary,
+} from '../api/types'
 import { Refusal } from '../components/Refusal'
-import { Modal } from '../components/Modal'
+import { PRIORITY_CLASS } from '../components/v3/procedureVocab'
+import { ReadOnlyChecklist } from '../components/v3/ReadOnlyChecklist'
 
 /**
- * One procedure: what it is, what it can do next, and the content of whichever
- * version you are looking at.
+ * One procedure in the Sclera 2.0 design (docs/procedures-v3.html ViewPage):
+ * metrics, the checklist read-only, and a details card beside it.
  *
- * The actions follow from the model rather than from a status field. A draft is
- * the only thing that can be edited, there is at most one, and publishing
- * freezes it — so "Edit" and "Publish" appear exactly when a draft exists, and
- * "Start a draft" appears when one does not.
+ * The actions still follow from the model, not a status field: a draft is the
+ * only editable thing, so Edit/Publish/Discard appear exactly when one exists
+ * and "Start a draft" when one does not.
  */
 export function TemplateDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { permissions } = useAuth()
   const [procedure, setProcedure] = useState<ProcedureTemplate | null>(null)
   const [version, setVersion] = useState<TemplateVersion | null>(null)
   const [versions, setVersions] = useState<TemplateVersionSummary[]>([])
   const [error, setError] = useState<string | null>(null)
-  /** What the server refused, kept whole: a refusal can name several things at once. */
   const [refusal, setRefusal] = useState<unknown>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
+  const [exportFormat, setExportFormat] = useState<'pdf' | 'xlsx' | null>(null)
 
-  /** Only fetched when the procedure tracks a parent — an import or a fork. */
-  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
-  const [diff, setDiff] = useState<ProcedureDiff | null>(null)
-  const [diffError, setDiffError] = useState<string | null>(null)
-  const [showExport, setShowExport] = useState(false)
-  const [exportVersions, setExportVersions] = useState<Set<number>>(new Set())
-  const [exportIncludeDocuments, setExportIncludeDocuments] = useState(false)
-  /**
-   * There is no field on TemplateResponse saying whether the current user has
-   * starred this procedure, so this is read back from the favourites-only
-   * list rather than the procedure itself — fine at this app's scale, and
-   * self-correcting the moment the toggle below is used, since that always
-   * trusts the server's own returned state.
-   */
-  const [favourited, setFavourited] = useState(false)
-
-  /**
-   * Loads the procedure, its history, and the version worth showing by default:
-   * the draft when one is open, since that is what the author is working on,
-   * otherwise the published version. A procedure with neither has no content.
-   *
-   * Always returns to that default, including after an action — publishing or
-   * discarding changes which version the default *is*, so holding the previous
-   * selection would leave the screen showing something that no longer applies.
-   */
   const reload = useCallback(async () => {
     if (!id) return
     const p = await getProcedure(id)
     setProcedure(p)
     setVersions(await listVersions(id))
-    if (p.draftVersionNo != null) {
-      setVersion(await getDraft(id))
-    } else if (p.currentPublishedVersionNo != null) {
+    // The published version is what inspections run against, so it is what
+    // this page shows; an open draft is announced, not displayed (the
+    // procedures-v3 design). A never-published procedure IS its draft.
+    if (p.currentPublishedVersionNo != null) {
       setVersion(await getVersion(id, p.currentPublishedVersionNo))
+    } else if (p.draftVersionNo != null) {
+      setVersion(await getDraft(id))
     } else {
       setVersion(null)
     }
-
-    setDiff(null)
-    if (p.globalTemplateId != null || p.forkedFromTemplateId != null) {
-      setUpdateStatus(await getUpdateStatus(id).catch(() => null))
-    } else {
-      setUpdateStatus(null)
-    }
-
-    const favs = await listProcedures({ favouritesOnly: true, size: 200 }).catch(() => null)
-    setFavourited(favs?.data.some((t) => t.id === id) ?? false)
   }, [id])
 
-  /** Shows an older version from the history without changing anything. */
   async function showVersion(versionNo: number) {
     if (!id || !procedure) return
     setError(null)
@@ -122,12 +79,6 @@ export function TemplateDetailPage() {
     reload().catch((e) => setError(e instanceof Error ? e.message : 'Could not load this procedure'))
   }, [reload])
 
-  /**
-   * Runs an action, then reloads so the screen matches the server rather than
-   * what we guessed it would become. A refusal is kept whole rather than
-   * flattened to a string: publish names every reason it is not ready at once,
-   * and Refusal is what turns that back into a list.
-   */
   async function run(action: () => Promise<unknown>) {
     setBusy(true)
     setError(null)
@@ -170,73 +121,24 @@ export function TemplateDetailPage() {
     }
   }
 
-  async function onFork() {
-    if (!procedure) return
-    setBusy(true)
-    setError(null)
-    try {
-      const fork = await forkProcedure(procedure.id)
-      navigate(`/templates/${fork.id}`)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not fork this procedure')
-      setBusy(false)
-    }
-  }
-
-  async function onViewDiff() {
-    if (!procedure) return
-    setDiffError(null)
-    try {
-      setDiff(await getUpdateDiff(procedure.id))
-    } catch (e) {
-      setDiff(null)
-      setDiffError(e instanceof Error ? e.message : 'Could not load the diff')
-    }
-  }
-
-  function toggleExportVersion(versionNo: number) {
-    setExportVersions((prev) => {
-      const next = new Set(prev)
-      if (next.has(versionNo)) next.delete(versionNo)
-      else next.add(versionNo)
-      return next
-    })
-  }
-
   async function onExport() {
-    if (!procedure) return
+    if (!procedure || !version || !exportFormat) return
     setBusy(true)
     setError(null)
     try {
-      const exported = await exportProcedure(procedure.id, {
-        versions: exportVersions.size > 0 ? Array.from(exportVersions) : undefined,
-        includeDocuments: exportIncludeDocuments,
-      })
-      const blob = new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' })
+      const { blob, filename } = await exportProcedure(procedure.id, exportFormat, version.versionNo)
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${procedure.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.json`
+      a.download = filename ?? `${procedure.name}-v${version.versionNo}.${exportFormat}`
       a.click()
       URL.revokeObjectURL(url)
-      setShowExport(false)
+      setExportOpen(false)
+      setNotice(`Exported v${version.versionNo} as ${exportFormat.toUpperCase()}.`)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not export this procedure')
+      setError(e instanceof Error ? e.message : 'Export failed')
     } finally {
       setBusy(false)
-    }
-  }
-
-  async function onToggleFavourite() {
-    if (!procedure) return
-    const was = favourited
-    setFavourited(!was)
-    try {
-      const result = was ? await unfavouriteProcedure(procedure.id) : await favouriteProcedure(procedure.id)
-      setFavourited(result.favourite)
-    } catch (e) {
-      setFavourited(was)
-      setError(e instanceof Error ? e.message : 'Could not update the favourite')
     }
   }
 
@@ -254,227 +156,340 @@ export function TemplateDetailPage() {
   }
 
   if (!procedure) {
-    return error ? <div className="alert alert-error">{error}</div> : <p className="muted">Loading…</p>
+    return (
+      <div className="v3 v3-page" style={{ padding: 24 }}>
+        {error ? <div className="alert-error">{error}</div> : <p className="muted">Loading…</p>}
+      </div>
+    )
   }
 
   const hasDraft = procedure.draftVersionNo != null
   const published = procedure.currentPublishedVersionNo
   const archived = procedure.status === 'ARCHIVED'
-  const canFork =
-    procedure.propertyId == null &&
-    procedure.forkedFromTemplateId == null &&
-    getSelectedProperty() != null &&
-    permissions.canManageTemplates
-  const canUnlink = updateStatus?.linkState === 'LINKED' || updateStatus?.linkState === 'DEFERRED'
+  const meta = procedure.meta ?? {}
+  const draftSummary = versions.find((v) => v.state === 'DRAFT')
+  const draftSavedAt = draftSummary ? new Date(draftSummary.createdAt).toLocaleDateString() : null
+  const items = version?.definition.items ?? []
+  const flat = flattenItems(items)
+  const questions = flat.filter((f) => f.item.type !== 'SECTION')
+  const stats: [string, number, string, string][] = [
+    ['Questions', questions.filter((f) => !f.parent).length, 'Top-level checks', '☑'],
+    ['Required', questions.filter((f) => f.item.required).length, 'Must be answered', '✱'],
+    ['Follow-ups', questions.filter((f) => f.parent).length, 'Shown on a matching answer', '↳'],
+    ['Work orders', questions.filter((f) => f.item.workOrder).length, 'Raised on a failed answer', '⚠'],
+  ]
 
   return (
-    <div>
-      <div className="page-head">
-        <div>
-          <h1>
-            <button
-              className="btn btn-ghost small"
-              title={favourited ? 'Remove from favourites' : 'Add to favourites'}
-              onClick={onToggleFavourite}
-            >
-              {favourited ? '★' : '☆'}
-            </button>{' '}
-            {procedure.name}
-          </h1>
-          <p className="muted">
-            <StatusBadge status={procedure.status} />
-            {published == null ? ' · never published' : ` · published v${published}`}
-            {hasDraft && (
-              <>
-                {' · '}
-                <span className="badge badge-amber">draft v{procedure.draftVersionNo}</span>
-              </>
+    <div className="v3 v3-page">
+      <div className="phead">
+        <button className="ibtn xl" aria-label="Back to procedures" onClick={() => navigate('/templates')}>
+          ‹
+        </button>
+        <div className="ptitle">
+          <span className="psub">Procedure</span>
+          <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
+            <h1>{procedure.name}</h1>
+            {archived ? (
+              <span className="tag">Archived</span>
+            ) : published != null ? (
+              <span className="tag pass">Published v{published}</span>
+            ) : (
+              <span className="tag">Never published</span>
             )}
-          </p>
+            {hasDraft && <span className="tag warn">Draft v{procedure.draftVersionNo} open</span>}
+            {meta.priority && (
+              <span className={`tag ${PRIORITY_CLASS[meta.priority] ?? ''}`}>{meta.priority}</span>
+            )}
+          </div>
         </div>
-        <div className="page-actions">
-          {canFork && (
-            <button className="btn" disabled={busy} onClick={onFork}>
-              Customize for this property
+        <div className="pacts">
+          {published != null && (
+            <button className="btn btn-outline" disabled={busy} onClick={startInspection}>
+              New inspection
             </button>
           )}
-          {canUnlink && permissions.canManageTemplates && (
-            <button
-              className="btn"
-              disabled={busy}
-              onClick={() => {
-                if (confirm('Stop tracking this procedure\'s shared source? You can still edit it on your own.')) {
-                  run(() => unlinkProcedure(procedure.id))
-                }
-              }}
-            >
-              Unlink
+          {version != null && (
+            <button className="btn btn-outline" disabled={busy} onClick={() => setExportOpen(true)}>
+              ⤓ Export
             </button>
           )}
-          <button className="btn" disabled={busy} onClick={() => setShowExport(true)}>
-            Export
+          <button className="btn btn-outline" disabled={busy} onClick={onClone}>
+            Duplicate
           </button>
           {!archived && hasDraft && (
             <>
-              {permissions.canManageTemplates && (
-                <Link className="btn" to={`/templates/${procedure.id}/edit`}>
-                  Edit draft
-                </Link>
-              )}
-              {permissions.canPublishTemplates && (
-                <button className="btn btn-primary" disabled={busy} onClick={onPublish}>
-                  Publish
-                </button>
-              )}
-              {permissions.canManageTemplates && (
-                <button
-                  className="btn"
-                  disabled={busy}
-                  onClick={() => {
-                    if (confirm(`Discard draft v${procedure.draftVersionNo}? Its edits are lost.`)) {
-                      run(() => discardDraft(procedure.id))
-                    }
-                  }}
-                >
-                  Discard draft
-                </button>
-              )}
+              <button className="btn btn-quiet" disabled={busy} onClick={onPublish}>
+                Publish
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => navigate(`/templates/${procedure.id}/edit`)}
+              >
+                ✎ Edit
+              </button>
             </>
           )}
-          {!archived && !hasDraft && published != null && permissions.canManageTemplates && (
+          {!archived && !hasDraft && published != null && (
             <button
               className="btn btn-primary"
               disabled={busy}
               onClick={() => run(() => createDraft(procedure.id, { fromVersionNo: published }))}
             >
-              Start a draft from v{published}
-            </button>
-          )}
-          {published != null && (
-            <button className="btn" disabled={busy} onClick={startInspection}>
-              New inspection
-            </button>
-          )}
-          {permissions.canManageTemplates && (
-            <button className="btn" disabled={busy} onClick={onClone}>
-              Duplicate
-            </button>
-          )}
-          {!archived && permissions.canManageTemplates && (
-            <button
-              className="btn btn-danger"
-              disabled={busy}
-              onClick={() => {
-                if (confirm('Archive this procedure? It can no longer be used for new work.')) {
-                  run(() => archiveProcedure(procedure.id))
-                }
-              }}
-            >
-              Archive
+              ✎ Edit (start a draft)
             </button>
           )}
         </div>
       </div>
 
-      {notice && <div className="alert alert-ok">{notice}</div>}
-      {error && <div className="alert alert-error">{error}</div>}
-      <Refusal error={refusal} />
+      <div className="scroll" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {notice && <div className="alert-ok">{notice}</div>}
+        {error && <div className="alert-error">{error}</div>}
+        <Refusal error={refusal} />
 
-      {updateStatus?.updateAvailable && (
-        <div className="alert alert-amber">
-          An update is available — v{updateStatus.currentVersionNo}
-          {updateStatus.appliedVersionNo != null && `, you have v${updateStatus.appliedVersionNo}`}.
-          <div className="page-actions">
-            <button className="btn btn-ghost small" onClick={onViewDiff}>
-              View diff
-            </button>
-            {permissions.canManageTemplates && (
-              <>
-                <button className="btn btn-primary small" disabled={busy} onClick={() => run(() => applyUpdate(procedure.id))}>
-                  Apply update
-                </button>
+        <div className="row" style={{ gap: 12, alignItems: 'stretch' }}>
+          {stats.map(([label, value, note, icon]) => (
+            <div key={label} className="metric">
+              <div className="mbody">
+                <span className="mlabel">{label}</span>
+                <span className="mval">{value}</span>
+                <span className="mnote">{note}</span>
+              </div>
+              <span className="ichip" aria-hidden="true">
+                {icon}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <section
+            style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}
+            aria-label="Checklist"
+          >
+            {hasDraft && !archived && (
+              <div className="pending-strip" role="status">
+                <span aria-hidden="true" style={{ color: 'var(--action)' }}>
+                  ✎
+                </span>
+                <span style={{ flex: 1 }}>
+                  {published != null ? (
+                    <>
+                      You have unpublished changes saved as draft v{procedure.draftVersionNo}
+                      {draftSavedAt ? ` (${draftSavedAt})` : ''}.{' '}
+                      {version?.state === 'DRAFT'
+                        ? 'You are viewing that draft.'
+                        : `This page shows the published version (v${version?.versionNo}).`}
+                    </>
+                  ) : (
+                    <>Draft v{procedure.draftVersionNo} is open — this page shows the draft.</>
+                  )}
+                </span>
                 <button
-                  className="btn small"
-                  disabled={busy}
+                  className="btn btn-quiet btn-xs"
+                  disabled={busy || published == null}
+                  title={published == null ? 'A never-published procedure is only its draft' : undefined}
                   onClick={() => {
-                    if (confirm('Defer this update? You can apply it later.')) {
-                      run(() => deferUpdate(procedure.id))
+                    if (confirm(`Discard draft v${procedure.draftVersionNo}? Its edits are lost.`)) {
+                      void run(() => discardDraft(procedure.id))
                     }
                   }}
                 >
-                  Defer
+                  Discard draft
                 </button>
+                <button
+                  className="btn btn-primary btn-xs"
+                  onClick={() => navigate(`/templates/${procedure.id}/edit`)}
+                >
+                  Continue editing
+                </button>
+              </div>
+            )}
+            {procedure.description && (
+              <p className="muted" style={{ maxWidth: '65ch', marginBottom: 8 }}>
+                {procedure.description}
+              </p>
+            )}
+            {version == null ? (
+              <div className="empty">
+                <h2 style={{ fontSize: 16 }}>Nothing authored yet</h2>
+                <button className="btn btn-primary" onClick={() => navigate(`/templates/${procedure.id}/edit`)}>
+                  Start the draft
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="row" style={{ gap: 8 }}>
+                  <span className="small muted">
+                    Showing {version.state === 'DRAFT' ? 'draft ' : ''}v{version.versionNo}
+                    {version.changeNote ? ` — ${version.changeNote}` : ''}
+                  </span>
+                </div>
+                <ReadOnlyChecklist items={items} />
               </>
             )}
-          </div>
-          {diffError && <div className="alert alert-error">{diffError}</div>}
-          {diff && <DiffView result={diff} />}
+          </section>
+
+          <aside style={{ width: 360, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <section className="dcard" aria-labelledby="pd-t">
+              <div className="dcard-head">
+                <h2 id="pd-t">Procedure details</h2>
+                {!archived && (
+                  <button className="link" onClick={() => navigate(`/templates/${procedure.id}/edit`)}>
+                    Edit
+                  </button>
+                )}
+              </div>
+              <div className="fields">
+                {(
+                  [
+                    ['Status', archived ? 'Archived' : 'Active'],
+                    ['Category', meta.category ?? '—'],
+                    ['Sub category', meta.subCategory ?? '—'],
+                    ['Standard', meta.standard ?? '—'],
+                    ['Frequency', meta.frequency ?? '—'],
+                    ['Priority', meta.priority ?? '—'],
+                    ['Code', meta.code ?? '—'],
+                    ['Availability', meta.availability === 'ORG' ? 'Entire organization' : 'This property'],
+                    ['Folder', meta.folder ?? '—'],
+                    ['Consumer', procedure.consumerKey ?? 'INSPECTION'],
+                    ['Published', published != null ? `v${published}` : 'Never'],
+                    ['Draft', hasDraft ? `v${procedure.draftVersionNo}` : 'None'],
+                    ['Created', new Date(procedure.createdAt).toLocaleDateString()],
+                    ['Updated', new Date(procedure.updatedAt).toLocaleDateString()],
+                  ] as [string, string][]
+                ).map(([k, v]) => (
+                  <div key={k} className="fld">
+                    <span>{k}</span>
+                    <span>{v}</span>
+                  </div>
+                ))}
+              </div>
+              {!archived && (
+                <div style={{ padding: '0 16px 16px' }}>
+                  <button
+                    className="btn btn-danger btn-xs"
+                    disabled={busy}
+                    onClick={() => {
+                      if (confirm('Archive this procedure? It can no longer be used for new work.')) {
+                        void run(() => archiveProcedure(procedure.id))
+                      }
+                    }}
+                  >
+                    Archive procedure
+                  </button>
+                </div>
+              )}
+            </section>
+
+            {versions.length > 0 && (
+              <section className="dcard" aria-labelledby="vh-t">
+                <div className="dcard-head">
+                  <h2 id="vh-t">Versions</h2>
+                </div>
+                <div style={{ padding: 8, display: 'flex', flexDirection: 'column' }}>
+                  {versions.map((v) => (
+                    <button
+                      key={v.id}
+                      className="nitem"
+                      style={{ alignItems: 'center' }}
+                      onClick={() => void showVersion(v.versionNo)}
+                    >
+                      <span className="num">v{v.versionNo}</span>
+                      <span className="body">
+                        <span className="txt">
+                          {v.state === 'DRAFT' ? 'Draft' : v.state === 'PUBLISHED' ? 'Published' : 'Archived'}
+                          {v.changeNote ? ` — ${v.changeNote}` : ''}
+                        </span>
+                        <span className="sub">
+                          {new Date(v.publishedAt ?? v.createdAt).toLocaleString()}
+                        </span>
+                      </span>
+                      {version?.versionNo === v.versionNo && <span className="tag sel">Viewing</span>}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+          </aside>
         </div>
-      )}
+      </div>
 
-      {procedure.description && <p>{procedure.description}</p>}
-
-      {version === null ? (
-        <p className="muted">
-          Nothing authored yet.{' '}
-          {permissions.canManageTemplates ? (
-            <Link to={`/templates/${procedure.id}/edit`}>Start the draft</Link>
-          ) : (
-            'Ask someone with the template author role to start it.'
-          )}
-        </p>
-      ) : (
-        <>
-          <h2>
-            {version.state === 'DRAFT' ? `Draft v${version.versionNo}` : `v${version.versionNo}`}
-            {version.changeNote && <span className="muted small"> — {version.changeNote}</span>}
-          </h2>
-          <DefinitionView definition={version.definition} />
-        </>
-      )}
-
-      {versions.length > 0 && (
-        <VersionHistory
-          procedureId={procedure.id}
-          versions={versions}
-          viewingVersionNo={version?.versionNo ?? null}
-          onView={showVersion}
-        />
-      )}
-
-      {showExport && (
-        <Modal title="Export" onClose={() => setShowExport(false)}>
-          <p className="muted small">
-            Choose which published versions to include. Leaving none checked exports the current
-            published version only.
-          </p>
-          {versions
-            .filter((v) => v.state !== 'DRAFT')
-            .map((v) => (
-              <label key={v.id} className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={exportVersions.has(v.versionNo)}
-                  onChange={() => toggleExportVersion(v.versionNo)}
-                />
-                v{v.versionNo}
-              </label>
-            ))}
-          <label className="checkbox">
-            <input
-              type="checkbox"
-              checked={exportIncludeDocuments}
-              onChange={(e) => setExportIncludeDocuments(e.target.checked)}
-            />
-            Include cited documents
-          </label>
-          <div className="page-actions">
-            <button className="btn btn-primary" disabled={busy} onClick={onExport}>
-              Download
-            </button>
+      {exportOpen && version && (
+        <div
+          className="scrim"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setExportOpen(false)
+          }}
+        >
+          <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="ex-t" style={{ width: 640 }}>
+            <div className="dhead">
+              <h2 id="ex-t" style={{ fontSize: 20 }}>
+                Export procedure
+              </h2>
+              <span className="small muted">v{version.versionNo}</span>
+              <button
+                className="ibtn lg"
+                style={{ marginLeft: 'auto' }}
+                aria-label="Close"
+                onClick={() => setExportOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div
+              className="dbody"
+              role="radiogroup"
+              aria-label="Format"
+              style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 14 }}
+            >
+              {(
+                [
+                  ['pdf', 'PDF', 'Readable format', 'Formatted for reading or printing.', 'fail'],
+                  ['xlsx', 'XLS', 'Structured format', 'Structured data of the checklist.', 'pass'],
+                ] as [('pdf' | 'xlsx'), string, string, string, string][]
+              ).map(([key, ext, title, sub, color]) => (
+                <button
+                  key={key}
+                  role="radio"
+                  aria-checked={exportFormat === key}
+                  className="choice"
+                  style={{ flexDirection: 'column', padding: 22, textAlign: 'center' }}
+                  onClick={() => setExportFormat(key)}
+                >
+                  <span
+                    className={`tag ${color}`}
+                    style={{ width: 56, height: 68, justifyContent: 'center', fontSize: 16 }}
+                  >
+                    {ext}
+                  </span>
+                  <span style={{ fontWeight: 600 }}>{title}</span>
+                  <span className="small muted">{sub}</span>
+                </button>
+              ))}
+            </div>
+            <div className="dfoot">
+              <span />
+              <button className="btn btn-primary" disabled={!exportFormat || busy} onClick={() => void onExport()}>
+                Export
+              </button>
+            </div>
           </div>
-        </Modal>
+        </div>
       )}
     </div>
   )
+}
+
+interface FlatItem {
+  item: DefinitionItem
+  parent: DefinitionItem | null
+}
+
+function flattenItems(items: DefinitionItem[], parent: DefinitionItem | null = null): FlatItem[] {
+  const out: FlatItem[] = []
+  for (const item of items) {
+    out.push({ item, parent })
+    out.push(...flattenItems(item.follow, item))
+  }
+  return out
 }
