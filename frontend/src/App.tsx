@@ -1,5 +1,8 @@
+import { useState } from 'react'
 import { Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { getSelectedProperty, setSelectedProperty } from './api/client'
 import { useAuth } from './auth/AuthContext'
+import { PropertySwitcher } from './components/PropertySwitcher'
 import { LoginPage } from './pages/LoginPage'
 import { HomePage } from './pages/HomePage'
 import { LocationsPage } from './pages/LocationsPage'
@@ -17,11 +20,15 @@ import { ScanPage } from './pages/ScanPage'
 import { TemplatesPage } from './pages/TemplatesPage'
 import { TemplateDetailPage } from './pages/TemplateDetailPage'
 import { TemplateEditorPage } from './pages/TemplateEditorPage'
+import { ResultTypesPage } from './pages/ResultTypesPage'
 
 function Layout() {
   const { user, initializing, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  // Which property the pages are scoped to. Keying the outlet on it re-mounts
+  // the current page on a switch, so it fetches again with the new header.
+  const [scope, setScope] = useState<string | null>(getSelectedProperty())
 
   if (initializing) return <p className="muted center-note">Checking session…</p>
   // Preserve the deep link (e.g. a scanned /scan/:token QR) across login.
@@ -37,15 +44,19 @@ function Layout() {
           <NavLink to="/locations">Locations</NavLink>
           <NavLink to="/assets">Assets</NavLink>
           <NavLink to="/templates">Procedures</NavLink>
+          <NavLink to="/settings/result-types">Result types</NavLink>
           <NavLink to="/inspection-configs">Inspections</NavLink>
           <NavLink to="/reactive-services">Reactive</NavLink>
           <NavLink to="/tasks">Tasks</NavLink>
         </nav>
         <div className="topbar-right">
+          <PropertySwitcher onChange={setScope} />
           <span className="user-chip">{user.email ?? user.id}</span>
           <button
             className="btn btn-ghost"
             onClick={() => {
+              // The next person to sign in on this tab starts at organization level.
+              setSelectedProperty(null)
               logout().then(() => navigate('/login'))
             }}
           >
@@ -54,7 +65,7 @@ function Layout() {
         </div>
       </header>
       <main className="content">
-        <Outlet />
+        <Outlet key={scope ?? 'organization'} />
       </main>
     </div>
   )
@@ -84,6 +95,7 @@ export function App() {
         <Route path="/templates/new" element={<TemplateEditorPage />} />
         <Route path="/templates/:id" element={<TemplateDetailPage />} />
         <Route path="/templates/:id/edit" element={<TemplateEditorPage />} />
+        <Route path="/settings/result-types" element={<ResultTypesPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

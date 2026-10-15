@@ -2,8 +2,13 @@
 spring:
   datasource:
     url: ${SCLERA_DB_URL}
+    # The request role. It must not own the tables and must not be a superuser,
+    # or row-level security stops applying and property isolation goes with it.
+    # SCLERA_DB_OWNER_USER is a different, more privileged role — see
+    # sclera.datasource.owner in application.yml.
     username: ${SCLERA_DB_USER}
     password: ${SCLERA_DB_PASSWORD}
+
     hikari:
       minimum-idle: 5
       maximum-pool-size: 20
@@ -54,6 +59,15 @@ springdoc:
     path: /v3/api-docs
 
 sclera:
+  # No defaults, so a missing value fails at startup rather than silently
+  # falling back to the dev role name. application.yml defaults these to
+  # `sclera` for local work, which in production would either not exist or —
+  # worse — be the superuser, and row-level security would stop applying.
+  datasource:
+    owner:
+      username: ${SCLERA_DB_OWNER_USER}
+      password: ${SCLERA_DB_OWNER_PASSWORD}
+
   event-listener:
     signing-secret: ${SCLERA_INTERNAL_SIGNING_SECRET}
 

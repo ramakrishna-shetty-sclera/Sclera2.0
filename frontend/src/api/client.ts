@@ -10,22 +10,98 @@ const DEV_CLIENT_ID = 'sclera-app'
 // Prod HTTPS uses the __Host- prefixed name; local HTTP uses the plain one.
 const CSRF_COOKIE_NAMES = ['__Host-sclera-csrf', 'sclera-csrf']
 
+// The property (VDMS) the user has opened, sent as X-Sclera-Property on every
+// request. Null is organization level: only what the whole organization
+// shares. Kept per browser tab, so two tabs can look at two properties. The
+// backend checks the header against the user's grants; this only carries it.
+const PROPERTY_STORAGE_KEY = 'sclera.property'
+let selectedProperty: string | null = readStoredProperty()
+
+function readStoredProperty(): string | null {
+  try {
+    return sessionStorage.getItem(PROPERTY_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function getSelectedProperty(): string | null {
+  return selectedProperty
+}
+
+export function setSelectedProperty(propertyId: string | null): void {
+  selectedProperty = propertyId
+  try {
+    if (propertyId) sessionStorage.setItem(PROPERTY_STORAGE_KEY, propertyId)
+    else sessionStorage.removeItem(PROPERTY_STORAGE_KEY)
+  } catch {
+    // Storage unavailable: the selection still holds for this page load.
+  }
+}
+
+/** One rejected field from a 400 VALIDATION_FAILED, e.g. { field: 'color', message: 'must be a six-digit hex colour…' }. */
+export interface FieldError {
+  field: string
+  message: string
+}
+
 export class ApiError extends Error {
   code: string
   status: number
+  fieldErrors: FieldError[]
 
-  constructor(code: string, message: string, status: number) {
+  constructor(code: string, message: string, status: number, fieldErrors: FieldError[] = []) {
     super(message)
     this.code = code
     this.status = status
+    this.fieldErrors = fieldErrors
   }
+}
+
+/** A refusal the author has to act on, as the lead-in and the list it was built from. */
+export interface Reasons {
+  lead: string | null
+  list: string[]
+}
+
+/**
+ * Unpacks a refusal that names more than one thing.
+ *
+ * The procedure service collects every structural problem and every publish
+ * blocker and joins them with '; ' into one message, deliberately — an author
+ * fixing four things should be told all four at once rather than one per
+ * attempt. One paragraph is not how you read four things, so this splits it
+ * back into the list it was built from.
+ *
+ * **A seam, and a temporary one.** It couples the SPA to a formatting choice in
+ * DefinitionValidator and ProcedureTemplateService. The right answer is a
+ * structured list in the response, and features 5 and 6 add the publish
+ * blockers that will make it worth doing. Until then this is the only way to
+ * show four reasons as four lines.
+ *
+ * The lead-in is only taken when the first part cannot itself be a reason:
+ * every reason names an item, so it starts with a quote, and only a lead-in
+ * like "This procedure cannot be published yet" does not.
+ */
+export function splitReasons(message: string): Reasons {
+  const parts = message
+    .split('; ')
+    .map((part) => part.trim())
+    .filter(Boolean)
+  if (parts.length < 2) return { lead: null, list: [] }
+
+  const colon = parts[0].indexOf(': ')
+  if (!parts[0].startsWith("'") && colon > 0) {
+    return { lead: parts[0].slice(0, colon), list: [parts[0].slice(colon + 2), ...parts.slice(1)] }
+  }
+  return { lead: null, list: parts }
 }
 
 interface Envelope<T> {
   success: boolean
   data: T
   pagination: Pagination | null
-  error: { code: string; message: string } | null
+  error: { code: string; message: string; fieldErrors?: FieldError[] } | null
 }
 
 export interface ApiResult<T> {
@@ -61,6 +137,7 @@ function gatewayHeaders(extra: Record<string, string> = {}): Record<string, stri
   }
   const csrf = readCsrfCookie()
   if (csrf) headers['X-CSRF-Token'] = csrf
+  if (selectedProperty) headers['X-Sclera-Property'] = selectedProperty
   return headers
 }
 
@@ -70,6 +147,10 @@ function sessionExpired(): never {
 }
 
 async function parseEnvelope<T>(res: Response): Promise<ApiResult<T>> {
+  // 204 No Content (e.g. DELETE) is a success with no body to unwrap.
+  if (res.status === 204) {
+    return { data: undefined as T, pagination: null }
+  }
   const envelope = (await res.json().catch(() => null)) as Envelope<T> | null
   if (!envelope) {
     throw new ApiError('UNEXPECTED_RESPONSE', `Request failed with status ${res.status}`, res.status)
@@ -79,6 +160,7 @@ async function parseEnvelope<T>(res: Response): Promise<ApiResult<T>> {
       envelope.error?.code ?? 'REQUEST_FAILED',
       envelope.error?.message ?? `Request failed with status ${res.status}`,
       res.status,
+      envelope.error?.fieldErrors ?? [],
     )
   }
   // Gateway BFF endpoints and downstream services both use the sclera
@@ -120,6 +202,49 @@ export async function apiFetch<T>(
     }
   }
   return parseEnvelope<T>(res)
+}
+
+/**
+ * Multipart upload through the gateway. Same session/CSRF handling as
+ * `apiFetch`; the one difference is that Content-Type is left to the browser,
+ * which must set the multipart boundary itself.
+ */
+export async function apiUpload<T>(path: string, form: FormData): Promise<ApiResult<T>> {
+  const res = await fetch(path, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: gatewayHeaders(),
+    body: form,
+  })
+  if (res.status === 401) sessionExpired()
+  return parseEnvelope<T>(res)
+}
+
+/**
+ * Binary download through the gateway. Errors still arrive as the JSON
+ * envelope, so a non-OK response is parsed the same way `apiFetch` would.
+ */
+export async function apiDownload(
+  path: string,
+  query: Record<string, string | number | undefined> = {},
+): Promise<{ blob: Blob; filename: string | null }> {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== '') params.set(key, String(value))
+  }
+  const qs = params.toString()
+  const res = await fetch(qs ? `${path}?${qs}` : path, {
+    credentials: 'same-origin',
+    headers: gatewayHeaders(),
+  })
+  if (res.status === 401) sessionExpired()
+  if (!res.ok) {
+    await parseEnvelope<never>(res) // throws with the envelope's error details
+    throw new ApiError('REQUEST_FAILED', `Request failed with status ${res.status}`, res.status)
+  }
+  const disposition = res.headers.get('Content-Disposition') ?? ''
+  const match = /filename="?([^";]+)"?/.exec(disposition)
+  return { blob: await res.blob(), filename: match ? match[1] : null }
 }
 
 // ── BFF auth endpoints (served in-process by the gateway) ────────────────────

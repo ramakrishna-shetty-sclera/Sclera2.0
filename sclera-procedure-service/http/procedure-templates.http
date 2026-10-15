@@ -1,0 +1,372 @@
+### Procedure templates — smoke test for immutable versions and stable keys.
+#
+# Run top to bottom in the IntelliJ HTTP client (or VS Code REST Client with
+# the same syntax). Each request stores what the next one needs.
+#
+# Prerequisites: docker compose up -d, .\setup-keycloak.ps1, .\setup-openfga.ps1,
+# .\setup-demo-users.ps1 (seeds the properties used at the end), and the
+# procedure service running on :8095.
+#
+# @host targets the service directly. Through the gateway use
+# http://localhost:8080 once its procedure-service route includes
+# /api/v1/procedure-templates/** (a bearer token needs no session or CSRF).
+
+@host = http://localhost:8095
+@keycloak = http://localhost:8180
+
+### Token for testuser (org 1111…1111, OpenFGA admin)
+POST {{keycloak}}/realms/sclera/protocol/openid-connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=password&client_id=sclera-app&username=testuser&password=testuser
+
+> {% client.global.set("token", response.body.access_token); %}
+
+### 1. Create a template — also creates draft v1. Keys are minted: s1, q2, o3, o4
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Fire safety walk {{$random.integer(1000, 9999)}}",
+  "description": "Daily walk-through",
+  "definition": {
+    "items": [
+      { "text": "Fire exits", "type": "SECTION" },
+      { "text": "Is the fire exit clear?", "type": "YES_NO", "required": true,
+        "workOrder": true, "alertProfile": "ap-fire", "standard": "NFPA 10",
+        "options": [
+          { "label": "Yes", "result": "PASS" },
+          { "label": "No",  "result": "FAIL" }
+        ]
+      }
+    ]
+  }
+}
+
+> {% client.global.set("id", response.body.data.id); %}
+
+### 2. Read the draft — note the keys and rowVersion
+GET {{host}}/api/v1/procedure-templates/{{id}}/draft
+Authorization: Bearer {{token}}
+
+> {% client.global.set("rowVersion", response.body.data.rowVersion); %}
+
+### 3. Save the draft — send keys back for existing items, omit for new ones (the follow-up gets one)
+PUT {{host}}/api/v1/procedure-templates/{{id}}/draft
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "rowVersion": {{rowVersion}},
+  "changeNote": "Reworded q2, added a photo",
+  "definition": {
+    "items": [
+      { "key": "s1", "text": "Fire exits", "type": "SECTION" },
+      { "key": "q2", "text": "Is every fire exit clear?", "type": "YES_NO", "required": true,
+        "workOrder": true, "alertProfile": "ap-fire", "standard": "NFPA 10",
+        "options": [
+          { "key": "o3", "label": "Yes", "result": "PASS" },
+          { "key": "o4", "label": "No",  "result": "FAIL" }
+        ],
+        "follow": [
+          { "text": "Describe the obstruction", "type": "TEXT", "required": true, "when": "o4" }
+        ]
+      }
+    ]
+  }
+}
+
+> {% client.global.set("rowVersion", response.body.data.rowVersion); %}
+
+### 4. Save with a stale rowVersion — expect 409
+PUT {{host}}/api/v1/procedure-templates/{{id}}/draft
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "rowVersion": 0, "definition": { "items": [] } }
+
+### 5. Publish — creates v1 (PUBLISHED, frozen)
+POST {{host}}/api/v1/procedure-templates/{{id}}/publish
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "rowVersion": {{rowVersion}} }
+
+### 6. Start a new draft from v1 — this is how you edit after publishing (v2)
+POST {{host}}/api/v1/procedure-templates/{{id}}/draft
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "fromVersionNo": 1 }
+
+### 7. Publish it unchanged — expect newVersion=false, returns v1, draft discarded
+POST {{host}}/api/v1/procedure-templates/{{id}}/publish
+Authorization: Bearer {{token}}
+
+### 8. Draft again, then add a second section and a number question
+POST {{host}}/api/v1/procedure-templates/{{id}}/draft
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "fromVersionNo": 1 }
+
+> {% client.global.set("rowVersion", response.body.data.rowVersion); %}
+
+###
+PUT {{host}}/api/v1/procedure-templates/{{id}}/draft
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "rowVersion": {{rowVersion}},
+  "changeNote": "Split out extinguishers",
+  "definition": {
+    "items": [
+      { "key": "s1", "text": "Fire exits", "type": "SECTION" },
+      { "key": "q2", "text": "Is every fire exit clear?", "type": "YES_NO", "required": true,
+        "workOrder": true, "alertProfile": "ap-fire", "standard": "NFPA 10",
+        "options": [
+          { "key": "o3", "label": "Yes", "result": "PASS" },
+          { "key": "o4", "label": "No",  "result": "FAIL" }
+        ],
+        "follow": [
+          { "key": "q5", "text": "Describe the obstruction", "type": "TEXT", "required": true, "when": "o4" }
+        ]
+      },
+      { "text": "Extinguishers", "type": "SECTION" },
+      { "text": "Record the gauge reading", "type": "INTEGER", "unit": "psi", "min": 100, "max": 175 }
+    ]
+  }
+}
+
+### 9. Publish — creates v2
+POST {{host}}/api/v1/procedure-templates/{{id}}/publish
+Authorization: Bearer {{token}}
+
+### 10. Version history — v2, v1
+GET {{host}}/api/v1/procedure-templates/{{id}}/versions
+Authorization: Bearer {{token}}
+
+### 11. One version with its full document
+GET {{host}}/api/v1/procedure-templates/{{id}}/versions/1
+Authorization: Bearer {{token}}
+
+### 12. Diff v1 → v2 — a section and a question added
+GET {{host}}/api/v1/procedure-templates/{{id}}/diff?from=1&to=2
+Authorization: Bearer {{token}}
+
+### 13. Template summary — currentPublishedVersionNo and draftVersionNo
+GET {{host}}/api/v1/procedure-templates/{{id}}
+Authorization: Bearer {{token}}
+
+### 14. List
+GET {{host}}/api/v1/procedure-templates?status=ACTIVE&page=0&size=20
+Authorization: Bearer {{token}}
+
+### 15. Rename (identity only — not versioned)
+PUT {{host}}/api/v1/procedure-templates/{{id}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Fire safety walk (renamed) {{$random.integer(1000, 9999)}}", "description": "Weekly walk-through" }
+
+### 16. Clone v2 into a new template (draft v1, same keys)
+POST {{host}}/api/v1/procedure-templates/{{id}}/clone
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Fire safety walk copy {{$random.integer(1000, 9999)}}", "fromVersionNo": 2 }
+
+### 17. Archive — versions stay readable, no more drafts
+POST {{host}}/api/v1/procedure-templates/{{id}}/archive
+Authorization: Bearer {{token}}
+
+### 18. Tenant isolation — as testuser2 (org 2222…2222) the template is not visible
+POST {{keycloak}}/realms/sclera/protocol/openid-connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=password&client_id=sclera-app&username=testuser2&password=testuser2
+
+> {% client.global.set("token2", response.body.access_token); %}
+
+### expect 403 — testuser2 has no relation to this template in OpenFGA
+GET {{host}}/api/v1/procedure-templates/{{id}}
+Authorization: Bearer {{token2}}
+
+###############################################################################
+# Bands — what a number reading means
+#
+# min/max bound what the inspector may type; rules say what the typed value
+# means. A missing min is "anything up to max", a missing max "anything from
+# min"; both ends are inclusive and bands share no number. At publish every
+# reading that can be typed must land in exactly one band. A gap still saves —
+# an unfinished draft is normal — it just does not publish.
+###############################################################################
+
+### B1. A gauge reading, 100 to 175 psi, with bands that leave 150–160 uncovered
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Extinguisher gauge {{$random.integer(1000, 9999)}}", "definition": { "items": [
+  { "text": "Record the gauge reading", "type": "INTEGER", "unit": "psi", "min": 100, "max": 175,
+    "required": true,
+    "rules": [
+      { "max": 149, "result": "PASS" },
+      { "min": 161, "result": "FAIL" }
+    ] } ] } }
+
+> {% client.global.set("gaugeId", response.body.data.id); %}
+
+### B2. Publish → 400, "This procedure cannot be published yet: 'Record the gauge reading': no band covers readings from 150 to 160"
+POST {{host}}/api/v1/procedure-templates/{{gaugeId}}/publish
+Authorization: Bearer {{token}}
+
+### B3. Read the draft — the question's key and rowVersion
+GET {{host}}/api/v1/procedure-templates/{{gaugeId}}/draft
+Authorization: Bearer {{token}}
+
+> {%
+    client.global.set("rowVersion", response.body.data.rowVersion);
+    client.global.set("gaugeKey", response.body.data.definition.items[0].key);
+%}
+
+### B4. Fill the gap — 150 to 160 fails too. With an AMBER type defined, map it to that instead
+PUT {{host}}/api/v1/procedure-templates/{{gaugeId}}/draft
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "rowVersion": {{rowVersion}},
+  "changeNote": "Covered 150 to 160",
+  "definition": { "items": [
+    { "key": "{{gaugeKey}}", "text": "Record the gauge reading", "type": "INTEGER",
+      "unit": "psi", "min": 100, "max": 175, "required": true,
+      "rules": [
+        { "max": 149, "result": "PASS" },
+        { "min": 150, "max": 160, "result": "FAIL" },
+        { "min": 161, "result": "FAIL" }
+      ] } ] }
+}
+
+### B5. Publish — v1, and PASS and FAIL are now recorded as in use by it
+POST {{host}}/api/v1/procedure-templates/{{gaugeId}}/publish
+Authorization: Bearer {{token}}
+
+### B6. Bands on a yes/no question → 400, "is not a number question, so it cannot have bands"
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Misplaced bands", "definition": { "items": [
+  { "text": "Is it in place?", "type": "YES_NO",
+    "options": [ { "label": "Yes", "result": "PASS" }, { "label": "No", "result": "FAIL" } ],
+    "rules": [ { "max": 5, "result": "PASS" } ] } ] } }
+
+### B7. A band that runs backwards → 400, "has a band that starts above where it ends (160 to 150)"
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Backwards band", "definition": { "items": [
+  { "text": "Record the gauge reading", "type": "INTEGER",
+    "rules": [ { "min": 160, "max": 150, "result": "PASS" } ] } ] } }
+
+###############################################################################
+# Property isolation (VDMS)
+#
+# X-Sclera-Property says which property you are looking at. Omit it and you are
+# at organization level, seeing only procedures shared across the organization;
+# send it and you see that property's plus the shared ones. Another property's
+# are not filtered out of the answer — they never enter it.
+#
+# Run .\setup-demo-users.ps1 first; it seeds these two and prints them.
+###############################################################################
+
+@vdms001 = aaaaaaaa-0000-0000-0000-000000000001
+@vdms002 = aaaaaaaa-0000-0000-0000-000000000002
+
+### demo-admin — reaches every property in the org, without a per-property grant
+POST {{keycloak}}/realms/sclera/protocol/openid-connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=password&client_id=sclera-app&username=demo-admin&password=demo-admin
+
+> {% client.global.set("adminToken", response.body.access_token); %}
+
+### demo-inspector — granted VDMS001 only
+POST {{keycloak}}/realms/sclera/protocol/openid-connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=password&client_id=sclera-app&username=demo-inspector&password=demo-inspector
+
+> {% client.global.set("inspectorToken", response.body.access_token); %}
+
+### P1. Author a procedure inside VDMS001 — it belongs to VDMS001
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{adminToken}}
+X-Sclera-Property: {{vdms001}}
+Content-Type: application/json
+
+{ "name": "Extinguisher check — VDMS001", "definition": { "items": [
+  { "text": "Is it in place?", "type": "YES_NO", "required": true,
+    "options": [ { "label": "Yes", "result": "PASS" }, { "label": "No", "result": "FAIL" } ] } ] } }
+
+### P2. Author one inside VDMS002
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{adminToken}}
+X-Sclera-Property: {{vdms002}}
+Content-Type: application/json
+
+{ "name": "Boiler check — VDMS002", "definition": { "items": [
+  { "text": "Pressure in range?", "type": "YES_NO",
+    "options": [ { "label": "Yes", "result": "PASS" }, { "label": "No", "result": "FAIL" } ] } ] } }
+
+### P3. Author one at organization level — no header, so shared by every property
+POST {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{ "name": "Site induction — shared", "definition": { "items": [
+  { "text": "Briefing given?", "type": "YES_NO",
+    "options": [ { "label": "Yes", "result": "PASS" }, { "label": "No", "result": "FAIL" } ] } ] } }
+
+### P4. Inside VDMS001 — expect the VDMS001 one and the shared one, not VDMS002's
+GET {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{adminToken}}
+X-Sclera-Property: {{vdms001}}
+
+### P5. Inside VDMS002 — expect the VDMS002 one and the shared one, not VDMS001's
+GET {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{adminToken}}
+X-Sclera-Property: {{vdms002}}
+
+### P6. Organization level — expect only the shared one
+GET {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{adminToken}}
+
+### P7. demo-inspector inside VDMS001 — allowed, same view as the admin has here
+GET {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{inspectorToken}}
+X-Sclera-Property: {{vdms001}}
+
+### P8. demo-inspector asking for VDMS002 — expect 403, refused before the database
+GET {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{inspectorToken}}
+X-Sclera-Property: {{vdms002}}
+
+### P9. A malformed property — expect 400
+GET {{host}}/api/v1/procedure-templates
+Authorization: Bearer {{adminToken}}
+X-Sclera-Property: not-a-uuid
+
+### M1. Which properties may demo-admin open? — expect VDMS001 and VDMS002
+# What the property switcher lists. Read from the grants, so it never offers a
+# property the X-Sclera-Property check would then refuse.
+GET {{host}}/api/v1/me/properties
+Authorization: Bearer {{adminToken}}
+
+### M2. Which properties may demo-inspector open? — expect VDMS001 only
+GET {{host}}/api/v1/me/properties
+Authorization: Bearer {{inspectorToken}}

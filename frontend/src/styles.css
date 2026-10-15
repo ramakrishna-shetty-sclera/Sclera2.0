@@ -73,6 +73,17 @@ h2 {
   color: #9ca3af;
 }
 
+/* The property dropdown sits on the dark top bar, not in a light form. */
+.property-switcher {
+  width: auto;
+  margin-top: 0;
+  padding: 4px 8px;
+  font-size: 13px;
+  background: #1f2937;
+  color: #f9fafb;
+  border-color: #374151;
+}
+
 .content {
   max-width: 960px;
   margin: 0 auto;
@@ -317,6 +328,115 @@ input[type='file'] {
 .badge-amber {
   background: #fef3c7;
   color: #92400e;
+}
+
+/* ── Result types settings ─────────────────────────────────────────────── */
+.rt-rank {
+  width: 1%;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.rt-rank-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rt-handle {
+  cursor: grab;
+  color: #9ca3af;
+  font-size: 16px;
+  user-select: none;
+}
+
+.rt-arrows {
+  display: inline-flex;
+}
+
+.rt-arrows .btn {
+  padding: 2px 6px;
+  font-size: 11px;
+}
+
+tr[draggable='true'] {
+  cursor: grab;
+}
+
+.rt-dragging td {
+  opacity: 0.4;
+}
+
+.rt-drop-target td {
+  box-shadow: inset 0 2px 0 #2563eb;
+}
+
+.rt-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rt-swatch {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+.rt-key {
+  display: block;
+  font-family: 'Consolas', 'SF Mono', monospace;
+}
+
+.rt-inactive td {
+  opacity: 0.55;
+}
+
+.rt-actions {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.rt-actions .btn + .btn {
+  margin-left: 6px;
+}
+
+.rt-key-inline {
+  font-family: 'Consolas', 'SF Mono', monospace;
+  font-weight: 600;
+}
+
+.rt-color-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.rt-color-row input {
+  margin-top: 4px;
+}
+
+.rt-color-picker {
+  width: 44px;
+  height: 38px;
+  flex: none;
+  padding: 2px;
+  cursor: pointer;
+}
+
+.field-error,
+.field-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.field-error {
+  color: #b91c1c;
 }
 
 .alert {
@@ -1252,5 +1372,294 @@ input[type='file'] {
 
 .history-action {
   font-weight: 600;
+  font-size: 13px;
+}
+
+/* --- a procedure document, read-only ------------------------------------ */
+
+.doc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.doc-item {
+  padding: 10px 0;
+  border-top: 1px solid #f3f4f6;
+}
+
+.doc-item:first-child {
+  border-top: none;
+}
+
+/* The heading a run of questions sits under. */
+.doc-section {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #374151;
+}
+
+.doc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.doc-options {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  font-size: 13px;
+}
+
+.doc-options li {
+  padding: 2px 0;
+}
+
+.doc-result {
+  margin-left: 6px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+/* Follow-ups are the one thing that indents: the nesting is the meaning. */
+.doc-follow {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0 0 0 16px;
+  border-left: 2px solid #e5e7eb;
+}
+
+.doc-follow .doc-item:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+/* --- authoring a document ------------------------------------------------ */
+
+/* A section is a heading in the same list, so it is weighted, not indented. */
+.item-section > .form-grid .grow input {
+  font-weight: 600;
+}
+
+.question-editor .doc-follow {
+  margin-top: 10px;
+}
+
+.question-editor .doc-follow .question-editor {
+  border-top: none;
+  padding-bottom: 0;
+}
+
+.answers {
+  margin: 10px 0;
+}
+
+.answer-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+/*
+ * The global `input, select, textarea { width: 100%; margin-top: 4px }` rule
+ * puts every control in this row at full width. `flex: 1` on the label input
+ * means flex-basis 0, so it only ever received LEFTOVER space — and the result
+ * picker, still asking for 100%, left none. The input collapsed to its padding
+ * (22px, at every window size) and could be focused but not typed in.
+ *
+ * So each end gets an explicit basis: the label takes the free space, the
+ * picker keeps its natural width.
+ */
+.answer-row input,
+.answer-row select {
+  margin-top: 0;
+}
+
+.answer-row input[type='text'],
+.answer-row input:not([type]) {
+  /* A basis of its own rather than the global 100%: with wrapping on, a 100%
+     basis would push the picker onto a second line at every width. */
+  flex: 1 1 180px;
+  width: auto;
+  min-width: 0;
+}
+
+.answer-row select {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 170px;
+  max-width: 40%;
+}
+
+.answer-row input[readonly] {
+  background: #f9fafb;
+  color: #6b7280;
+}
+
+/* A mapping the organization no longer has: shown, not cleared. */
+.field-stale {
+  border-color: #d97706;
+}
+
+.refusal-list {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+
+.refusal-list li {
+  margin-bottom: 3px;
+}
+
+/* The question's number: 1, 2, 2.1. A section has none — it is a heading. */
+.doc-number {
+  display: inline-block;
+  min-width: 2.2em;
+  margin-right: 6px;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- AI question generation ----------------------------------------------- */
+
+.alert-info {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.ai-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ai-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.ai-doc-form label {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.ai-chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.ai-msg {
+  max-width: 85%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  white-space: pre-wrap;
+}
+
+.ai-msg-user {
+  align-self: flex-end;
+  background: #dbeafe;
+}
+
+.ai-msg-assistant {
+  align-self: flex-start;
+  background: #f3f4f6;
+}
+
+.ai-chat-input {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.ai-chat-input textarea {
+  flex: 1;
+  margin-top: 0;
+}
+
+.ai-candidates {
+  margin-top: 14px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 10px;
+}
+
+.ai-candidates-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.ai-candidate {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  margin-bottom: 6px;
+  background: #fff;
+}
+
+.ai-candidate-selected {
+  border-color: #93c5fd;
+  background: #f8fbff;
+}
+
+.ai-candidate-main {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  flex: 1;
+  cursor: pointer;
+}
+
+/* The global 100%-width input rule would stretch the checkbox's hit area. */
+.ai-candidate-main input[type='checkbox'] {
+  width: auto;
+  margin-top: 4px;
+}
+
+.ai-candidate-text {
+  font-weight: 500;
+}
+
+.ai-candidate-main .badge {
+  margin-right: 6px;
+}
+
+.ai-candidate-follow {
+  margin-top: 2px;
+}
+
+.ai-candidate-source {
+  margin-top: 2px;
+  font-style: italic;
+}
+
+/* The reuse hint: advisory, so amber rather than an error. */
+.ai-candidate-similar {
+  margin-top: 4px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #fef3c7;
+  color: #92400e;
   font-size: 13px;
 }

@@ -1,0 +1,1653 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sclera Procedure Builder</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  color-scheme: dark;
+  /* Sclera 2.0 tokens (Figma variable names in comments) */
+  --page:#0b0b0d;        /* surface/page */
+  --surface:#161618;     /* surface/primary */
+  --raised:#1e1e21; --line-soft:#26262a;
+  --line:#3f4e5c;        /* border/secondary */
+  --line-strong:#a6a6ae; /* border/primary */
+  --text:#eff2f5;        /* text/body */
+  --heading:#ffffff;     /* text/heading */
+  --muted:#9ca3af;       /* text/secondary */
+  --dim:#5e6975;
+  --action:#ffc400;      /* surface/action, border/action, text/action */
+  --on-action:#0b0b0d;   /* text/on-action */
+  --logo-yellow:#f6cc01; /* surface/logo-yellow */
+  --tonal:#51430c; --selected-text:#ffdb77;
+  --selected:#312a10;    /* surface/selected */
+  --action-tint:rgba(255,196,0,.22); /* state-layer/on-outline/pressed */
+  --chip-success:#08361f; --on-success:#c8f5d6; /* surface/chip-success, text/on-success */
+  --error:#8f1c16; --on-error:#fff0ef;          /* surface/error (count badge), text/on-error */
+  --read-only:#202020;   /* surface/read-only: tooltip, snackbar */
+  /* Status Chips: surface/chip-{type}, text/on-{type} (filled) · border/{type}, text/{type} (outline) */
+  --chip-warning:#4d2600; --on-warning:#ffe1c7; --warning:#ff9736;
+  --chip-error:#470e0b; --error-line:#ff8078;
+  --chip-info:#052642; --on-info:#d4e7ff; --info:#5aa9ff; --info-surface:#073863;
+  --chip-neutral:#2e2e30;
+  --success:#3fd463; --success-line:#22b84c;
+  --pass:#7bd88f; --pass-bg:#16301f; --pass-line:#2f6b41;
+  --fail:#ff8078; --fail-bg:#3a1714; --fail-line:#7a2e28;
+  --r-sm:2px; --r-md:4px; --r-lg:8px; --r-xl:16px; /* border-radius/sm,md,lg · Corner/Large */
+  --rail-w:96px; --topbar-h:56px;
+}
+*{box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{margin:0;background:var(--page);color:var(--text);font:400 14px/1.43 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.25px;overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit}
+button{cursor:pointer}
+button:disabled{cursor:not-allowed}
+input::placeholder,textarea::placeholder{color:var(--muted)}
+input[type=checkbox],input[type=radio]{-webkit-appearance:none;appearance:none;flex-shrink:0;width:16px;height:16px;margin:4px;border:2px solid var(--line-strong);border-radius:4px;background:var(--surface);display:inline-grid;place-content:center;cursor:pointer}
+input[type=radio]{border-radius:9999px}
+input[type=checkbox]:checked{background:var(--action);border-color:var(--action)}
+input[type=checkbox]:checked::after{content:"";width:8px;height:4px;border:2px solid var(--on-action);border-top:0;border-right:0;transform:translate(0,-1px) rotate(-45deg)}
+input[type=radio]:checked{border-color:var(--action)}
+input[type=radio]:checked::after{content:"";width:8px;height:8px;border-radius:9999px;background:var(--action)}
+input[type=checkbox]:hover,input[type=radio]:hover{box-shadow:0 0 0 4px var(--raised)}
+input[type=checkbox]:disabled,input[type=radio]:disabled{opacity:.38;cursor:not-allowed}
+:focus-visible{outline:2px solid var(--action);outline-offset:2px}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline-offset:-1px}
+h1,h2,h3{margin:0;color:var(--heading);text-wrap:balance}
+p{margin:0}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#2a2a2e;border-radius:9999px;border:2px solid var(--page)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+#root{height:100%}
+.app{height:100vh;display:flex}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* buttons */
+/* Horizontal Button: size/control/sm 32px, spacing/sm 12px, Medium/Label Medium 12px */
+.btn{height:32px;padding:0 12px;border-radius:var(--r-md);border:1px solid transparent;background:transparent;display:inline-flex;align-items:center;justify-content:center;gap:4px;font-size:12px;line-height:16px;font-weight:500;letter-spacing:.25px;white-space:nowrap}
+.btn svg{width:16px;height:16px}
+.btn-sm{height:32px;padding:0 12px;font-size:12px;gap:4px}
+.btn-xs{height:24px;padding:0 8px;font-size:12px;gap:4px}
+.btn-xs svg{width:12px;height:12px}
+.btn-primary{background:var(--action);color:var(--on-action)}
+.btn-primary:hover{filter:brightness(1.1)}
+.btn-primary:disabled,.btn-tonal:disabled,.btn-quiet:disabled{background:var(--raised);color:var(--dim);filter:none}
+.btn-outline{border-color:var(--action);color:var(--action)}
+.btn-outline:hover{background:rgba(255,196,0,.08)}
+.btn-tonal,.btn-quiet{background:var(--tonal);color:var(--selected-text);border-color:transparent}
+.btn-tonal:hover,.btn-quiet:hover{background:#453a13}
+.btn-ghost{color:var(--action);padding:0 8px}
+.btn-ghost:hover{background:rgba(255,196,0,.08)}
+/* .btn-quiet is the Secondary (tonal) style */
+.btn-danger{background:#b3231c;color:#fff;border-color:transparent}
+.btn-danger:hover{filter:brightness(1.1)}
+.ibtn{width:32px;height:32px;border-radius:var(--r-md);border:0;background:transparent;color:var(--muted);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.ibtn:hover{background:var(--raised);color:var(--text)}
+.ibtn.lg{width:40px;height:40px;color:var(--text)}
+.ibtn.xl{width:48px;height:48px;border-radius:var(--r-lg);color:var(--text)}
+.ibtn.danger:hover{color:var(--fail)}
+.link{border:0;background:none;padding:0;color:var(--action);font-weight:500;font-size:12px}
+.link:hover{color:var(--selected-text)}
+
+/* chips */
+.pill{height:24px;padding:0 8px;border-radius:9999px;border:1px solid var(--action);background:transparent;color:var(--text);font-size:12px;line-height:16px;font-weight:400;letter-spacing:.25px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.pill:hover{background:rgba(255,196,0,.08)}
+.pill.on{background:var(--tonal);border-color:var(--tonal);color:var(--selected-text)}
+.pill.on:hover{background:#453a13}
+.pill .n{font-variant-numeric:tabular-nums;color:var(--muted)}
+.pill.on .n{color:var(--selected-text)}
+/* Status Chips: full radius, spacing/sm x spacing/2xs, Semibold/Body Small */
+.tag{height:24px;padding:0 12px;border:1px solid transparent;border-radius:9999px;font-size:12px;line-height:16px;font-weight:600;letter-spacing:.4px;display:inline-flex;align-items:center;gap:8px;background:var(--chip-neutral);color:var(--text);white-space:nowrap}
+.tag svg{width:14px;height:14px;margin:0 -2px}
+.tag.pass{background:var(--chip-success);color:var(--on-success)}
+.tag.warn{background:var(--chip-warning);color:var(--on-warning)}
+.tag.info{background:var(--chip-info);color:var(--on-info)}
+.tag.fail{background:var(--chip-error);color:var(--on-error)}
+.tag.line{background:transparent;border-color:var(--line-strong);color:var(--text)}
+.tag.line.pass{border-color:var(--success-line);color:var(--success)}
+.tag.line.warn{border-color:var(--warning);color:var(--warning)}
+.tag.line.info{border-color:var(--info);color:var(--info)}
+.tag.line.fail{border-color:var(--error-line);color:var(--error-line)}
+/* Badges: count badge, size/badge/count 16px */
+.badge{min-width:16px;height:16px;padding:0 4px;border-radius:9999px;background:var(--error);color:var(--on-error);font-size:11px;line-height:16px;font-weight:500;letter-spacing:.4px;display:inline-flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
+.badge.quiet{background:var(--raised);color:var(--muted)}
+.tag.sel{background:var(--chip-info);color:var(--on-info)}
+.dot{width:6px;height:6px;border-radius:9999px;display:inline-block;flex-shrink:0}
+
+/* fields: notched label, per Sclera 2.0 text field */
+.field{position:relative;padding-top:6px}
+.field>label{position:absolute;top:0;left:8px;padding:0 4px;border-radius:var(--r-sm);background:var(--surface);font-size:12px;line-height:12px;font-weight:500;color:var(--muted);z-index:1}
+.field:focus-within>label{color:var(--selected-text)}
+.field.on-page>label{background:var(--page)}
+.req{color:var(--fail)}
+.input,.select,.textarea{width:100%;height:40px;border:1px solid var(--line-strong);border-radius:var(--r-md);background:transparent;padding:0 12px;font-size:14px}
+.select{display:flex;align-items:center;gap:8px;text-align:left;color:var(--text);background:var(--surface) url("data:image/svg+xml;base64,PHN2ZyBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIiBvdmVyZmxvdz0idmlzaWJsZSIgc3R5bGU9ImRpc3BsYXk6IGJsb2NrOyIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiB2aWV3Qm94PSIwIDAgMjQgMjQiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxnIGlkPSJJY29ucy9PdXRsaW5lL0Fycm93cy9jaGV2cm9uLWRvd24iPgo8cGF0aCBpZD0iVmVjdG9yIiBkPSJNNiA5TDEyIDE1TDE4IDkiIHN0cm9rZT0iI0VGRjJGNSIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L2c+Cjwvc3ZnPgo=") no-repeat right 8px center/24px 24px;padding:0 40px 0 12px;cursor:pointer}
+.select.sm{height:32px;font-size:12px}
+.dd-v{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dd-v.ph{color:var(--muted)}
+.dd{position:relative;width:100%}
+.dd.open .select{border-color:var(--action);box-shadow:inset 0 0 0 1px var(--action);background-image:url("data:image/svg+xml;base64,PHN2ZyBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIiBvdmVyZmxvdz0idmlzaWJsZSIgc3R5bGU9ImRpc3BsYXk6IGJsb2NrOyIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiB2aWV3Qm94PSIwIDAgMjQgMjQiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxnIHRyYW5zZm9ybT0icm90YXRlKDE4MCAxMiAxMikiIGlkPSJJY29ucy9PdXRsaW5lL0Fycm93cy9jaGV2cm9uLWRvd24iPgo8cGF0aCBpZD0iVmVjdG9yIiBkPSJNNiA5TDEyIDE1TDE4IDkiIHN0cm9rZT0iI0VGRjJGNSIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L2c+Cjwvc3ZnPgo=")}
+.dd.on-page .select{background-color:var(--page)}
+.dd-inline{width:auto;display:inline-block}
+.dd-inline .select{width:auto;min-width:120px}
+.menu{position:absolute;z-index:45;top:calc(100% + 4px);left:0;min-width:100%;max-height:296px;overflow:auto;padding:8px 0;display:flex;flex-direction:column;background:var(--surface);box-shadow:0 4px 4px rgba(0,0,0,.3),0 8px 12px 6px rgba(0,0,0,.15)}
+.menu-g{padding:8px 24px 4px;font-size:11px;line-height:16px;font-weight:500;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)}
+.menu-row{display:flex;align-items:center;gap:8px;min-height:32px;padding:8px 24px;font-size:12px;line-height:16px;font-weight:500;letter-spacing:.25px;color:var(--text);cursor:pointer;white-space:nowrap}
+.menu-row span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.menu.end{left:auto;right:0}
+.menu-row[data-hi="1"]{background:#2e2e30} /* surface/header: neutral list-row hover */
+.menu-row[aria-selected=true]{background:var(--selected);color:var(--selected-text)}
+.menu-row[aria-disabled=true]{opacity:.38;cursor:not-allowed}
+.textarea{height:auto;padding:10px 12px;line-height:20px;resize:vertical}
+.input.soft{border-color:var(--line)}
+.input.sm{height:36px}
+.input.invalid,.select.invalid{border-color:var(--fail)}
+.input:hover,.select:hover,.textarea:hover{border-color:var(--text)}
+.input:focus,.select:focus,.textarea:focus{outline:none;border-color:var(--action);box-shadow:inset 0 0 0 1px var(--action)}
+.input:disabled,.select:disabled{opacity:.38}
+
+/* switch */
+.sw{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;flex-shrink:0;border:0;background:none;padding:0;font-size:14px;line-height:16px;letter-spacing:.4px}
+.sw .track{position:relative;width:40px;height:24px;margin:4px;border-radius:9999px;border:1px solid var(--line-strong);background:var(--surface);flex-shrink:0;transition:background .15s}
+.sw .knob{position:absolute;top:50%;left:3px;width:16px;height:16px;border-radius:9999px;background:var(--dim);transform:translateY(-50%);transition:left .15s,width .15s,height .15s}
+.sw[aria-checked=true] .track{background:var(--action);border-color:var(--action)}
+.sw[aria-checked=true] .knob{left:18px;width:20px;height:20px;background:var(--on-action)}
+
+/* Navigation Rail (Sclera 2.0): 96px, icon-only destinations, 56px state layer */
+.rail{position:relative;width:var(--rail-w);flex-shrink:0;padding:32px 0 16px;display:flex;flex-direction:column;align-items:center;gap:32px;background:var(--page)}
+.rail{border-right:1px solid var(--line);align-self:stretch;min-height:100%}
+.rail-logo{position:relative;width:40px;height:40px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border:0;border-radius:var(--r-lg);background:none;padding:0}
+.rail-logo:hover{background:var(--raised)}
+.rail-logo .open{display:none}
+.rail-logo .tip{left:calc(100% + 20px)}
+.rail-x .rail-logo .tip{left:auto;right:-8px;top:calc(100% + 8px);transform:none}
+.rail-logo:hover .mono,.rail-logo:focus-visible .mono{display:none}
+.rail-logo:hover .open,.rail-logo:focus-visible .open{display:block}
+.rail-logo .mono{width:32px;height:23.312px;transform:scaleY(-1)}
+.rail-sections{flex:1;min-height:0;overflow-y:auto;overflow-x:clip;display:flex;flex-direction:column;gap:12px;width:var(--rail-w)}
+.rail-sec{display:flex;flex-direction:column;gap:4px;width:100%}
+.rail-sec.first{gap:0}
+.rail-div{height:1px;margin:0 16px;background:var(--line)}
+.rail-item{position:relative;width:100%;padding:4px 0;border:0;background:none;display:flex;justify-content:center}
+.rail-item .ic{width:56px;height:56px;border-radius:var(--r-lg);display:flex;align-items:center;justify-content:center}
+.rail-item .ic img,.rail-item .ic svg{width:24px;height:24px}
+.rail-item:hover .ic{background:var(--raised)}
+.rail-item[aria-current=page] .ic{background:var(--selected)}
+.tip{position:absolute;left:calc(100% - 8px);top:50%;transform:translateY(-50%);z-index:60;white-space:nowrap;padding:12px;border-radius:var(--r-lg);background:var(--read-only);color:var(--muted);font-size:12px;line-height:16px;letter-spacing:.25px;box-shadow:0 1px 2px rgba(0,0,0,.3),0 1px 3px 1px rgba(0,0,0,.15);pointer-events:none;opacity:0;transition:opacity .12s}
+.rail-item:hover .tip,.rail-item:focus-visible .tip,.rail-logo:hover .tip,.rail-logo:focus-visible .tip{opacity:1}
+.avatar{width:48px;height:48px;border:0;background:none;padding:0;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.avatar span{width:32px;height:32px;border-radius:9999px;border:1px solid var(--line-strong);background:var(--tonal);color:var(--selected-text);font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center}
+/* Navigation Rail: Expanded (220px) */
+.rail-x{width:220px;padding:32px 16px 16px;align-items:stretch}
+.rail-head{display:flex;align-items:center;gap:4px;min-height:40px}
+.rail-word{flex:1;min-width:0;padding:4px;display:flex}
+.rail-x .rail-sections{width:auto;gap:12px}
+.rail-x .rail-sec{gap:0}
+.rail-sh{padding:4px 16px;font-size:11px;line-height:16px;font-weight:500;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rail-row{display:flex;align-items:center;gap:8px;width:100%;padding:8px 16px;border:0;border-radius:var(--r-lg);background:none;color:var(--text);font-size:14px;line-height:16px;font-weight:500;letter-spacing:.5px;text-align:left;white-space:nowrap}
+.rail-row img{flex-shrink:0}
+.rail-row:hover{background:var(--raised)}
+.rail-row[aria-current=page]{background:var(--selected)}
+.acct{display:flex;align-items:center;gap:2px;height:40px;border:0;background:none;padding:0;text-align:left;color:var(--text)}
+.acct .av{width:40px;height:40px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.acct .av span{width:28px;height:28px;border-radius:9999px;border:1px solid var(--line-strong);background:var(--tonal);color:var(--selected-text);font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.acct-t{display:flex;flex-direction:column;min-width:0;font-size:11px;line-height:16px;letter-spacing:.4px}
+.acct-t b{font-weight:500}
+.acct-t i{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Top Bar (Sclera 2.0): 56px, breadcrumbs left, org menu + search + icon buttons right */
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{height:var(--topbar-h);flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 24px;border-bottom:1px solid var(--line)}
+.crumbs{display:flex;align-items:center;gap:8px;min-width:0}
+.crumb{display:inline-flex;align-items:center;gap:8px;height:24px}
+.crumb a,.crumb span.cur{padding:2px;border-radius:var(--r-sm);font-size:14px;line-height:16px;letter-spacing:.5px;white-space:nowrap}
+.crumb a{color:var(--muted);text-decoration:none;cursor:pointer;border:0;background:none}
+.crumb a:hover{color:var(--text)}
+.crumb span.cur{color:var(--text);max-width:360px;overflow:hidden;text-overflow:ellipsis}
+.crumb img{width:16px;height:16px}
+.tb-right{display:flex;align-items:center;gap:16px;justify-content:flex-end}
+.orgmenu{width:228px;height:32px;padding:8px 8px 8px 24px;border:0;background:var(--surface);display:flex;align-items:center;gap:8px;font-size:12px;line-height:16px;font-weight:500;color:var(--text);text-align:left}
+.orgmenu span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.orgmenu img{width:24px;height:24px}
+.tb-icons{display:flex;align-items:center}
+.tb-icons button{width:32px;height:32px;border:0;border-radius:var(--r-lg);background:none;display:flex;align-items:center;justify-content:center}
+.tb-icons button:hover{background:var(--raised)}
+.tb-icons img{width:16px;height:16px}
+.scroll{flex:1;overflow:auto}
+
+/* Page header (Sclera 2.0): 48px back icon button, Headline 6 title, Body XSmall subtitle */
+.phead{flex-shrink:0;display:flex;align-items:flex-start;gap:12px;padding:16px 24px 16px 12px;border-bottom:1px solid var(--line)}
+.phead .ptitle{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;justify-content:center;min-height:48px}
+.phead h1{font-size:20px;line-height:28px;font-weight:400;letter-spacing:0;color:var(--heading)}
+.phead .psub{font-size:12px;line-height:16px;letter-spacing:.4px;color:var(--muted)}
+.phead .pacts{display:flex;align-items:center;gap:8px;align-self:center}
+.phead.nobk{padding-left:24px}
+
+/* Tabs (Sclera 2.0 primary tabs): 48px, Medium/Label Medium, 3px indicator */
+.dtabs{display:flex;height:48px;border-bottom:1px solid var(--line)}
+.dtab{position:relative;height:48px;padding:8px 12px;border:0;background:none;color:var(--text);font-size:12px;line-height:16px;font-weight:500;letter-spacing:.25px;display:inline-flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap}
+.dtab:hover{background:var(--raised)}
+.dtab[aria-selected=true]::after{content:"";position:absolute;left:14px;right:14px;bottom:0;height:3px;border-radius:100px 100px 0 0;background:var(--action)}
+.dtabs.fill .dtab{flex:1}
+
+/* Metric card */
+.metric{flex:1;min-width:0;padding:16px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface);display:flex;gap:8px;align-items:flex-start}
+.metric .mbody{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+.metric .mlabel{font-size:12px;line-height:16px;letter-spacing:.25px;color:var(--muted);text-transform:uppercase}
+.metric .mval{font-size:24px;line-height:28px;font-weight:400;color:var(--heading);font-variant-numeric:tabular-nums}
+.metric .mnote{font-size:12px;line-height:16px;letter-spacing:.25px;color:var(--muted)}
+.ichip{padding:8px;border-radius:var(--r-lg);background:var(--action-tint);color:var(--text);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+
+/* Card with header, and label/value fields */
+.dcard{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface);overflow:hidden}
+.dcard-head{padding:16px;display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line)}
+.dcard-head h2{font-size:14px;line-height:16px;font-weight:500;letter-spacing:.5px;color:var(--heading)}
+.fields{padding:16px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.fld{display:flex;flex-direction:column;gap:4px;min-width:0}
+.fld span:first-child{font-size:12px;line-height:16px;letter-spacing:.25px;color:var(--muted)}
+.fld span:last-child{font-size:12px;line-height:16px;letter-spacing:.4px;color:var(--text)}
+
+/* library */
+.lib-head{padding:16px 24px 0;display:flex;flex-direction:column;gap:16px}
+/* Search bar (Sclera 2.0): 32px, surface/primary, 16px icon, Label Medium */
+.search{height:32px;width:280px;border-radius:var(--r-md);background:var(--surface);display:flex;align-items:center;padding:4px 8px}
+.search .sic{width:24px;height:24px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.search .sic img{width:16px;height:16px}
+.search input{flex:1;min-width:0;height:24px;padding:4px;border:0;background:transparent;font-size:12px;line-height:16px;letter-spacing:.25px;outline:none}
+.search.wide{width:360px}
+.row{display:flex;align-items:center;gap:12px}
+.between{justify-content:space-between}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.pcard{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface);padding:16px;display:flex;flex-direction:column;gap:14px;text-align:left;width:100%}
+.pcard:hover{border-color:var(--line-strong)}
+.ptile{width:56px;height:56px;border-radius:var(--r-lg);background:var(--page);color:var(--action);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.clamp2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ellipsis{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;font-size:12px}
+.meta3 span span:first-child{color:var(--muted);display:block}
+.muted{color:var(--muted)}
+.small{font-size:12px}
+
+/* builder shell */
+.bshell{flex:1;display:flex;flex-direction:column;min-width:0}
+.bhead{flex-shrink:0;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:16px 24px 16px 12px}
+.title-input{height:32px;border:1px solid transparent;border-radius:var(--r-md);background:transparent;font-size:20px;line-height:28px;font-weight:400;letter-spacing:0;color:var(--heading);padding:0 6px;margin-left:-7px;width:420px}
+.title-input:hover{border-color:var(--line)}
+.title-input:focus{border-color:var(--line-strong);outline:none}
+.saved{font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:6px}
+.ready{height:32px;padding:0 12px;border-radius:9999px;border:0;background:var(--fail-bg);color:var(--fail);font-size:12px;letter-spacing:.4px;font-weight:600;display:inline-flex;align-items:center;gap:6px}
+.ready.ok{background:var(--chip-success);color:var(--on-success)}
+.bbody{flex:1;display:flex;min-height:0}
+
+/* navigator */
+.navi{width:288px;flex-shrink:0;border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;background:var(--page)}
+.navi-top{padding:16px 16px 12px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line)}
+.jump{display:flex;gap:8px}
+.jump .input{height:36px}
+.navi-list{flex:1;overflow:auto;padding:8px 8px 16px;outline:none}
+.nitem{position:relative;display:flex;align-items:flex-start;gap:8px;padding:7px 8px;border-radius:var(--r-md);border:1px solid transparent;width:100%;background:transparent;text-align:left}
+.nitem:hover{background:var(--surface)}
+.nitem.cur{background:var(--selected)}
+.nitem.drop-before::before{content:"";position:absolute;left:4px;right:4px;top:-2px;height:2px;background:var(--action);border-radius:2px}
+.nitem .num{min-width:28px;font-size:12px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums;padding-top:1px}
+.nitem.cur .num{color:var(--selected-text)}
+.nitem .grip{color:var(--dim);cursor:grab;padding-top:1px;flex-shrink:0}
+.nitem .grip:active{cursor:grabbing}
+.nitem .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.nitem .txt{font-size:13px;line-height:18px}
+.nitem .sub{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden}
+.warn{color:var(--fail)}
+.navi-foot{padding:12px 16px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--muted)}
+.kbd{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;border-radius:var(--r-sm);border:1px solid var(--line);font-size:11px;color:var(--muted)}
+.section-nav{font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);padding:12px 8px 4px}
+
+/* canvas */
+.canvas{flex:1;min-width:0;overflow:auto;scroll-behavior:smooth}
+.canvas-in{max-width:920px;margin:0 auto;padding:20px 32px 120px;display:flex;flex-direction:column;gap:12px}
+.stepper{position:sticky;top:0;z-index:5;background:var(--page);padding:8px 0 10px;display:flex;align-items:center;gap:10px}
+.qcard{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface);scroll-margin-top:64px}
+.qcard.cur{border-color:var(--action);box-shadow:0 0 0 3px rgba(255,196,0,.12)}
+.qcard.flash{animation:flash 1s ease-out}
+@keyframes flash{0%{box-shadow:0 0 0 6px rgba(255,196,0,.35)}100%{box-shadow:0 0 0 3px rgba(255,196,0,.12)}}
+.qsum{width:100%;border:0;background:transparent;padding:14px 16px;display:flex;gap:12px;align-items:flex-start;text-align:left}
+.qnum{min-width:34px;height:24px;padding:0 6px;border-radius:var(--r-sm);background:var(--raised);font-size:12px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;flex-shrink:0}
+.qcard.cur .qnum{background:var(--selected);color:var(--selected-text)}
+.qtext{font-size:15px;line-height:22px;font-weight:500}
+.qtext.empty{color:var(--muted);font-style:italic;font-weight:400}
+.opts-line{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.ochip{height:24px;padding:0 12px;border-radius:9999px;border:1px solid var(--line-strong);font-size:12px;line-height:16px;font-weight:600;letter-spacing:.4px;display:inline-flex;align-items:center;gap:6px}
+.qedit{padding:16px 16px 14px;display:flex;flex-direction:column;gap:14px}
+.qrow{display:flex;gap:12px;align-items:flex-start}
+.indent{margin-left:46px}
+.hint{font-size:11px;line-height:16px;letter-spacing:.4px;color:var(--muted)}
+.optrow{display:flex;align-items:center;gap:10px}
+.glyph{width:16px;height:16px;border:1.5px solid var(--line-strong);border-radius:9999px;flex-shrink:0}
+.glyph.sq{border-radius:3px}
+.seg{display:inline-flex;border:1px solid var(--line-strong);border-radius:var(--r-md);overflow:hidden}
+.seg button{height:32px;min-width:72px;padding:0 12px;border:0;border-right:1px solid var(--line-strong);background:transparent;color:var(--text);font-size:12px;font-weight:500;letter-spacing:.25px;display:inline-flex;align-items:center;justify-content:center;gap:4px}
+.seg button:last-child{border-right:0}
+.seg button:hover{background:var(--raised)}
+.seg button.pass[aria-pressed=true]{background:var(--chip-success);color:var(--on-success)}
+.seg button.fail[aria-pressed=true]{background:var(--chip-error);color:var(--on-error)}
+.fu-btn{height:32px;padding:0 12px;border-radius:var(--r-md);border:1px solid var(--action);background:transparent;color:var(--action);font-size:12px;font-weight:500;letter-spacing:.25px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.fu-btn:hover{background:rgba(255,196,0,.08)}
+.fu-btn.has{border-color:transparent;background:var(--tonal);color:var(--selected-text)}
+.divider{height:1px;background:var(--line)}
+.qfoot{display:flex;align-items:center;gap:16px;flex-wrap:nowrap;min-height:40px}
+.alert-prof{display:flex;flex-direction:column;gap:4px;max-width:420px}
+.alert-prof .hint{padding:0 8px}
+.hint.warn{color:var(--error-line)}
+.children{margin-left:26px;padding-left:18px;border-left:2px solid var(--line);display:flex;flex-direction:column;gap:10px;padding-top:10px}
+.when{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-bottom:6px}
+.inserter{height:14px;position:relative;display:flex;align-items:center;justify-content:center}
+.inserter button{opacity:0;height:24px;padding:0 8px;border-radius:var(--r-md);border:1px solid var(--action);background:var(--page);color:var(--action);font-size:12px;font-weight:500;display:inline-flex;align-items:center;gap:4px;transition:opacity .12s}
+.inserter:hover button,.inserter button:focus-visible{opacity:1}
+.inserter::before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:transparent}
+.inserter:hover::before{background:var(--tonal)}
+.inserter button{position:relative}
+.quick{border:1px dashed var(--line);border-radius:var(--r-lg);padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.section-card{border:0;border-bottom:1px solid var(--line);padding:18px 0 8px;display:flex;align-items:center;gap:10px}
+.section-card input{flex:1;border:0;background:transparent;font-size:13px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);padding:4px 0}
+.section-card input:focus{outline:none;color:var(--text)}
+
+/* type picker */
+.popover{position:absolute;z-index:40;background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--r-md);box-shadow:0 16px 40px rgba(0,0,0,.55);padding:8px}
+
+/* side panel */
+.side{width:360px;flex-shrink:0;border-left:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;min-height:0}
+.stabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-bottom:1px solid var(--line);flex-shrink:0;height:48px}
+.stab{position:relative;height:48px;padding:8px 4px;border:0;background:transparent;color:var(--text);font-size:12px;line-height:16px;font-weight:500;letter-spacing:.25px;display:flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap}
+.stab svg{width:14px;height:14px;color:var(--muted)}
+.stab:hover{background:var(--raised)}
+.stab[aria-selected=true]::after{content:"";position:absolute;left:14px;right:14px;bottom:0;height:3px;border-radius:100px 100px 0 0;background:var(--action)}
+.stab[aria-selected=true] svg{color:var(--action)}
+.side.pulse{animation:pulse .9s ease-out}
+@keyframes pulse{0%{box-shadow:inset 0 0 0 3px var(--action)}100%{box-shadow:inset 0 0 0 0 transparent}}
+.srcstrip{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface)}
+.srcbtn{flex:1;display:flex;align-items:center;gap:10px;height:52px;padding:0 12px;border-radius:var(--r-md);border:1px solid var(--line);background:var(--page);text-align:left}
+.srcbtn:hover{border-color:var(--action)}
+.srcbtn.on{border-color:var(--action);background:var(--selected)}
+.seg-tabs{display:inline-flex;border:1px solid var(--line-strong);border-radius:var(--r-md);overflow:hidden}
+.seg-tabs button{height:32px;padding:0 12px;border:0;border-right:1px solid var(--line-strong);background:transparent;color:var(--text);font-size:12px;font-weight:500;letter-spacing:.25px;display:inline-flex;align-items:center;gap:6px}
+.seg-tabs button:last-child{border-right:0}
+.seg-tabs button:hover{background:var(--raised)}
+.seg-tabs button[aria-pressed=true],.seg-tabs button[aria-selected=true]{background:var(--tonal);color:var(--selected-text)}
+.fcard{height:150px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+.fcard:hover{border-color:var(--line-strong)}
+.pcard.draft{border-style:dashed}
+.tabs{display:flex;padding:0 8px;border-bottom:1px solid var(--line)}
+.tab{flex:1;justify-content:center;height:48px;padding:0 4px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--muted);font-weight:500;font-size:13px;display:inline-flex;align-items:center;gap:6px}
+.tab[aria-selected=true]{border-bottom-color:var(--action);color:var(--text)}
+.side-body{flex:1;overflow:auto;padding:20px;display:flex;flex-direction:column;gap:18px}
+.check{display:flex;align-items:center;gap:10px;font-size:13px}
+.check .ok{color:var(--pass)}
+.check .no{color:var(--fail)}
+.progress{height:4px;border-radius:9999px;background:var(--raised);overflow:hidden}
+.progress>div{height:100%;background:var(--action)}
+.choice{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:var(--r-md);border:1px solid var(--line);background:transparent;text-align:left;width:100%}
+.choice[aria-checked=true]{border-color:var(--action);background:var(--selected)}
+.radio{width:16px;height:16px;margin:4px;border-radius:9999px;border:2px solid var(--line-strong);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.choice[aria-checked=true] .radio{border-color:var(--action)}
+.radio i{width:8px;height:8px;border-radius:9999px}
+.choice[aria-checked=true] .radio i{background:var(--action)}
+.tcard{border:1px solid var(--line);border-radius:var(--r-lg);padding:14px;display:flex;flex-direction:column;gap:10px}
+.topic{display:flex;gap:10px;padding:10px;border-radius:var(--r-md);border:1px solid var(--line);background:var(--page);cursor:pointer}
+.topic.on{border-color:var(--action);background:var(--selected)}
+
+/* overlays */
+.scrim{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;padding:24px}
+.dialog{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);display:flex;flex-direction:column;max-height:100%;overflow:hidden;box-shadow:0 8px 12px 6px rgba(0,0,0,.15),0 4px 4px rgba(0,0,0,.3)}
+.dhead{padding:24px 24px 16px;display:flex;align-items:center;gap:12px}
+.dhead h2{font-size:18px!important;line-height:28px;font-weight:400;color:var(--heading)}
+.dbody{flex:1;overflow:auto;padding:0 24px 16px;font-size:14px;line-height:20px}
+.dfoot{padding:12px 24px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:70;display:flex;align-items:stretch;min-width:420px;max-width:812px;box-shadow:0 8px 12px 6px rgba(0,0,0,.15),0 4px 4px rgba(0,0,0,.3)}
+.toast .t-ic{width:50px;display:flex;align-items:center;justify-content:center;background:var(--chip-success);border:1px solid var(--success-line);border-right:0;border-radius:var(--r-lg) 0 0 var(--r-lg);color:var(--success)}
+.toast .t-body{flex:1;display:flex;align-items:center;gap:16px;padding:12px 16px;min-height:52px;background:var(--read-only);border:1px solid var(--success-line);border-left:0;border-radius:0 var(--r-lg) var(--r-lg) 0;color:var(--text);font-size:14px;line-height:20px;letter-spacing:.25px}
+.toast .t-body span{flex:1}
+.toast .t-body .btn{height:32px}
+.spin{width:22px;height:22px;border-radius:9999px;border:3px solid var(--selected);border-top-color:var(--action);animation:spin .9s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+.phone{width:390px;height:680px;border:1px solid var(--line);border-radius:28px;background:var(--surface);display:flex;flex-direction:column;overflow:hidden}
+.simopt{min-width:72px;height:40px;padding:0 16px;border-radius:var(--r-md);border:1px solid var(--action);background:transparent;color:var(--action);font-weight:500;font-size:14px}
+.simopt[aria-pressed=true]{background:var(--tonal);border-color:var(--tonal);color:var(--selected-text)}
+.simopt.pass[aria-pressed=true]{background:var(--chip-success);border-color:var(--success-line);color:var(--on-success)}
+.simopt.fail[aria-pressed=true]{background:var(--chip-error);border-color:var(--error-line);color:var(--on-error)}
+.optlist{display:flex;flex-direction:column;gap:6px}
+.optline{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 12px;border-radius:var(--r-md);border:1px solid var(--line);cursor:pointer}
+.optline.on{border-color:var(--action);background:var(--selected)}
+
+.thumb{width:96px;height:80px;border-radius:var(--r-md);background:var(--raised);border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;position:relative;color:var(--muted)}
+.thumb .ibtn{position:absolute;top:2px;right:2px;width:22px;height:22px}
+.thumb.add{border:1px dashed var(--action);background:transparent;color:var(--action);font-size:11px;font-weight:500}
+.thumb.add:disabled{border-color:var(--dim);color:var(--dim)}
+.stat{padding:16px;border-radius:var(--r-lg);background:var(--surface);border:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.stat b{font-size:24px;line-height:28px;font-weight:400;font-variant-numeric:tabular-nums}
+.empty{border:1px dashed var(--line);border-radius:var(--r-lg);padding:40px 24px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center}
+.start{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;width:100%;max-width:720px}
+.start button{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface);padding:16px;display:flex;flex-direction:column;align-items:flex-start;gap:8px;text-align:left}
+.start button:hover{border-color:var(--action)}
+</style>
+
+<div id="root">
+  <div style="padding:48px;color:#a6a6ae;font-family:Inter,system-ui,sans-serif">Loading the procedure builder…</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"></script>
+<script>
+(function () {
+const { useState, useEffect, useRef, useMemo, useCallback, Fragment } = React;
+const html = htm.bind(React.createElement);
+
+/* Sclera 2.0 assets from Figma (Login-Web, Navigation Rail 5256:399293 / Top Bar 5113:219087); source SVGs in v3/assets */
+const ASSET = {
+  "logo": 'data:image/svg+xml;base64,PHN2ZyBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIiBvdmVyZmxvdz0idmlzaWJsZSIgc3R5bGU9ImRpc3BsYXk6IGJsb2NrOyIgd2lkdGg9IjMyIiBoZWlnaHQ9IjIzLjMxMjIiIHZpZXdCb3g9IjAgMCAzMiAyMy4zMTIyIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgo8ZyBpZD0iR3JvdXAiPgo8cGF0aCBpZD0iVmVjdG9yIiBkPSJNMjUuNDEzNiAyMy4yNDc5QzI1LjA0OCAyMy4xNDQ2IDI0LjY3MDIgMjIuODQwOCAyNC40NTcgMjIuNDg4NEwyNC4yOTI1IDIyLjIwMjhWMTkuNTI5M0MyNC4yOTI1IDE4LjA1ODkgMjQuMzEwNyAxNi43ODI5IDI0LjMzNTEgMTYuNjkxOEMyNC40MTQzIDE2LjQxMjMgMjQuODQ2OSAxNS45Mzg0IDI1LjE1NzcgMTUuNzg2NUwyNS40NTAxIDE1LjY0MDZIMjguMTYxNUgzMC44NzI4TDMxLjE5NTcgMTUuODQxMkMzMS4zOTY4IDE1Ljk3NDggMzEuNTk3OSAxNi4xNzUzIDMxLjc1NjMgMTYuNDEyM0wzMiAxNi43NzY5VjE5LjQ2ODZWMjIuMTYwMkwzMS43NTYzIDIyLjUyNDhDMzEuNTk3OSAyMi43NjE4IDMxLjM5NjggMjIuOTYyMyAzMS4xOTU3IDIzLjA5NkwzMC44NzI4IDIzLjI5NjVMMjguMjgzMyAyMy4zMDg2QzI2LjMyMTQgMjMuMzIwOCAyNS42MjY4IDIzLjMwMjUgMjUuNDEzNiAyMy4yNDc5WiIgZmlsbD0iI0Y2Q0MwMSIvPgo8cGF0aCBpZD0iVmVjdG9yXzIiIGQ9Ik04Ljk2ODc4IDE5LjY0NDdDOC44ODM0OCAxOS42MzI2IDguNzMxMTUgMTkuNjAyMiA4LjYyMTQ4IDE5LjU4NEM4LjM3Nzc2IDE5LjU0NzUgNy44NTM3NyAxOS4wNzk2IDcuNjcwOTkgMTguNzQ1NUM3LjU0MzAzIDE4LjUwODUgNy41MzY5NCAxOC40MTc0IDcuNTE4NjYgMTYuNjA2N0M3LjQ5NDI5IDE0LjQyNTQgNy41MzY5NCAxMy45NjM2IDcuODA1MDMgMTMuNTM4M0w3Ljk4NzgyIDEzLjI0MDZMNi4xMjk0OCAxMC4wNjg5TDQuMjc3MjMgNi44OTEwOUwyLjc2NjE5IDYuODU0NjRDMS43NDI1NyA2LjgzMDMzIDEuMTk0MjEgNi43OTM4OCAxLjA0Nzk4IDYuNzM5MTlDMC43MTg5NjUgNi42MTc2NyAwLjQyNjUwNCA2LjM1NjQgMC4yMDcxNTkgNS45OTE4NEwwIDUuNjUxNThMMC4wMjQzNzE3IDMuMzg1MjFDMC4wNDg3NDM0IDAuODM5MzUyIDAuMDMwNDY0NiAwLjk0MjY0NSAwLjUxNzg5OCAwLjQ3NDc4OUMwLjk4NzA1MyAwLjAxMzAwOTYgMC45MDE3NTIgMC4wMzEyMzc4IDMuMjIzMTUgMC4wMDY5MzM1OUM0LjY0ODkgLTAuMDExMjk0NSA1LjQxMDUxIDAuMDA2OTMzNTggNS42NDIwNCAwLjA1NTU0MTlDNi4wOTI5MiAwLjE0NjY4MyA2LjQzNDEyIDAuNDE0MDI5IDYuNjk2MTIgMC44NzU4MDhMNi45MDMyOCAxLjI0MDM3TDYuODY2NzIgMy40ODg1MUw2LjgyNDA3IDUuNzM2NjRMNi42MTA4MiA2LjA4OTA1TDYuMzk3NTcgNi40NDE0N0w3LjAwMDc2IDcuNDg2NTVDNy4zMjk3OCA4LjA2Mzc3IDguMTY0NTEgOS40OTE2NCA4Ljg0NjkyIDEwLjY3MDRMMTAuMDk2IDEyLjgwOTJMMTEuNTg4NyAxMi44Mjc0QzEyLjYzNjcgMTIuODM5NSAxMy4xMjQxIDEyLjgyNzQgMTMuMjMzOCAxMi43NzI3QzEzLjM5ODMgMTIuNjkzNyAxMy44NTUzIDEyLjMxMDkgMTUuODI5NCAxMC41NTQ5TDE3LjExNSA5LjQxODczTDE3LjE0NTUgNy40NTYxN0MxNy4xNjk4IDUuNzc5MTggMTcuMTg4MSA1LjQ2MzIyIDE3LjI3MzQgNS4yODA5NEMxNy40NTAxIDQuOTEwMyAxNy43MzA0IDQuNjI0NzMgMTguMDk2IDQuNDQ4NTJMMTguNDQzMyA0LjI3ODM5SDIwLjYwNjNIMjIuNzY5MkwyMy4xMTY1IDQuNDQ4NTJDMjMuNDgyMSA0LjYyNDczIDIzLjcyNTggNC44ODYgMjMuOTU3NCA1LjMzNTYzQzI0LjA5MTQgNS41OTY5IDI0LjA5MTQgNS42MjcyOCAyNC4wNjcgNy43MDUyOEMyNC4wMzY2IDkuODg2NTggMjQuMDI0NCAxMC4wMjYzIDIzLjc2MjQgMTAuMzk3TDIzLjY0NjYgMTAuNTY3MUwyNC45NTA1IDEyLjYxNDdDMjUuNjY5NSAxMy43NDQ5IDI2LjM4MjMgMTQuODc1IDI2LjU0MDggMTUuMTI0MUwyNi44MjEgMTUuNTc5OEwyNi4xMTQzIDE1LjYyMjRDMjUuNTExMSAxNS42NTg4IDI1LjM1MjYgMTUuNjg5MiAyNS4wNzI0IDE1LjgyOUMyNC43OTIxIDE1Ljk3NDggMjQuNzMxMiAxNS45ODY5IDI0LjY2NDEgMTUuOTA3OUMyNC42MjE1IDE1Ljg1OTMgMjMuOTAyNSAxNC43NjU2IDIzLjA3MzkgMTMuNDcxNEwyMS41Njg5IDExLjExMzlIMTkuOTE3OEwxOC4yNjA1IDExLjEyTDE2LjM0MTIgMTIuODIxM0wxNC40MjE5IDE0LjUyMjZMMTQuMzkxNSAxNi41MDk1QzE0LjM1NDkgMTguNzM5NCAxNC4zNTQ5IDE4LjcyNzIgMTMuODk3OSAxOS4xODlDMTMuNDM0OSAxOS42NTA4IDEzLjQ1OTMgMTkuNjQ0NyAxMS4xNjIyIDE5LjY1NjlDMTAuMDQxMSAxOS42NjI5IDkuMDU0MDggMTkuNjU2OSA4Ljk2ODc4IDE5LjY0NDdaIiBmaWxsPSJ3aGl0ZSIvPgo8L2c+Cjwvc3ZnPgo=',
+  "logo-wordmark": 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTA5IiBoZWlnaHQ9IjM2IiB2aWV3Qm94PSIwIDAgMTA5IDM2IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgo8cGF0aCBkPSJNNDUuMTg3IDExLjUyQzQ0LjM2MjEgMTEuNiA0My40OTUyIDExLjg2OTQgNDIuODY4MiAxMi4yMzU4QzQyLjUxMDUgMTIuNDQ2MyA0MS44NzA4IDEzLjA3NzkgNDEuNjY4OCAxMy40MjMxQzQxLjM1MzIgMTMuOTYyMSA0MS4xNjggMTQuNzk1OCA0MS4yMTg1IDE1LjQ1NjhDNDEuMzI3OSAxNi44ODQyIDQyLjEyNzUgMTcuODE4OSA0My42Njc3IDE4LjMxMTZDNDQuMTA1NCAxOC40NTA1IDQ0LjEzNDkgMTguNDU4OSA0NS44NTE5IDE4Ljc1NzlDNDcuNTM1MiAxOS4wNTI2IDQ3Ljg4MDMgMTkuMTMyNiA0OC4yOTY5IDE5LjMyMjFDNDguODM5OCAxOS41NzQ3IDQ5LjEyMTcgMTkuOTI4NCA0OS4yMDU5IDIwLjQ2NzNDNDkuNDA3OSAyMS43Njg0IDQ4LjEyMDIgMjIuNjU2OCA0Ni4xNTA3IDIyLjU3NjhDNDQuNzcwMyAyMi41MTc5IDQzLjU3MSAyMS45OTE2IDQyLjMzMzcgMjAuOTAxTDQyLjA2MDIgMjAuNjU2OEw0MS4zOTk1IDIxLjQ1MjZMNDAuNzQzIDIyLjI0ODRMNDEuMDI0OSAyMi41MDUyQzQxLjk5MjggMjMuMzgxIDQzLjQzNjMgMjQuMDg4NCA0NC44MjA4IDI0LjM2NjNDNDUuMjQxNyAyNC40NTA1IDQ1LjQzMSAyNC40NjMxIDQ2LjI3MjcgMjQuNDYzMUM0Ny4zOTYzIDI0LjQ2MzEgNDcuNzc5MyAyNC40MDg0IDQ4LjU4NzMgMjQuMTQzMUM1MC4xODY1IDIzLjYxMjYgNTEuMTYyOCAyMi41NTU4IDUxLjM5IDIxLjExMTZDNTEuNDU3NCAyMC42ODIxIDUxLjQxNTMgMTkuOTE1OCA1MS4zMDE3IDE5LjUxNThDNTAuOTczNCAxOC4zNTM3IDUwLjA2ODYgMTcuNjA4NCA0OC40NjEgMTcuMTc0N0M0OC4yNTQ4IDE3LjEyIDQ3LjQwMDUgMTYuOTYgNDYuNTY3MyAxNi44MjFDNDQuNTY0MSAxNi40ODQyIDQ0LjEzMDcgMTYuMzU3OSA0My43MjI1IDE1Ljk5MTZDNDMuNTA3OCAxNS43OTc5IDQzLjM5ODQgMTUuNTgzMSA0My4zNTYzIDE1LjI3NThDNDMuMjU5NSAxNC41NTE2IDQzLjU3OTQgMTQuMDEyNiA0NC4zMDMyIDEzLjY3NThDNDQuODA4MiAxMy40NDQyIDQ1LjA4NiAxMy4zOTM3IDQ1Ljg5NCAxMy4zOTM3QzQ2LjQzMjYgMTMuMzg5NCA0Ni42OTc3IDEzLjQxMDUgNDYuOTY3MSAxMy40Njk0QzQ3LjgyOTggMTMuNjU0NyA0OC42MDgzIDEzLjk5NTggNDkuNDUgMTQuNTUxNkM0OS43MzIgMTQuNzM2OCA0OS45Njc2IDE0Ljg4NDIgNDkuOTcxOCAxNC44NzU4QzQ5Ljk3NiAxNC44NzE2IDUwLjIzNyAxNC41MTM3IDUwLjU0ODQgMTQuMDg0MkM1MC44NTk4IDEzLjY1NDcgNTEuMTI5MSAxMy4yODQyIDUxLjE0NiAxMy4yNTQ3QzUxLjE5MjIgMTMuMTc4OSA1MC41NTY4IDEyLjc1MzcgNDkuODc5MiAxMi40MTI2QzQ4LjQyNzQgMTEuNjc1OCA0Ni43OTAzIDExLjM2ODQgNDUuMTg3IDExLjUyWiIgZmlsbD0id2hpdGUiLz4KPHBhdGggZD0iTTIyLjU1ODcgMTIuNDY3M0MyMi40OTk4IDEyLjQ3NTggMjIuMzk0NiAxMi40OTY4IDIyLjMxODkgMTIuNTA5NEMyMi4xNTA1IDEyLjUzNDcgMjEuNzg4NiAxMi44NTg5IDIxLjY2MjQgMTMuMDkwNUMyMS41NzQgMTMuMjU0NyAyMS41Njk4IDEzLjMxNzkgMjEuNTU3MiAxNC41NzI2QzIxLjU0MDMgMTYuMDg0MiAyMS41Njk4IDE2LjQwNDIgMjEuNzU1IDE2LjY5ODlMMjEuODgxMiAxNi45MDUyTDIwLjU5NzcgMTkuMTAzMUwxOS4zMTgzIDIxLjMwNTJMMTguMjc0NyAyMS4zMzA1QzE3LjU2NzcgMjEuMzQ3MyAxNy4xODg5IDIxLjM3MjYgMTcuMDg3OSAyMS40MTA1QzE2Ljg2MDcgMjEuNDk0NyAxNi42NTg3IDIxLjY3NTggMTYuNTA3MiAyMS45Mjg0TDE2LjM2NDEgMjIuMTY0MkwxNi4zODA5IDIzLjczNDdDMTYuMzk3NyAyNS40OTg5IDE2LjM4NTEgMjUuNDI3MyAxNi43MjE4IDI1Ljc1MTZDMTcuMDQ1OCAyNi4wNzE2IDE2Ljk4NjkgMjYuMDU4OSAxOC41OTAzIDI2LjA3NThDMTkuNTc1IDI2LjA4ODQgMjAuMTAxMSAyNi4wNzU4IDIwLjI2MSAyNi4wNDIxQzIwLjU3MjQgMjUuOTc4OSAyMC44MDgxIDI1Ljc5MzcgMjAuOTg5IDI1LjQ3MzdMMjEuMTMyMSAyNS4yMjFMMjEuMTA2OSAyMy42NjMxTDIxLjA3NzQgMjIuMTA1MkwyMC45MzAxIDIxLjg2MUwyMC43ODI4IDIxLjYxNjhMMjEuMTk5NSAyMC44OTI2QzIxLjQyNjcgMjAuNDkyNiAyMi4wMDMyIDE5LjUwMzEgMjIuNDc0NiAxOC42ODYzTDIzLjMzNzMgMTcuMjA0MkwyNC4zNjgzIDE3LjE5MTZDMjUuMDkyMiAxNy4xODMxIDI1LjQyODggMTcuMTkxNiAyNS41MDQ2IDE3LjIyOTRDMjUuNjE4MiAxNy4yODQyIDI1LjkzMzggMTcuNTQ5NCAyNy4yOTczIDE4Ljc2NjNMMjguMTg1MyAxOS41NTM3TDI4LjIwNjMgMjAuOTEzN0MyOC4yMjMyIDIyLjA3NTggMjguMjM1OCAyMi4yOTQ3IDI4LjI5NDcgMjIuNDIxQzI4LjQxNjcgMjIuNjc3OSAyOC42MTAzIDIyLjg3NTggMjguODYyOCAyMi45OTc5TDI5LjEwMjcgMjMuMTE1OEgzMC41OTY3SDMyLjA5MDZMMzIuMzMwNSAyMi45OTc5QzMyLjU4MyAyMi44NzU4IDMyLjc1MTMgMjIuNjk0NyAzMi45MTEyIDIyLjM4MzFDMzMuMDAzOCAyMi4yMDIxIDMzLjAwMzggMjIuMTgxIDMyLjk4NyAyMC43NDFDMzIuOTY2IDE5LjIyOTQgMzIuOTU3NSAxOS4xMzI2IDMyLjc3NjYgMTguODc1OEwzMi42OTY2IDE4Ljc1NzlMMzMuNTk3MiAxNy4zMzg5QzM0LjA5MzggMTYuNTU1OCAzNC41ODYyIDE1Ljc3MjYgMzQuNjk1NiAxNS42TDM0Ljg4OTIgMTUuMjg0MkwzNC40MDEgMTUuMjU0N0MzMy45ODQ0IDE1LjIyOTQgMzMuODc1IDE1LjIwODQgMzMuNjgxNCAxNS4xMTE2QzMzLjQ4NzggMTUuMDEwNSAzMy40NDU3IDE1LjAwMjEgMzMuMzk5NCAxNS4wNTY4QzMzLjM3IDE1LjA5MDUgMzIuODczNCAxNS44NDg0IDMyLjMwMSAxNi43NDUyTDMxLjI2MTYgMTguMzc4OUgzMC4xMjExTDI4Ljk3NjUgMTguMzc0N0wyNy42NTA4IDE3LjE5NThMMjYuMzI1MiAxNi4wMTY4TDI2LjMwNDIgMTQuNjRDMjYuMjc4OSAxMy4wOTQ3IDI2LjI3ODkgMTMuMTAzMSAyNS45NjMzIDEyLjc4MzFDMjUuNjQzNSAxMi40NjMxIDI1LjY2MDMgMTIuNDY3MyAyNC4wNzM3IDEyLjQ1ODlDMjMuMjk5NCAxMi40NTQ3IDIyLjYxNzcgMTIuNDU4OSAyMi41NTg3IDEyLjQ2NzNaIiBmaWxsPSJ3aGl0ZSIvPgo8cGF0aCBkPSJNNjcuNTAzNyAxNC44NjMxQzY3LjM1MjIgMTQuODk2OCA2Ny4wNDkyIDE1LjAxNDcgNjYuODMwNCAxNS4xMTk5QzY2LjQ5OCAxNS4yODQyIDY2LjM2NzUgMTUuMzgxIDY2LjA2NDUgMTUuNjg4NEw2NS42OTQyIDE2LjA1NDdWMTUuNTMyNlYxNS4wMTA1SDY0LjY0MjFINjMuNTlWMTkuNjYzMVYyNC4zMTU3SDY0LjY0MjFINjUuNjk0MlYyMS4yMjk0VjE4LjE0MzFMNjUuODQxNSAxNy44OTg5QzY2LjE5OTIgMTcuMzA1MiA2Ni43MDQyIDE2LjkwOTQgNjcuMzYwNyAxNi43MTE1QzY3Ljc0NzggMTYuNTkzNiA2OC40ODQzIDE2LjYwNjMgNjguODg0MSAxNi43NDUyTDY5LjE4NzEgMTYuODUwNUw2OS4xNzg3IDE1LjkwMzFMNjkuMTY2IDE0Ljk1NTdMNjguOTk3NyAxNC44OTI2QzY4Ljc1MzYgMTQuODA0MiA2Ny44NTMgMTQuNzgzMSA2Ny41MDM3IDE0Ljg2MzFaIiBmaWxsPSJ3aGl0ZSIvPgo8cGF0aCBkPSJNNTYuNjQ2MiAxNC45MDUyQzU0LjE4ODYgMTUuMjkyNiA1Mi40NTA1IDE3LjU3MDUgNTIuNjkwNCAyMC4wODg0QzUyLjc1NzcgMjAuODEyNiA1Mi44ODQgMjEuMjU0NyA1My4xODcgMjEuODUyNkM1My44NzcyIDIzLjE5NTcgNTUuMTU2NSAyNC4xMzA1IDU2LjY4ODMgMjQuNDA0MkM1Ny4xNTU1IDI0LjQ4ODQgNTguMjE2IDI0LjQ3OTkgNTguNzI5NCAyNC4zODMxQzU5LjIzNDQgMjQuMjkwNSA1OS44MDI1IDI0LjEwNTIgNjAuMjAyMyAyMy45MDczQzYwLjUxNzkgMjMuNzQ3MyA2MS4yNzU0IDIzLjI2MzEgNjEuMjc1NCAyMy4yMjFDNjEuMjc1NCAyMy4yMDQyIDYwLjk3MjQgMjIuOTA1MiA2MC42MDYzIDIyLjU1MTVMNTkuOTMzIDIxLjkxMTVMNTkuNzMxIDIyLjA2NzNDNTkuNDc4NSAyMi4yNjEgNTkuMDI4MiAyMi40NzE1IDU4LjY0NTIgMjIuNTcyNkM1OC40MjIyIDIyLjYzMTUgNTguMjAzMyAyMi42NTI2IDU3LjcxOTQgMjIuNjUyNkM1Ny4xNTEyIDIyLjY0ODQgNTcuMDU0NSAyMi42Mzk5IDU2Ljc1OTkgMjIuNTM4OUM1NS45MjY2IDIyLjI1NjggNTUuMzAzOCAyMS42NzU3IDU0Ljk3OTcgMjAuODY3M0M1NC45MjUgMjAuNzI4NCA1NC44NjYxIDIwLjU1OTkgNTQuODUzNSAyMC40ODg0TDU0LjgyODIgMjAuMzU3OEg1OC4zODg1SDYxLjk0ODdWMTkuOTAzMUM2MS45NDg3IDE4LjE3NjggNjEuMzE3NSAxNi43NDUyIDYwLjE0MzQgMTUuODAyMUM1OS4xNzU1IDE1LjAyMzEgNTcuOTI1NiAxNC43MDczIDU2LjY0NjIgMTQuOTA1MlpNNTguMDg5NyAxNi43MzY4QzU4LjQwOTUgMTYuODM3OCA1OC45MjMgMTcuMTYyMSA1OS4xNTAyIDE3LjQxNDdDNTkuNDExMSAxNy43MDUyIDU5LjYzIDE4LjA3OTkgNTkuNzM5NCAxOC40Mjk0QzU5Ljc5ODMgMTguNjE0NyA1OS44NDQ2IDE4Ljc3MDUgNTkuODQ0NiAxOC43ODMxQzU5Ljg0NDYgMTguNzkxNSA1OC43MDgzIDE4Ljc5OTkgNTcuMzIzOCAxOC43OTk5SDU0Ljc5ODhMNTQuODYxOSAxOC41NzY4QzU0Ljk2MjkgMTguMjI3MyA1NS4yMzY1IDE3LjcwNTIgNTUuNDQ2OSAxNy40NjUyQzU1Ljc5MiAxNy4wNzM2IDU2LjM3NjkgMTYuNzQ5NCA1Ni45MTk4IDE2LjY1MjZDNTcuMjIyOCAxNi41OTc4IDU3Ljc2OTkgMTYuNjM5OSA1OC4wODk3IDE2LjczNjhaIiBmaWxsPSJ3aGl0ZSIvPgo8cGF0aCBkPSJNODQuMjQ0NSAxNC45MDUyQzgyLjM5NyAxNS4yMDg0IDgwLjkwNzMgMTYuNTg1MiA4MC40MTkxIDE4LjQ0MjFDODAuMzI2NSAxOC43ODMxIDgwLjMxODEgMTguOTA5NCA4MC4zMTgxIDE5LjY2MzFDODAuMzIyMyAyMC40Mzc5IDgwLjMzMDcgMjAuNTM4OSA4MC40MzE3IDIwLjkwOTRDODAuOTE5OSAyMi43MDczIDgyLjQxODEgMjQuMDY3MyA4NC4yOTUgMjQuNDA0MkM4NC43NDExIDI0LjQ4ODQgODUuODU2MyAyNC40NzU4IDg2LjM1NzEgMjQuMzgzMUM4Ni44MzY4IDI0LjI5ODkgODcuMzc5NyAyNC4xMTc5IDg3Ljc5NjMgMjMuOTE1OEM4OC4xMjA0IDIzLjc1NTggODguODgyMSAyMy4yNjMxIDg4Ljg4MjEgMjMuMjE2OEM4OC44ODIxIDIzLjIgODguNTc5MSAyMi45MDEgODguMjEyOSAyMi41NTE2TDg3LjUzOTYgMjEuOTExNkw4Ny4zMzc2IDIyLjA2NzNDODcuMDg5MyAyMi4yNTY4IDg2LjYzOSAyMi40NzE2IDg2LjI3MjkgMjIuNTcyNkM4Ni4wNzA5IDIyLjYyNzMgODUuODM5NCAyMi42NDg0IDg1LjM2ODEgMjIuNjQ4NEM4NC43ODMyIDIyLjY1MjYgODQuNzExNiAyMi42NDQyIDg0LjM2MjMgMjIuNTMwNUM4My43NzMyIDIyLjMzNjggODMuMjQyOSAyMS45NDEgODIuODcyNiAyMS40MTg5QzgyLjczMzcgMjEuMjI1MiA4Mi41MTQ5IDIwLjcyIDgyLjQ2NDQgMjAuNDkyNkw4Mi40MzQ5IDIwLjM1NzlIODUuOTk1Mkg4OS41NTU0VjE5Ljg0ODRDODkuNTU1NCAxNy43NjQyIDg4LjU3MDcgMTYuMDYzMSA4Ni44OTE1IDE1LjI1ODlDODYuMTU1MSAxNC45MDk0IDg1LjA5NDYgMTQuNzY2MyA4NC4yNDQ1IDE0LjkwNTJaTTg1LjY0MTcgMTYuNzJDODYuNDQxMiAxNi45NTU4IDg3LjE0ODIgMTcuNjggODcuMzg4MSAxOC41MTc5Qzg3LjQyNiAxOC42NTI2IDg3LjQ1MTIgMTguNzcwNSA4Ny40NDI4IDE4Ljc4MzFDODcuNDMwMiAxOC43OTE2IDg2LjI5MzkgMTguNzk1OCA4NC45MTM2IDE4Ljc5MTZMODIuNDA1NCAxOC43Nzg5TDgyLjUyMzMgMTguNDI5NEM4Mi42ODMyIDE3Ljk3NDcgODIuODY4NCAxNy42NjczIDgzLjE4NCAxNy4zNTE2QzgzLjU0MTcgMTYuOTg5NCA4NC4wODQ2IDE2LjcyIDg0LjYxMDYgMTYuNjM1OEM4NC44Mjk0IDE2LjYwMjEgODUuNDA2IDE2LjY0ODQgODUuNjQxNyAxNi43MloiIGZpbGw9IndoaXRlIi8+CjxwYXRoIGQ9Ik02OS45MDI1IDE1LjAzNTdDNjkuOTAyNSAxNS4wNTI2IDcwLjc5NDcgMTcuMTQ1MiA3MS44ODg4IDE5LjY5MjZMNzMuODc1MiAyNC4zMTU3TDc0Ljg5NzggMjQuMzA3M0w3NS45MjQ2IDI0LjI5NDdMNzcuOTE1MiAxOS42NTA1TDc5LjkwOTkgMTUuMDEwNUw3OC43NzM3IDE1LjAxODlMNzcuNjM3NCAxNS4wMzE1TDc2LjI4NjUgMTguMzA3M0M3NS41NDU5IDIwLjEwNTIgNzQuOTIzIDIxLjU2NjMgNzQuOTA2MiAyMS41NDk0Qzc0Ljg4OTQgMjEuNTI4NCA3NC4yNzUgMjAuMDUwNSA3My41Mzg1IDE4LjI2MUw3Mi4yMDAyIDE1LjAxMDVINzEuMDUxNEM3MC40MjAxIDE1LjAxMDUgNjkuOTAyNSAxNS4wMjMxIDY5LjkwMjUgMTUuMDM1N1oiIGZpbGw9IndoaXRlIi8+CjxwYXRoIGQ9Ik0zMy45MTcgOS45NzA1NUMzMy42NjQ1IDEwLjA0MjEgMzMuNDAzNiAxMC4yNTI3IDMzLjI1NjMgMTAuNDk2OUwzMy4xNDI3IDEwLjY5NDhWMTIuNTQ3NEMzMy4xNDI3IDEzLjU2NjMgMzMuMTU1MyAxNC40NTA1IDMzLjE3MjIgMTQuNTEzN0MzMy4yMjY5IDE0LjcwNzQgMzMuNTI1NyAxNS4wMzU4IDMzLjc0MDMgMTUuMTQxMUwzMy45NDIzIDE1LjI0MjFIMzUuODE1SDM3LjY4NzdMMzcuOTEwNyAxNS4xMDMyQzM4LjA0OTYgMTUuMDEwNSAzOC4xODg1IDE0Ljg3MTYgMzguMjk3OSAxNC43MDc0TDM4LjQ2NjIgMTQuNDU0OFYxMi41ODk1VjEwLjcyNDJMMzguMjk3OSAxMC40NzE2QzM4LjE4ODUgMTAuMzA3NCAzOC4wNDk2IDEwLjE2ODQgMzcuOTEwNyAxMC4wNzU4TDM3LjY4NzcgOS45MzY4NkwzNS44OTkyIDkuOTI4NDRDMzQuNTQ0MSA5LjkyMDAyIDM0LjA2NDMgOS45MzI2NSAzMy45MTcgOS45NzA1NVoiIGZpbGw9IiNGNkNDMDEiLz4KPC9zdmc+Cg==',
+  "panel-left-open": 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTkgM1YyMU0xNCA5TDE3IDEyTDE0IDE1TTUgM0gxOUMyMC4xMDQ2IDMgMjEgMy44OTU0MyAyMSA1VjE5QzIxIDIwLjEwNDYgMjAuMTA0NiAyMSAxOSAyMUg1QzMuODk1NDMgMjEgMyAyMC4xMDQ2IDMgMTlWNUMzIDMuODk1NDMgMy44OTU0MyAzIDUgM1oiIHN0cm9rZT0iI0VGRjJGNSIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K',
+  "panel-left-close": 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTkgM1YyMU0xNiAxNUwxMyAxMkwxNiA5TTUgM0gxOUMyMC4xMDQ2IDMgMjEgMy44OTU0MyAyMSA1VjE5QzIxIDIwLjEwNDYgMjAuMTA0NiAyMSAxOSAyMUg1QzMuODk1NDMgMjEgMyAyMC4xMDQ2IDMgMTlWNUMzIDMuODk1NDMgMy44OTU0MyAzIDUgM1oiIHN0cm9rZT0iI0VGRjJGNSIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K',
+  "dashboard": 'data:image/svg+xml;base64,PHN2ZyBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIiBvdmVyZmxvdz0idmlzaWJsZSIgc3R5bGU9ImRpc3BsYXk6IGJsb2NrOyIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiB2aWV3Qm94PSIwIDAgMjQgMjQiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxnIGlkPSJJY29ucy9PdXRsaW5lL0Rlc2lnbiwgRWRpdG9yICYjMzg7IEFsaWdubWVudC9sYXlvdXQtZGFzaGJvYXJkIj4KPGcgaWQ9IlZlY3RvciI+CjxwYXRoIGQ9Ik05IDNINEMzLjQ0NzcyIDMgMyAzLjQ0NzcyIDMgNFYxMUMzIDExLjU1MjMgMy40NDc3MiAxMiA0IDEySDlDOS41NTIyOCAxMiAxMCAxMS41NTIzIDEwIDExVjRDMTAgMy40NDc3MiA5LjU1MjI4IDMgOSAzWiIgc3Ryb2tlPSIjRUZGMkY1IiBzdHJva2Utd2lkdGg9IjEuNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CjxwYXRoIGQ9Ik0yMCAzSDE1QzE0LjQ0NzcgMyAxNCAzLjQ0NzcyIDE0IDRWN0MxNCA3LjU1MjI4IDE0LjQ0NzcgOCAxNSA4SDIwQzIwLjU1MjMgOCAyMSA3LjU1MjI4IDIxIDdWNEMyMSAzLjQ0NzcyIDIwLjU1MjMgMyAyMCAzWiIgc3Ryb2tlPSIjRUZGMkY1IiBzdHJva2Utd2lkdGg9IjEuNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CjxwYXRoIGQ9Ik0yMCAxMkgxNUMxNC40NDc3IDEyIDE0IDEyLjQ0NzcgMTQgMTNWMjBDMTQgMjAuNTUyMyAxNC40NDc3IDIxIDE1IDIxSDIwQzIwLjU1MjMgMjEgMjEgMjAuNTUyMyAyMSAyMFYxM0MyMSAxMi40NDc3IDIwLjU1MjMgMTIgMjAgMTJaIiBzdHJva2U9IiNFRkYyRjUiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPHBhdGggZD0iTTkgMTZINEMzLjQ0NzcyIDE2IDMgMTYuNDQ3NyAzIDE3VjIwQzMgMjAuNTUyMyAzLjQ0NzcyIDIxIDQgMjFIOUM5LjU1MjI4IDIxIDEwIDIwLjU1MjMgMTAgMjBWMTdDMTAgMTYuNDQ3NyA5LjU1MjI4IDE2IDkgMTZaIiBzdHJva2U9IiNFRkYyRjUiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9nPgo8L2c+Cjwvc3ZnPgo=',
+  "shapes": 'data:image/svg+xml;base64,PHN2ZyBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIiBvdmVyZmxvdz0idmlzaWJsZSIgc3R5bGU9ImRpc3BsYXk6IGJsb2NrOyIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiB2aWV3Qm94PSIwIDAgMjQgMjQiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxnIGlkPSJJY29ucy9PdXRsaW5lL0dlbmVyYWwvc2hhcGVzIj4KPGcgaWQ9IlZlY3RvciI+CjxwYXRoIGQ9Ik04LjMwMDA0IDkuOTk5ODFDOC4xNzExMyAxMC4wMDY4IDguMDQyNzggOS45NzgwOSA3LjkyOTE5IDkuOTE2NzNDNy44MTU2MSA5Ljg1NTM3IDcuNzIxMiA5Ljc2Mzc5IDcuNjU2NDEgOS42NTIxMkM3LjU5MTYyIDkuNTQwNDYgNy41NTg5OCA5LjQxMzA0IDcuNTYyMDkgOS4yODM5OEM3LjU2NTIgOS4xNTQ5MiA3LjYwMzk1IDkuMDI5MjIgNy42NzQwNCA4LjkyMDgxTDExLjQgMi45OTk4MUMxMS40NTg2IDIuODk0MzcgMTEuNTQzNCAyLjgwNTg2IDExLjY0NjIgMi43NDI4NEMxMS43NDkgMi42Nzk4MSAxMS44NjY0IDIuNjQ0NDIgMTEuOTg2OSAyLjY0MDFDMTIuMTA3NCAyLjYzNTc3IDEyLjIyNyAyLjY2MjY2IDEyLjMzNDEgMi43MTgxNUMxMi40NDEyIDIuNzczNjMgMTIuNTMyMSAyLjg1NTg0IDEyLjU5OCAyLjk1NjgxTDE2LjMgOC44OTk4MUMxNi4zNzMgOS4wMDQ2IDE2LjQxNTkgOS4xMjczNSAxNi40MjQxIDkuMjU0NzhDMTYuNDMyMyA5LjM4MjIxIDE2LjQwNTUgOS41MDk0NiAxNi4zNDY2IDkuNjIyNzZDMTYuMjg3NyA5LjczNjA1IDE2LjE5ODkgOS44MzEwNyAxNi4wODk5IDkuODk3NTNDMTUuOTgwOSA5Ljk2Mzk5IDE1Ljg1NTcgOS45OTkzNiAxNS43MjggOS45OTk4MUg4LjMwMDA0WiIgc3Ryb2tlPSIjRUZGMkY1IiBzdHJva2Utd2lkdGg9IjEuNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CjxwYXRoIGQ9Ik05IDE0SDRDMy40NDc3MiAxNCAzIDE0LjQ0NzcgMyAxNVYyMEMzIDIwLjU1MjMgMy40NDc3MiAyMSA0IDIxSDlDOS41NTIyOCAyMSAxMCAyMC41NTIzIDEwIDIwVjE1QzEwIDE0LjQ0NzcgOS41NTIyOCAxNCA5IDE0WiIgc3Ryb2tlPSIjRUZGMkY1IiBzdHJva2Utd2lkdGg9IjEuNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CjxwYXRoIGQ9Ik0xNy41IDIxQzE5LjQzMyAyMSAyMSAxOS40MzMgMjEgMTcuNUMyMSAxNS41NjcgMTkuNDMzIDE0IDE3LjUgMTRDMTUuNTY3IDE0IDE0IDE1LjU2NyAxNCAxNy41QzE0IDE5LjQzMyAxNS41NjcgMjEgMTcuNSAyMVoiIHN0cm9rZT0iI0VGRjJGNSIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L2c+CjwvZz4KPC9zdmc+Cg==',
+  "building-2": 'data:image/svg+xml;base64,PHN2ZyBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIiBvdmVyZmxvdz0idmlzaWJsZSIgc3R5bGU9ImRpc3BsYXk6IGJsb2NrOyIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiB2aWV3Qm94PSIwIDAgMjQgMjQiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxnIGlkPSJJY29ucy9PdXRsaW5lL0xpZmVzdHlsZSAmIzM4OyBBbmltYWxzL2J1aWxkaW5nLTIiPgo8cGF0aCBpZD0iVmVjdG9yIiBkPSJNMTAgMTJIMTRNMTAgOEgxNE0xNCAyMVYxOEMxNCAxNy40Njk2IDEzLjc4OTMgMTYuOTYwOSAxMy40MTQyIDE2LjU4NThDMTMuMDM5MSAxNi4yMTA3IDEyLjUzMDQgMTYgMTIgMTZDMTEuNDY5NiAxNiAxMC45NjA5IDE2LjIxMDcgMTAuNTg1OCAxNi41ODU4QzEwLjIxMDcgMTYuOTYwOSAxMCAxNy40Njk2IDEwIDE4VjIxTTYgMTBINEMzLjQ2OTU3IDEwIDIuOTYwODYgMTAuMjEwNyAyLjU4NTc5IDEwLjU4NThDMi4yMTA3MSAxMC45NjA5IDIgMTEuNDY5NiAyIDEyVjE5QzIgMTkuNTMwNCAyLjIxMDcxIDIwLjAzOTEgMi41ODU3OSAyMC40MTQyQzIuOTYwODYgMjAuNzg5MyAzLjQ2OTU3IDIxIDQgMjFIMjBDMjAuNTMwNCAyMSAyMS4wMzkxIDIwLjc4OTMgMjEuNDE0MiAyMC40MTQyQzIxLjc4OTMgMjAuMDM5MSAyMiAxOS41MzA0IDIyIDE5VjlDMjIgOC40Njk1NyAyMS43ODkzIDcuOTYwODYgMjEuNDE0MiA3LjU4NTc5QzIxLjAzOTEgNy4yMTA3MSAyMC41MzA0IDcgMjAgN0gxOE02IDIxVjVDNiA0LjQ2OTU3IDYuMjEwNzEgMy45NjA4NiA2LjU4NTc5IDMuNTg1NzlDNi45NjA4NiAzLjIxMDcxIDcuNDY5NTcgMyA4IDNIMTZDMTYuNTMwNCAzIDE3LjAzOTEgMy4yMTA3MSAxNy40MTQyIDMuNTg1NzlDMTcuNzg5MyAzLjk2MDg2IDE4IDQuNDY5NTcgMTggNVYyMSIgc3Ryb2tlPSIjRUZGMkY1IiBzdHJva2Utd2lkdGg9IjEuNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CjwvZz4KPC9zdmc+Cg==',
+  "clipboard-check": 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTE2IDRIMThDMTguNTMwNCA0IDE5LjAzOTEgNC4yMTA3MSAxOS40MTQyIDQuNTg1NzlDMTkuNzg5MyA0Ljk2MDg2IDIwIDUuNDY5NTcgMjAgNlYyMEMyMCAyMC41MzA0IDE5Ljc4OTMgMjEuMDM5MSAxOS40MTQyIDIxLjQxNDJDMTkuMDM5MSAyMS43ODkzIDE4LjUzMDQgMjIgMTggMjJINkM1LjQ2OTU3IDIyIDQuOTYwODYgMjEuNzg5MyA0LjU4NTc5IDIxLjQxNDJDNC4yMTA3MSAyMS4wMzkxIDQgMjAuNTMwNCA0IDIwVjZDNCA1LjQ2OTU3IDQuMjEwNzEgNC45NjA4NiA0LjU4NTc5IDQuNTg1NzlDNC45NjA4NiA0LjIxMDcxIDUuNDY5NTcgNCA2IDRIOE05IDE0TDExIDE2TDE1IDEyTTkgMkgxNUMxNS41NTIzIDIgMTYgMi40NDc3MiAxNiAzVjVDMTYgNS41NTIyOCAxNS41NTIzIDYgMTUgNkg5QzguNDQ3NzIgNiA4IDUuNTUyMjggOCA1VjNDOCAyLjQ0NzcyIDguNDQ3NzIgMiA5IDJaIiBzdHJva2U9IiNFRkYyRjUiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+Cg==',
+  "id-card": 'data:image/svg+xml;base64,PHN2ZyBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIiBvdmVyZmxvdz0idmlzaWJsZSIgc3R5bGU9ImRpc3BsYXk6IGJsb2NrOyIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiB2aWV3Qm94PSIwIDAgMjQgMjQiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxnIGlkPSJJY29ucy9PdXRsaW5lL01lZGlhICYjMzg7IERldmljZXMvaWQtY2FyZCI+CjxwYXRoIGlkPSJWZWN0b3IiIGQ9Ik0xNiAxMEgxOE0xNiAxNEgxOE02LjE2OTkyIDE1LjAwMDFDNi4zNzYwNiAxNC40MTQxIDYuNzU5MDIgMTMuOTA2NSA3LjI2NTk0IDEzLjU0NzVDNy43NzI4NiAxMy4xODg0IDguMzc4NzMgMTIuOTk1NiA4Ljk5OTkyIDEyLjk5NTZDOS42MjExMSAxMi45OTU2IDEwLjIyNyAxMy4xODg0IDEwLjczMzkgMTMuNTQ3NUMxMS4yNDA4IDEzLjkwNjUgMTEuNjIzOCAxNC40MTQxIDExLjgyOTkgMTUuMDAwMU0xMSAxMUMxMSAxMi4xMDQ2IDEwLjEwNDYgMTMgOSAxM0M3Ljg5NTQzIDEzIDcgMTIuMTA0NiA3IDExQzcgOS44OTU0MyA3Ljg5NTQzIDkgOSA5QzEwLjEwNDYgOSAxMSA5Ljg5NTQzIDExIDExWk00IDVIMjBDMjEuMTA0NiA1IDIyIDUuODk1NDMgMjIgN1YxN0MyMiAxOC4xMDQ2IDIxLjEwNDYgMTkgMjAgMTlINEMyLjg5NTQzIDE5IDIgMTguMTA0NiAyIDE3VjdDMiA1Ljg5NTQzIDIuODk1NDMgNSA0IDVaIiBzdHJva2U9IiNFRkYyRjUiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9nPgo8L3N2Zz4K',
+  "bell-ring": 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEwLjI2ODEgMjFDMTAuNDQzNiAyMS4zMDQgMTAuNjk2MSAyMS41NTY1IDExLjAwMDEgMjEuNzMyQzExLjMwNDEgMjEuOTA3NSAxMS42NDkgMjEuOTk5OSAxMi4wMDAxIDIxLjk5OTlDMTIuMzUxMSAyMS45OTk5IDEyLjY5NiAyMS45MDc1IDEzIDIxLjczMkMxMy4zMDQxIDIxLjU1NjUgMTMuNTU2NSAyMS4zMDQgMTMuNzMyMSAyMU0yMiA4QzIyIDUuNyAyMS4yIDMuNyAyMCAyTTQgMkMyLjggMy43IDIgNS43IDIgOE0zLjI2MiAxNS4zMjZDMy4xMzEzNyAxNS40NjkyIDMuMDQ1MTYgMTUuNjQ3MiAzLjAxMzg2IDE1LjgzODVDMi45ODI1NiAxNi4wMjk4IDMuMDA3NTIgMTYuMjI2IDMuMDg1NzEgMTYuNDAzNEMzLjE2MzkgMTYuNTgwNyAzLjI5MTk0IDE2LjczMTYgMy40NTQyNiAxNi44Mzc1QzMuNjE2NTggMTYuOTQzNCAzLjgwNjE4IDE2Ljk5OTkgNCAxN0gyMEMyMC4xOTM4IDE3LjAwMDEgMjAuMzgzNCAxNi45NDM4IDIwLjU0NTkgMTYuODM4MUMyMC43MDgzIDE2LjczMjQgMjAuODM2NSAxNi41ODE3IDIwLjkxNDkgMTYuNDA0NUMyMC45OTMzIDE2LjIyNzMgMjEuMDE4NSAxNi4wMzExIDIwLjk4NzQgMTUuODM5OEMyMC45NTY0IDE1LjY0ODUgMjAuODcwNCAxNS40NzAzIDIwLjc0IDE1LjMyN0MxOS40MSAxMy45NTYgMTggMTIuNDk5IDE4IDhDMTggNi40MDg3IDE3LjM2NzkgNC44ODI1OCAxNi4yNDI2IDMuNzU3MzZDMTUuMTE3NCAyLjYzMjE0IDEzLjU5MTMgMiAxMiAyQzEwLjQwODcgMiA4Ljg4MjU4IDIuNjMyMTQgNy43NTczNiAzLjc1NzM2QzYuNjMyMTQgNC44ODI1OCA2IDYuNDA4NyA2IDhDNiAxMi40OTkgNC41ODkgMTMuOTU2IDMuMjYyIDE1LjMyNloiIHN0cm9rZT0iI0VGRjJGNSIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K',
+  "chev-right": 'data:image/svg+xml;base64,PHN2ZyBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIiBvdmVyZmxvdz0idmlzaWJsZSIgc3R5bGU9ImRpc3BsYXk6IGJsb2NrOyIgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2IiB2aWV3Qm94PSIwIDAgMTYgMTYiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxnIGlkPSJJY29ucy9PdXRsaW5lL0Fycm93cy9jaGV2cm9uLXJpZ2h0Ij4KPHBhdGggaWQ9IlZlY3RvciIgZD0iTTYgMTJMMTAgOEw2IDQiIHN0cm9rZT0iIzlDQTNBRiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CjwvZz4KPC9zdmc+Cg==',
+  "chev-down": 'data:image/svg+xml;base64,PHN2ZyBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIiBvdmVyZmxvdz0idmlzaWJsZSIgc3R5bGU9ImRpc3BsYXk6IGJsb2NrOyIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiB2aWV3Qm94PSIwIDAgMjQgMjQiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxnIGlkPSJJY29ucy9PdXRsaW5lL0Fycm93cy9jaGV2cm9uLWRvd24iPgo8cGF0aCBpZD0iVmVjdG9yIiBkPSJNNiA5TDEyIDE1TDE4IDkiIHN0cm9rZT0iI0VGRjJGNSIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L2c+Cjwvc3ZnPgo=',
+  "chev-left": 'data:image/svg+xml;base64,PHN2ZyBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIiBvdmVyZmxvdz0idmlzaWJsZSIgc3R5bGU9ImRpc3BsYXk6IGJsb2NrOyIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiB2aWV3Qm94PSIwIDAgMjQgMjQiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxnIGlkPSJJY29ucy9PdXRsaW5lL0Fycm93cy9jaGV2cm9uLWxlZnQiPgo8cGF0aCBpZD0iVmVjdG9yIiBkPSJNMTUgMThMOSAxMkwxNSA2IiBzdHJva2U9IiNFRkYyRjUiIHN0cm9rZS13aWR0aD0iMS4xMjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L2c+Cjwvc3ZnPgo=',
+  "search": 'data:image/svg+xml;base64,PHN2ZyBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIiBvdmVyZmxvdz0idmlzaWJsZSIgc3R5bGU9ImRpc3BsYXk6IGJsb2NrOyIgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2IiB2aWV3Qm94PSIwIDAgMTYgMTYiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxnIGlkPSJJY29ucy9PdXRsaW5lL0dlbmVyYWwvc2VhcmNoIj4KPHBhdGggaWQ9IlZlY3RvciIgZD0iTTE0IDE0LjAwMDFMMTEuMTA2NiAxMS4xMDY4TTEyLjY2NjcgNy4zMzMzM0MxMi42NjY3IDEwLjI3ODkgMTAuMjc4OSAxMi42NjY3IDcuMzMzMzMgMTIuNjY2N0M0LjM4NzgxIDEyLjY2NjcgMiAxMC4yNzg5IDIgNy4zMzMzM0MyIDQuMzg3ODEgNC4zODc4MSAyIDcuMzMzMzMgMkMxMC4yNzg5IDIgMTIuNjY2NyA0LjM4NzgxIDEyLjY2NjcgNy4zMzMzM1oiIHN0cm9rZT0iI0E2QTZBRSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CjwvZz4KPC9zdmc+Cg==',
+  "bell": 'data:image/svg+xml;base64,PHN2ZyBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIiBvdmVyZmxvdz0idmlzaWJsZSIgc3R5bGU9ImRpc3BsYXk6IGJsb2NrOyIgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2IiB2aWV3Qm94PSIwIDAgMTYgMTYiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxnIGlkPSJJY29ucy9PdXRsaW5lL01lZGlhICYjMzg7IERldmljZXMvYmVsbCI+CjxwYXRoIGlkPSJWZWN0b3IiIGQ9Ik02Ljg0NTM4IDE0QzYuOTYyNDEgMTQuMjAyNyA3LjEzMDcyIDE0LjM3MSA3LjMzMzQxIDE0LjQ4OEM3LjUzNjA5IDE0LjYwNSA3Ljc2NjAxIDE0LjY2NjYgOC4wMDAwNCAxNC42NjY2QzguMjM0MDggMTQuNjY2NiA4LjQ2NCAxNC42MDUgOC42NjY2OCAxNC40ODhDOC44NjkzNyAxNC4zNzEgOS4wMzc2OCAxNC4yMDI3IDkuMTU0NzEgMTRNMi4xNzQ2NyAxMC4yMTczQzIuMDg3NTggMTAuMzEyOCAyLjAzMDEgMTAuNDMxNSAyLjAwOTI0IDEwLjU1OUMxLjk4ODM3IDEwLjY4NjUgMi4wMDUwMSAxMC44MTc0IDIuMDU3MTQgMTAuOTM1NkMyLjEwOTI2IDExLjA1MzggMi4xOTQ2MiAxMS4xNTQ0IDIuMzAyODQgMTEuMjI1QzIuNDExMDUgMTEuMjk1NiAyLjUzNzQ1IDExLjMzMzIgMi42NjY2NyAxMS4zMzMzSDEzLjMzMzNDMTMuNDYyNSAxMS4zMzM0IDEzLjU4OSAxMS4yOTU5IDEzLjY5NzIgMTEuMjI1NEMxMy44MDU1IDExLjE1NDkgMTMuODkxIDExLjA1NDUgMTMuOTQzMyAxMC45MzYzQzEzLjk5NTUgMTAuODE4MiAxNC4wMTIzIDEwLjY4NzQgMTMuOTkxNiAxMC41NTk5QzEzLjk3MDkgMTAuNDMyMyAxMy45MTM2IDEwLjMxMzYgMTMuODI2NyAxMC4yMThDMTIuOTQgOS4zMDQgMTIgOC4zMzI2NyAxMiA1LjMzMzMzQzEyIDQuMjcyNDcgMTEuNTc4NiAzLjI1NTA1IDEwLjgyODQgMi41MDQ5MUMxMC4wNzgzIDEuNzU0NzYgOS4wNjA4NyAxLjMzMzMzIDggMS4zMzMzM0M2LjkzOTE0IDEuMzMzMzMgNS45MjE3MiAxLjc1NDc2IDUuMTcxNTcgMi41MDQ5MUM0LjQyMTQzIDMuMjU1MDUgNCA0LjI3MjQ3IDQgNS4zMzMzM0M0IDguMzMyNjcgMy4wNTkzMyA5LjMwNCAyLjE3NDY3IDEwLjIxNzNaIiBzdHJva2U9IiNBNkE2QUUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L2c+Cjwvc3ZnPgo=',
+  "help": 'data:image/svg+xml;base64,PHN2ZyBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIiBvdmVyZmxvdz0idmlzaWJsZSIgc3R5bGU9ImRpc3BsYXk6IGJsb2NrOyIgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2IiB2aWV3Qm94PSIwIDAgMTYgMTYiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxnIGlkPSJJY29ucy9PdXRsaW5lL0RldmVsb3BtZW50L2NpcmNsZS1xdWVzdGlvbi1tYXJrIiBjbGlwLXBhdGg9InVybCgjY2xpcDBfMF8xNTE3KSI+CjxwYXRoIGlkPSJWZWN0b3IiIGQ9Ik02LjA1OTk4IDYuMDAwMDVDNi4yMTY3MSA1LjU1NDUgNi41MjYwOCA1LjE3ODc5IDYuOTMzMjggNC45Mzk0OEM3LjM0MDQ4IDQuNzAwMTYgNy44MTkyNCA0LjYxMjY4IDguMjg0NzYgNC42OTI1M0M4Ljc1MDI4IDQuNzcyMzggOS4xNzI1MiA1LjAxNDQgOS40NzY3IDUuMzc1NzRDOS43ODA4NyA1LjczNzA4IDkuOTQ3MzUgNi4xOTQ0IDkuOTQ2NjQgNi42NjY3MkM5Ljk0NjY0IDguMDAwMDUgNy45NDY2NCA4LjY2NjcyIDcuOTQ2NjQgOC42NjY3Mk04IDExLjMzMzNIOC4wMDY2N00xNC42NjY3IDhDMTQuNjY2NyAxMS42ODE5IDExLjY4MTkgMTQuNjY2NyA4IDE0LjY2NjdDNC4zMTgxIDE0LjY2NjcgMS4zMzMzMyAxMS42ODE5IDEuMzMzMzMgOEMxLjMzMzMzIDQuMzE4MSA0LjMxODEgMS4zMzMzMyA4IDEuMzMzMzNDMTEuNjgxOSAxLjMzMzMzIDE0LjY2NjcgNC4zMTgxIDE0LjY2NjcgOFoiIHN0cm9rZT0iI0E2QTZBRSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CjwvZz4KPGRlZnM+CjxjbGlwUGF0aCBpZD0iY2xpcDBfMF8xNTE3Ij4KPHJlY3Qgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2IiBmaWxsPSJ3aGl0ZSIvPgo8L2NsaXBQYXRoPgo8L2RlZnM+Cjwvc3ZnPgo=',
+  "sun": 'data:image/svg+xml;base64,PHN2ZyBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIiBvdmVyZmxvdz0idmlzaWJsZSIgc3R5bGU9ImRpc3BsYXk6IGJsb2NrOyIgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2IiB2aWV3Qm94PSIwIDAgMTYgMTYiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxnIGlkPSJJY29ucy9PdXRsaW5lL1dlYXRoZXIgJiMzODsgTmF0dXJlL3N1biIgY2xpcC1wYXRoPSJ1cmwoI2NsaXAwXzBfMTkzMCkiPgo8cGF0aCBpZD0iVmVjdG9yIiBkPSJNOCAxLjMzMzMzVjIuNjY2NjdNOCAxMy4zMzMzVjE0LjY2NjdNMy4yODY3IDMuMjg2NzhMNC4yMjY3IDQuMjI2NzhNMTEuNzczNCAxMS43NzM0TDEyLjcxMzQgMTIuNzEzNE0xLjMzMzMzIDhIMi42NjY2N00xMy4zMzMzIDhIMTQuNjY2N000LjIyNjcgMTEuNzczNEwzLjI4NjcgMTIuNzEzNE0xMi43MTM0IDMuMjg2NzhMMTEuNzczNCA0LjIyNjc4TTEwLjY2NjcgOEMxMC42NjY3IDkuNDcyNzYgOS40NzI3NiAxMC42NjY3IDggMTAuNjY2N0M2LjUyNzI0IDEwLjY2NjcgNS4zMzMzMyA5LjQ3Mjc2IDUuMzMzMzMgOEM1LjMzMzMzIDYuNTI3MjQgNi41MjcyNCA1LjMzMzMzIDggNS4zMzMzM0M5LjQ3Mjc2IDUuMzMzMzMgMTAuNjY2NyA2LjUyNzI0IDEwLjY2NjcgOFoiIHN0cm9rZT0iI0E2QTZBRSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CjwvZz4KPGRlZnM+CjxjbGlwUGF0aCBpZD0iY2xpcDBfMF8xOTMwIj4KPHJlY3Qgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2IiBmaWxsPSJ3aGl0ZSIvPgo8L2NsaXBQYXRoPgo8L2RlZnM+Cjwvc3ZnPgo=',
+  "plus": 'data:image/svg+xml;base64,PHN2ZyBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIiBvdmVyZmxvdz0idmlzaWJsZSIgc3R5bGU9ImRpc3BsYXk6IGJsb2NrOyIgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2IiB2aWV3Qm94PSIwIDAgMTYgMTYiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxnIGlkPSJJY29ucy9PdXRsaW5lL0NoYXJ0cyAmIzM4OyBGaW5hbmNlL3BsdXMiPgo8cGF0aCBpZD0iVmVjdG9yIiBkPSJNMy4zMzMzMyA4SDEyLjY2NjdNOCAzLjMzMzMzVjEyLjY2NjciIHN0cm9rZT0iIzBCMEIwRCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CjwvZz4KPC9zdmc+Cg=='
+};
+/* ---------------- icons ---------------- */
+const IP = {
+  plus: 'M12 5v14M5 12h14', x: 'M6 6l12 12M18 6L6 18', chevD: 'M6 9l6 6 6-6', chevU: 'M18 15l-6-6-6 6', chevL: 'M15 6l-6 6 6 6', chevR: 'M9 6l6 6-6 6',
+  search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4', eye: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
+  grip: 'M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01', copy: 'M9 9h11v11H9zM5 15H4V4h11v1', trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
+  check: 'M5 12l5 5L19 7', follow: 'M4 4v7a4 4 0 0 0 4 4h12M16 11l4 4-4 4', up: 'M12 19V5M6 11l6-6 6 6', down: 'M12 5v14M6 13l6 6 6-6',
+  doc: 'M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8zM14 3v5h5M9 13h6M9 17h6', layers: 'M12 3l9 5-9 5-9-5zM3 13l9 5 9-5',
+  spark: 'M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z',
+  sliders: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M14 4v4M8 10v4M16 16v4', warn: 'M12 9v4M12 17h.01M10.3 3.9L2 18a2 2 0 0 0 1.7 3h16.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z',
+  yesno: 'M3 12a4 4 0 1 0 8 0 4 4 0 1 0-8 0M13 12a4 4 0 1 0 8 0 4 4 0 1 0-8 0', radio: 'M12 12m-3 0a3 3 0 1 0 6 0 3 3 0 1 0-6 0M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', checkbox: 'M4 4h16v16H4zM8 12l3 3 5-6',
+  list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01', text: 'M4 7V5h16v2M9 19h6M12 5v14', hash: 'M5 9h14M5 15h14M10 4l-2 16M16 4l-2 16',
+  image: 'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15 9h.01', images: 'M7 7h14v12H7zM3 3h14v2M3 3v14h2M7 16l4-4 3 3 2-2 5 5', mic: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3',
+  video: 'M3 6h12v12H3zM15 10l6-3v10l-6-3', attach: 'M21 12l-9 9a5 5 0 0 1-7-7l9-9a3.5 3.5 0 0 1 5 5l-9 9a2 2 0 0 1-3-3l8-8', section: 'M4 6h16M4 12h10M4 18h7',
+  fe: 'M9 9a3 3 0 0 1 6 0v11a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1zM12 6V3M12 3h4l2 2M9 13h6', bell: 'M6 16v-5a6 6 0 0 1 12 0v5l2 2H4zM10 21h4',
+  flame: 'M12 3c1 3 5 5 5 10a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-3-1-5 1-8.5z', bolt: 'M13 3L5 13h6l-1 8 8-10h-6z', drop: 'M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z',
+  door: 'M6 21V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17M4 21h16M14 12h.01', pipe: 'M3 10h6v4H3zM15 10h6v4h-6zM9 11h6v2H9zM12 7v4', broom: 'M14 3l-4 9M6 12h8l2 9H4z',
+  grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z', folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', home: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z', box: 'M12 3l8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9',
+  users: 'M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM22 19v-1a4 4 0 0 0-3-3.87M16 3.13a3.5 3.5 0 0 1 0 6.75', server: 'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01',
+  archive: 'M3 4h18v4H3zM5 8v12h14V8M10 12h4', db: 'M12 3c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3',
+  user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0', globe: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18',
+  pen: 'M4 20h4L19 9l-4-4L4 16zM13 7l4 4', dl: 'M12 4v12M7 11l5 5 5-5M4 20h16', upl: 'M12 16V4M7 9l5-5 5 5M4 20h16', book: 'M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2zM4 21a2 2 0 0 1 2-2h13',
+  play: 'M7 4l13 8-13 8z', undo: 'M9 14L4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3', more: 'M5 12h.01M12 12h.01M19 12h.01', target: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z'
+};
+function I({ n, s = 16, w = 2, c }) {
+  return html`<svg width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke=${c || 'currentColor'} stroke-width=${w} stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d=${IP[n]} /></svg>`;
+}
+
+/* ---------------- model ---------------- */
+let seq = 1000;
+const nid = (p) => p + (++seq);
+const TYPE_GROUPS = [
+  { g: 'Choice', items: [['Yes/No', 'yesno'], ['Yes/No/NA', 'yesno'], ['Radio Button', 'radio'], ['Checkbox', 'checkbox'], ['Dropdown', 'list']] },
+  { g: 'Input', items: [['Text', 'text'], ['Integer', 'hash']] },
+  { g: 'Media', items: [['Image Upload', 'image'], ['Multiple Image Upload', 'images'], ['Record Audio', 'mic'], ['Video Upload', 'video'], ['Upload Document', 'attach']] }
+];
+const TYPE_ICON = {}; TYPE_GROUPS.forEach((g) => g.items.forEach(([t, i]) => { TYPE_ICON[t] = i; })); TYPE_ICON.Section = 'section';
+const CHOICE = ['Yes/No', 'Yes/No/NA', 'Radio Button', 'Checkbox', 'Dropdown'];
+const isChoice = (t) => CHOICE.indexOf(t) >= 0;
+const isFixed = (t) => t === 'Yes/No' || t === 'Yes/No/NA';
+const ANSWER_HINT = { 'Text': 'Inspector types an answer', 'Integer': 'Inspector enters a number', 'Image Upload': 'Inspector takes or uploads a photo', 'Multiple Image Upload': 'Inspector adds several photos', 'Record Audio': 'Inspector records a voice note', 'Video Upload': 'Inspector records or uploads a video', 'Upload Document': 'Inspector attaches a document' };
+const opt = (label, result) => ({ id: nid('o'), label: label, result: result || null });
+function mkOpts(t, inv) {
+  if (t === 'Yes/No') return [opt('Yes', inv ? 'fail' : 'pass'), opt('No', inv ? 'pass' : 'fail')];
+  if (t === 'Yes/No/NA') return [opt('Yes', inv ? 'fail' : 'pass'), opt('No', inv ? 'pass' : 'fail'), opt('N/A')];
+  if (isChoice(t)) return [opt('Option 1'), opt('Option 2')];
+  return [];
+}
+function mkQ(text, type, extra) {
+  extra = extra || {};
+  const q = Object.assign({ id: nid('q'), text: text || '', help: '', type: type, options: mkOpts(type, extra.inv), required: false, wo: false, alert: '', unit: '', min: '', max: '', source: 'Manual', std: '', when: null, follow: [] }, extra);
+  if (q.wo && !q.alert) q.alert = 'ap-std';
+  delete q.inv; return q;
+}
+// build from compact spec: [text, type, {opts}, [followSpecs...]] where followSpec = [whenLabel, spec]
+function build(spec, source, std) {
+  const [text, type, o, kids] = spec;
+  const q = mkQ(text, type, Object.assign({ source: source, std: std }, o || {}));
+  q.follow = (kids || []).map(([whenLabel, ks]) => { const c = build(ks, source, std); const op = q.options.find((x) => x.label === whenLabel); c.when = op ? op.id : null; return c; });
+  return q;
+}
+const section = (title) => ({ id: nid('s'), type: 'Section', text: title, follow: [], options: [] });
+
+/* tree helpers */
+function updateQ(list, id, fn) { return list.map((q) => (q.id === id ? fn(q) : q.follow.length ? Object.assign({}, q, { follow: updateQ(q.follow, id, fn) }) : q)); }
+function findLoc(list, id, parent) {
+  for (let i = 0; i < list.length; i++) {
+    if (list[i].id === id) return { parent: parent || null, index: i, list: list, q: list[i] };
+    const r = findLoc(list[i].follow, id, list[i]); if (r) return r;
+  }
+  return null;
+}
+function setChildren(list, parentId, kids) { return parentId ? updateQ(list, parentId, (p) => Object.assign({}, p, { follow: kids })) : kids; }
+function insertAt(list, parentId, index, q) {
+  const sib = parentId ? findLoc(list, parentId).q.follow.slice() : list.slice();
+  sib.splice(index, 0, q); return setChildren(list, parentId, sib);
+}
+function removeQ(list, id) {
+  const loc = findLoc(list, id); if (!loc) return [list, null];
+  const sib = loc.list.filter((x) => x.id !== id);
+  return [setChildren(list, loc.parent && loc.parent.id, sib), { q: loc.q, parentId: loc.parent && loc.parent.id, index: loc.index }];
+}
+function moveQ(list, id, toIndex) {
+  const loc = findLoc(list, id); if (!loc) return list;
+  const sib = loc.list.slice(); const [it] = sib.splice(loc.index, 1);
+  const t = Math.max(0, Math.min(sib.length, toIndex)); sib.splice(t, 0, it);
+  return setChildren(list, loc.parent && loc.parent.id, sib);
+}
+function cloneQ(q) { const c = Object.assign({}, q, { id: nid(q.type === 'Section' ? 's' : 'q') }); const map = {}; c.options = (q.options || []).map((o) => { const n = Object.assign({}, o, { id: nid('o') }); map[o.id] = n.id; return n; }); c.follow = (q.follow || []).map((k) => { const kk = cloneQ(k); kk.when = map[k.when] || null; return kk; }); return c; }
+function flatten(list) {
+  const out = []; let n = 0; let sectionTitle = null;
+  const walk = (arr, prefix, depth, parent) => {
+    let i = 0;
+    arr.forEach((q) => {
+      if (q.type === 'Section') { out.push({ q: q, num: '', depth: depth, parent: parent, isSection: true }); return; }
+      i += 1; const num = prefix ? prefix + '.' + i : String(i);
+      out.push({ q: q, num: num, depth: depth, parent: parent, whenLabel: parent ? ((parent.options.find((o) => o.id === q.when) || {}).label || '?') : null });
+      walk(q.follow, num, depth + 1, q);
+    });
+  };
+  walk(list, '', 0, null); return out;
+}
+/* work-order alert profiles (placeholder data) */
+const ALERT_PROFILES = [
+  { id: 'ap-std', name: 'Standard maintenance', who: 'Facilities team', how: 'Email and in-app', sla: 'Respond within 24 h' },
+  { id: 'ap-urgent', name: 'Urgent safety', who: 'Safety lead and on-call technician', how: 'SMS and push', sla: 'Respond within 1 h' },
+  { id: 'ap-fire', name: 'Fire & life safety', who: 'Fire warden and Property admin', how: 'SMS and email', sla: 'Respond within 4 h' },
+  { id: 'ap-low', name: 'Low priority', who: 'Facilities queue', how: 'In-app', sla: 'Respond within 3 days' }
+];
+const alertName = (id) => (ALERT_PROFILES.find((a) => a.id === id) || {}).name;
+function qIssues(q, parent) {
+  const r = [];
+  if (q.type === 'Section') return r;
+  if (!q.text.trim()) r.push('Question text is empty');
+  if (isChoice(q.type)) {
+    if (q.options.length < 2) r.push('Needs at least 2 answers');
+    if (q.options.some((o) => !o.label.trim())) r.push('An answer is empty');
+  }
+  if (q.type === 'Integer' && q.min !== '' && q.max !== '' && Number(q.min) > Number(q.max)) r.push('Min is larger than Max');
+  if (parent && !parent.options.some((o) => o.id === q.when)) r.push('Choose which answer shows this follow-up');
+  if (q.wo && !q.alert) r.push('Choose an alert profile for the work order');
+  return r;
+}
+
+/* ---------------- sample data ---------------- */
+const FE_SPECS = [
+  ['Is the extinguisher in its designated location?', 'Yes/No', { required: true }, [['No', ['Photograph where the extinguisher was found', 'Image Upload', { required: true }]]]],
+  ['Is access unobstructed and the signage visible?', 'Yes/No', { required: true }],
+  ['Is the pressure gauge needle in the operable (green) range?', 'Yes/No/NA', { required: true, wo: true, help: 'Tap the gauge lightly before reading it.' }, [['No', ['Record the gauge reading', 'Integer', { unit: 'psi' }]]]],
+  ['Are the safety pin and tamper seal intact?', 'Yes/No', { required: true, wo: true }, [['No', ['Was the seal replaced on site?', 'Yes/No', {}, [['No', ['Explain why the seal could not be replaced', 'Text', { required: true }]]]]]]],
+  ['Is the extinguisher free of damage, corrosion or leakage?', 'Yes/No', { required: true, wo: true }],
+  ['Are the hose and nozzle clear of blockage and cracks?', 'Yes/No'],
+  ['Are the operating instructions legible and facing outward?', 'Yes/No'],
+  ['Record the gross weight', 'Integer', { unit: 'kg' }],
+  ['Is the extinguisher mounted at the correct height?', 'Yes/No'],
+  ['Is the inspection tag present and current?', 'Yes/No', { required: true }, [['No', ['Photograph the missing or expired tag', 'Image Upload']]]],
+  ['Capture a photo of the inspection tag', 'Image Upload', { required: true }],
+  ['Inspector remarks', 'Text']
+];
+function feQuestions() {
+  const qs = FE_SPECS.map((s, i) => build(s, i < 5 ? 'Document' : 'Template', 'NFPA 10'));
+  return [section('Location and access')].concat(qs.slice(0, 2), [section('Condition')], qs.slice(2, 8), [section('Records')], qs.slice(8));
+}
+const TEMPLATES = [
+  { key: 'fe', name: 'Fire Extinguisher – Monthly Inspection', cat: 'Fire Protection', std: 'NFPA 10', icon: 'fe', freq: 'Monthly', desc: 'Charged, accessible and in proper condition.', specs: FE_SPECS },
+  { key: 'alarm', name: 'Fire Alarm System – Weekly', cat: 'Fire Protection', std: 'NFPA 72', icon: 'bell', freq: 'Weekly', desc: 'Control panel, pull stations and backup power.', specs: [['Does the control panel show a normal condition?', 'Yes/No', { required: true }, [['No', ['Photograph the panel display', 'Image Upload']]]], ['Are manual pull stations accessible and undamaged?', 'Yes/No'], ['Is the secondary power supply charged and connected?', 'Yes/No', { wo: true }]] },
+  { key: 'boiler', name: 'Boiler Inspection – Monthly', cat: 'Boiler', std: 'ASME BPVC', icon: 'flame', freq: 'Monthly', desc: 'Operation and maintenance per Sections VI & VII.', specs: [['Is the operating pressure within the rated range?', 'Yes/No', { required: true }], ['Record the operating pressure', 'Integer', { unit: 'psi' }], ['Are there leaks or corrosion around fittings?', 'Yes/No', { inv: true, wo: true }], ['Is the low-water cut-off tested and working?', 'Yes/No/NA']] },
+  { key: 'elec', name: 'Electrical Panel Inspection – Monthly', cat: 'Electrical', std: 'NFPA 70', icon: 'bolt', freq: 'Monthly', desc: 'Labelling, heat damage and working clearance.', specs: [['Is the panel door closed and labelled?', 'Yes/No'], ['Is there any sign of overheating or burning?', 'Yes/No', { inv: true, wo: true }, [['Yes', ['Photograph the affected area', 'Image Upload', { required: true }]]]], ['Is 36 in. of clear working space maintained?', 'Yes/No'], ['Photograph the panel schedule', 'Image Upload']] },
+  { key: 'eyewash', name: 'Eyewash Station – Weekly', cat: 'Health & Safety', std: 'ANSI Z358.1', icon: 'drop', freq: 'Weekly', desc: 'Activation, flow and access for emergency eyewash.', specs: [['Does the unit activate in one second or less?', 'Yes/No'], ['Does flushing fluid flow for the full test?', 'Yes/No'], ['Is the path to the unit free of obstructions?', 'Yes/No']] }
+];
+const PROCS = [
+  { key: 'fe', name: 'Fire Extinguisher – Monthly', desc: 'Ensures all fire extinguishers are in working condition, accessible and ready for use.', cat: 'Inspection', sub: 'Fire Protection', std: 'NFPA 10', pri: 'High', freq: 'Monthly', folder: 'Inspection', updated: 'Sep 24, 2026', icon: 'fe' },
+  { key: 'alarm', name: 'Fire Alarm System – Weekly', desc: 'Weekly checks of the control panel, pull stations and backup power.', cat: 'Inspection', sub: 'Fire Protection', std: 'NFPA 72', pri: 'Critical', freq: 'Weekly', folder: 'Inspection', updated: 'Sep 22, 2026', icon: 'bell' },
+  { key: 'elec', name: 'Electrical Panel Inspection – Monthly', desc: 'Panels, breakers and wiring are safe and operating correctly.', cat: 'Inspection', sub: 'Electrical', std: 'NFPA 70', pri: 'High', freq: 'Monthly', folder: 'Inspection', updated: 'Sep 19, 2026', icon: 'bolt' },
+  { key: 'boiler', name: 'Boiler Inspection – Monthly', desc: 'Operation and maintenance checks per ASME BPVC Sections VI & VII.', cat: 'Project Management (PM)', sub: 'Boiler', std: 'ASME BPVC', pri: 'Medium', freq: 'Monthly', folder: 'PM', updated: 'Sep 15, 2026', icon: 'flame' },
+  { key: 'eyewash', name: 'Eyewash Station – Weekly', desc: 'Activation, flow and access checks for emergency eyewash units.', cat: 'Health & Safety', sub: 'Quick Maintenance', std: 'ANSI Z358.1', pri: 'High', freq: 'Weekly', folder: 'Health & Safety', updated: 'Sep 10, 2026', icon: 'drop' }
+];
+const TOPIC_GROUPS = [
+  { title: 'Fire protection equipment', items: [
+    { id: 't1', std: 'NFPA 10', title: 'Mounting height', quote: 'Ensure extinguisher mounting height is within the permitted limit.', spec: ['Is the extinguisher mounted within the permitted height?', 'Yes/No', { required: true }] },
+    { id: 't2', std: 'NFPA 10', title: 'Pressure check', quote: 'Verify the pressure gauge is in the operational green zone.', spec: ['Is the pressure gauge in the operational green zone?', 'Yes/No/NA', { required: true, wo: true }, [['No', ['Record the gauge reading', 'Integer', { unit: 'psi' }]]]] },
+    { id: 't3', std: 'NFPA 72', title: 'Device accessibility', quote: 'Fire alarm devices near the extinguisher must not be obstructed.', spec: ['Are fire alarm devices near the extinguisher unobstructed?', 'Yes/No'] }] },
+  { title: 'Control and power systems', items: [
+    { id: 't4', std: 'NFPA 72', title: 'Control panel status', quote: 'Verify the fire alarm control panel shows a normal condition.', spec: ['Does the fire alarm control panel show a normal condition?', 'Yes/No', { required: true }] },
+    { id: 't5', std: 'NFPA 72', title: 'Secondary power', quote: 'Confirm the secondary power supply is charged and connected.', spec: ['Is the secondary power supply charged and connected?', 'Yes/No'] }] },
+  { title: 'Seals and tags', items: [
+    { id: 't6', std: 'NFPA 10', title: 'Tamper seal', quote: 'Check the safety pin and tamper seal are intact.', spec: ['Are the safety pin and tamper seal intact?', 'Yes/No', { required: true, wo: true }, [['No', ['Photograph the broken seal', 'Image Upload', { required: true }]]]] },
+    { id: 't7', std: 'NFPA 10', title: 'Inspection tag', quote: 'Confirm the inspection tag is present and current.', spec: ['Capture a photo of the inspection tag', 'Image Upload'] }] }
+];
+const SUGGEST = [
+  { label: 'Visual inspection', items: [['Is there visible physical damage, corrosion or leakage?', 'Yes/No', { inv: true }], ['Is the nozzle or hose free of blockage and cracks?', 'Yes/No'], ['Is the operating instruction label legible?', 'Yes/No']] },
+  { label: 'Seal and pin', items: [['Is the tamper seal intact?', 'Yes/No'], ['Is the safety pin in place?', 'Yes/No']] },
+  { label: 'Pressure', items: [['Is the gauge needle in the green zone?', 'Yes/No/NA'], ['Record the gauge pressure', 'Integer', { unit: 'psi' }]] },
+  { label: 'Placement', items: [['Is the unit mounted at the correct height?', 'Yes/No'], ['Is the signage visible from a distance?', 'Yes/No']] },
+  { label: 'Evidence', items: [['Capture a photo of the inspection tag', 'Image Upload'], ['Record a voice note describing any defects', 'Record Audio']] }
+];
+const LIB_DOCS = [
+  { key: 'd10', name: 'NFPA 10-2018.pdf', size: '10.8 MB', sub: 'Portable Fire Extinguishers' },
+  { key: 'd72', name: 'NFPA 72-2019.pdf', size: '1.5 MB', sub: 'National Fire Alarm and Signaling Code' },
+  { key: 'd80', name: 'NFPA 80-2019.pdf', size: '4.2 MB', sub: 'Fire Doors and Opening Protectives' },
+  { key: 'sop', name: 'Site SOP – Fire Safety.pdf', size: '0.8 MB', sub: 'SSL Testing operating procedure' }
+];
+// Guess an answer type from wording, so pasted lists need less fixing.
+function guessType(text, fallback) {
+  const t = text.toLowerCase();
+  if (/^(photograph|take a photo|capture a photo|upload a photo|photo of)/.test(t)) return 'Image Upload';
+  if (/^(record|enter|measure)\b.*\b(temperature|pressure|weight|reading|level|count|psi|kg|°c|voltage|flow)/.test(t)) return 'Integer';
+  if (/^(describe|explain|remarks|notes|comment|list)\b/.test(t)) return 'Text';
+  if (/^(record a voice|voice note)/.test(t)) return 'Record Audio';
+  return fallback;
+}
+const norm = (s) => s.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\b(the|a|an|is|are|and|of)\b/g, '').replace(/\s+/g, ' ').trim();
+function filesToDocs(files) {
+  return Array.from(files || []).filter((f) => /\.(pdf|docx?)$/i.test(f.name)).map((f) => ({ key: nid('doc'), name: f.name, size: (f.size / 1048576 >= 0.1 ? (f.size / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(f.size / 1024)) + ' KB'), sub: 'Imported just now', ext: /\.pdf$/i.test(f.name) ? 'PDF' : 'DOC', isNew: true }));
+}
+function countLabel(items) {
+  const q = items.filter((f) => !f.parent).length; const fu = items.filter((f) => f.parent).length;
+  return q + ' question' + (q === 1 ? '' : 's') + (fu ? ' · ' + fu + ' follow-up' + (fu === 1 ? '' : 's') : '');
+}
+/* priority -> Status Chips type: Error, Warning, Information, Neutral (outline) */
+const PRI_CLASS = { Critical: 'fail', High: 'warn', Medium: 'info', Low: 'line' };
+const blankDraft = () => ({ name: '', code: '', cat: '', sub: '', freq: '', pri: 'Medium', std: '', avail: 'property', folder: 'Inspection', desc: '', icon: 'fe', questions: [], docs: [] });
+
+/* ---------------- small UI ---------------- */
+function Switch({ on, onChange, label, id }) {
+  return html`<button type="button" role="switch" id=${id} aria-checked=${String(!!on)} className="sw" onClick=${() => onChange(!on)}><span className="track"><span className="knob"></span></span>${label}</button>`;
+}
+/* Dropdown: Sclera 2.0 Textfield (Outline) as trigger, Menu + building-block/Menu row as the list */
+function Dropdown({ id, value, onChange, options, placeholder, invalid, disabled, ariaLabel, describedBy, size, className, style, footer, menuWidth, align }) {
+  const [open, setOpen] = useState(false);
+  const [hi, setHi] = useState(-1);
+  const ref = useRef(null); const listRef = useRef(null);
+  useOutside(ref, () => setOpen(false), open);
+  const opts = options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o));
+  const v = value == null ? '' : value;
+  const cur = opts.find((o) => o.value === v);
+  const enabled = opts.map((o, i) => (o.disabled ? -1 : i)).filter((i) => i >= 0);
+  const openMenu = () => { if (disabled) return; setOpen(true); setHi(cur && !cur.disabled ? opts.indexOf(cur) : (enabled[0] == null ? -1 : enabled[0])); };
+  const pick = (o) => { if (o.disabled) return; onChange(o.value); setOpen(false); const b = ref.current && ref.current.querySelector('button'); if (b) b.focus(); };
+  const onKey = (e) => {
+    if (!open) { if (['ArrowDown', 'ArrowUp', 'Enter', ' '].indexOf(e.key) >= 0) { e.preventDefault(); openMenu(); } return; }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setOpen(false); return; }
+    if (e.key === 'Tab') { setOpen(false); return; }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const p = enabled.indexOf(hi); const n = e.key === 'ArrowDown' ? enabled[Math.min(enabled.length - 1, p + 1)] : enabled[Math.max(0, p - 1)]; setHi(n == null ? enabled[0] : n); return; }
+    if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); setHi(e.key === 'Home' ? enabled[0] : enabled[enabled.length - 1]); return; }
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (hi >= 0) pick(opts[hi]); }
+  };
+  useEffect(() => { if (open && listRef.current) { const el = listRef.current.querySelector('[data-hi="1"]'); if (el) el.scrollIntoView({ block: 'nearest' }); } }, [hi, open]);
+  const lid = (id || 'dd') + '-list';
+  let lastGroup = null;
+  return html`<div ref=${ref} className=${'dd' + (open ? ' open' : '') + (className ? ' ' + className : '')} style=${style}>
+    <button type="button" id=${id} className=${'select' + (invalid ? ' invalid' : '') + (size ? ' ' + size : '')} disabled=${disabled} role="combobox" aria-haspopup="listbox" aria-expanded=${String(open)} aria-controls=${lid} aria-activedescendant=${open && hi >= 0 ? lid + '-' + hi : undefined} aria-label=${ariaLabel} aria-describedby=${describedBy} aria-invalid=${invalid ? 'true' : undefined} onClick=${() => (open ? setOpen(false) : openMenu())} onKeyDown=${onKey}>
+      ${cur && cur.icon && html`<${I} n=${cur.icon} s=${16} />`}<span className=${'dd-v' + (cur && cur.value !== '' ? '' : ' ph')}>${cur && cur.value !== '' ? cur.label : (placeholder || (cur ? cur.label : 'Select'))}</span>
+    </button>
+    ${open && html`<div className=${'menu' + (align === 'end' ? ' end' : '')} id=${lid} role="listbox" ref=${listRef} aria-label=${ariaLabel} style=${menuWidth ? { width: menuWidth } : null}>
+      ${opts.map((o, i) => { const g = o.group && o.group !== lastGroup ? html`<div className="menu-g" role="presentation">${o.group}</div>` : null; if (o.group) lastGroup = o.group;
+        return html`<${Fragment} key=${String(o.value) + i}>${g}<div id=${lid + '-' + i} role="option" className="menu-row" aria-selected=${String(o === cur)} aria-disabled=${o.disabled ? 'true' : undefined} data-hi=${i === hi ? '1' : '0'} title=${o.title || undefined} onMouseEnter=${() => { if (!o.disabled) setHi(i); }} onMouseDown=${(e) => e.preventDefault()} onClick=${() => pick(o)}>${o.icon && html`<${I} n=${o.icon} s=${16} />`}<span>${o.label}</span>${o === cur && o.value !== '' && html`<${I} n="check" s=${16} />`}</div><//>`; })}
+      ${footer}
+    </div>`}
+  </div>`;
+}
+function AlertProfile({ q, set, showError }) {
+  const p = ALERT_PROFILES.find((a) => a.id === q.alert);
+  const bad = !p && showError;
+  return html`<div className="alert-prof">
+    <div className="field"><label htmlFor=${'ap' + q.id}>Alert profile<span className="req"> *</span></label>
+      <${Dropdown} id=${'ap' + q.id} invalid=${bad} value=${q.alert || ''} onChange=${(v) => set({ alert: v })} describedBy=${'aph' + q.id} placeholder="Choose who gets alerted" options=${ALERT_PROFILES.map((a) => ({ value: a.id, label: a.name }))} /></div>
+    <span id=${'aph' + q.id} className=${'hint' + (bad ? ' warn' : '')}>${p ? p.who + ' · ' + p.how + ' · ' + p.sla : bad ? 'Choose an alert profile. It decides who is notified when this work order is raised.' : 'Decides who is notified when a Fail raises this work order.'}</span>
+  </div>`;
+}
+function Toast({ toast, onUndo }) {
+  if (!toast) return null;
+  return html`<div className="toast" role="status"><span className="t-ic"><${I} n="check" s=${20} w=${1.5} /></span><div className="t-body"><span>${toast.msg}</span>${toast.undo && html`<button className="btn btn-outline" onClick=${onUndo}>Undo</button>`}</div></div>`;
+}
+function useOutside(ref, onOut, active) {
+  useEffect(() => {
+    if (!active) return undefined;
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) onOut(); };
+    const k = (e) => { if (e.key === 'Escape') onOut(); };
+    document.addEventListener('mousedown', h); document.addEventListener('keydown', k);
+    return () => { document.removeEventListener('mousedown', h); document.removeEventListener('keydown', k); };
+  }, [active]);
+}
+
+/* ---------------- type picker ---------------- */
+function TypePicker({ q, onPick }) {
+  const hasKids = q.follow.length > 0;
+  const opts = [].concat.apply([], TYPE_GROUPS.map((g) => g.items.map(([t, ic]) => { const blocked = hasKids && !isChoice(t); return { value: t, label: t, icon: ic, group: g.g, disabled: blocked, title: blocked ? 'Remove follow-ups first: only choice questions can have follow-ups' : '' }; })));
+  return html`<div className="field" style=${{ width: 210 }}>
+    <label htmlFor=${'type' + q.id}>Answer type</label>
+    <${Dropdown} id=${'type' + q.id} align="end" value=${q.type} onChange=${onPick} options=${opts} menuWidth=${260}
+      footer=${hasKids && html`<p className="hint" style=${{ padding: '8px 24px 4px' }}>This question has follow-ups, so only choice types are available.</p>`} />
+  </div>`;
+}
+
+/* ---------------- question card (recursive) ---------------- */
+function QuestionBlock(props) {
+  const { q, info, ctx, depth } = props;
+  const cur = ctx.active === q.id;
+  const issues = ctx.issues[q.id] || [];
+  const parent = info.parent;
+  if (q.type === 'Section') return html`<${SectionRow} q=${q} ctx=${ctx} />`;
+  const kidsByOpt = {};
+  q.follow.forEach((c) => { (kidsByOpt[c.when] = kidsByOpt[c.when] || []).push(c); });
+  return html`<div className="qblock">
+    ${parent && html`<div className="when"><${I} n="follow" s=${14} c="#ffc400" />If answer to ${info.parentNum} is <${Dropdown} ariaLabel="Show this follow-up when the answer is" size="sm" className="dd-inline" value=${parent.options.some((o) => o.id === q.when) ? q.when : ''} placeholder="Choose an answer" onChange=${(v) => ctx.update(q.id, (x) => Object.assign({}, x, { when: v }))} options=${parent.options.map((o) => ({ value: o.id, label: o.label || 'Untitled answer' }))} /><span>then ask:</span></div>`}
+    <div id=${'card-' + q.id} className=${'qcard' + (cur ? ' cur' : '') + (ctx.flash === q.id ? ' flash' : '')}>
+      ${cur ? html`<${Editor} q=${q} info=${info} ctx=${ctx} issues=${issues} kidsByOpt=${kidsByOpt} depth=${depth} />` : html`<${Summary} q=${q} info=${info} ctx=${ctx} issues=${issues} />`}
+    </div>
+    ${q.follow.length > 0 && html`<div className="children">
+      ${q.follow.map((c) => html`<${QuestionBlock} key=${c.id} q=${c} info=${ctx.infoOf[c.id]} ctx=${ctx} depth=${depth + 1} />`)}
+    </div>`}
+  </div>`;
+}
+function SectionRow({ q, ctx }) {
+  return html`<div className="section-card" id=${'card-' + q.id}>
+    <${I} n="section" c="#a6a6ae" />
+    <input aria-label="Section title" value=${q.text} placeholder="Section title" onChange=${(e) => ctx.update(q.id, (x) => Object.assign({}, x, { text: e.target.value }))} />
+    <button className="ibtn" aria-label="Move section up" onClick=${() => ctx.move(q.id, -1)}><${I} n="up" /></button>
+    <button className="ibtn" aria-label="Move section down" onClick=${() => ctx.move(q.id, 1)}><${I} n="down" /></button>
+    <button className="ibtn danger" aria-label="Delete section" onClick=${() => ctx.remove(q.id)}><${I} n="trash" /></button>
+  </div>`;
+}
+function Summary({ q, info, ctx, issues }) {
+  return html`<button type="button" className="qsum" onClick=${() => ctx.select(q.id, false)} aria-label=${'Edit question ' + info.num}>
+    <span className="qnum">${info.num}</span>
+    <span style=${{ flex: 1, minWidth: 0 }}>
+      <span className=${'qtext' + (q.text ? '' : ' empty')}>${q.text || 'Untitled question'}${q.required && html`<span className="req"> *</span>`}</span>
+      <span className="opts-line">
+        ${q.options.map((o) => html`<span key=${o.id} className="ochip"><span className="dot" style=${{ background: o.result === 'pass' ? 'var(--pass)' : o.result === 'fail' ? 'var(--fail)' : 'var(--dim)' }}></span>${o.label || '—'}</span>`)}
+        ${!isChoice(q.type) && html`<span className="ochip muted"><${I} n=${TYPE_ICON[q.type]} s=${12} />${ANSWER_HINT[q.type]}${q.unit ? ' (' + q.unit + ')' : ''}</span>`}
+        ${q.wo && html`<span className="tag warn"><img src=${ASSET['bell-ring']} width="14" height="14" alt="" />Work order · ${alertName(q.alert) || 'No alert profile'}</span>`}
+        ${q.source !== 'Manual' && html`<span className="tag line"><${I} n=${q.source === 'Document' ? 'doc' : q.source === 'Template' ? 'layers' : 'spark'} s=${11} />${q.source}${q.std ? ' · ' + q.std : ''}</span>`}
+        ${issues.length > 0 && html`<span className="tag fail"><${I} n="warn" s=${11} />${issues[0]}</span>`}
+      </span>
+    </span>
+    <span className="small muted" style=${{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 6 }}><${I} n=${TYPE_ICON[q.type]} s=${14} />${q.type}</span>
+  </button>`;
+}
+function Editor({ q, info, ctx, issues, kidsByOpt, depth }) {
+  const choice = isChoice(q.type);
+  const fixed = isFixed(q.type);
+  const [showHelp, setShowHelp] = useState(!!q.help);
+  const set = (patch) => ctx.update(q.id, (x) => Object.assign({}, x, patch));
+  const setOpt = (oid, patch) => ctx.update(q.id, (x) => Object.assign({}, x, { options: x.options.map((o) => (o.id === oid ? Object.assign({}, o, patch) : o)) }));
+  const onKey = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ctx.addAfter(q.id); } };
+  const canNest = depth < 2;
+  return html`<div className="qedit">
+    <div className="qrow">
+      <span className="qnum" style=${{ marginTop: 14 }}>${info.num}</span>
+      <div className="field" style=${{ flex: 1 }}>
+        <label htmlFor=${'qt-' + q.id}>Question <span className="req">*</span></label>
+        <input id=${'qt-' + q.id} className=${'input' + (!q.text.trim() && ctx.showErrors ? ' invalid' : '')} style=${{ fontSize: 15 }} value=${q.text} placeholder="Type the question the inspector will answer" onChange=${(e) => set({ text: e.target.value })} onKeyDown=${onKey} />
+      </div>
+      <${TypePicker} q=${q} onPick=${(t) => ctx.changeType(q.id, t)} />
+    </div>
+    <div className="indent" style=${{ marginTop: -6, display: 'flex', gap: 16, alignItems: 'center' }}>
+      <span className="hint">Press Enter to add the next question</span>
+      ${!showHelp && html`<button className="link" onClick=${() => setShowHelp(true)}>+ Add helper text</button>`}
+    </div>
+    ${showHelp && html`<div className="field indent">
+      <label htmlFor=${'qh-' + q.id}>Helper text for the inspector</label>
+      <input id=${'qh-' + q.id} className="input soft sm" value=${q.help} placeholder="e.g. Tap the gauge lightly before reading it" onChange=${(e) => set({ help: e.target.value })} />
+    </div>`}
+
+    ${choice && html`<div className="indent" style=${{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div className="row small muted" style=${{ gap: 10 }}><span style=${{ flex: 1, paddingLeft: 26 }}>Answers</span><span style=${{ width: 128 }}>Result</span><span style=${{ width: canNest ? 118 : 0 }}>${canNest ? 'Follow-up' : ''}</span><span style=${{ width: 32 }}></span></div>
+      ${q.options.map((o, idx) => { const kids = kidsByOpt[o.id] || []; return html`<div key=${o.id} className="optrow">
+        <span className=${'glyph' + (q.type === 'Checkbox' ? ' sq' : '')}></span>
+        <input aria-label=${'Answer ' + (idx + 1)} className=${'input soft sm' + (!o.label.trim() && ctx.showErrors ? ' invalid' : '')} style=${{ flex: 1 }} value=${o.label} readOnly=${fixed} onChange=${(e) => setOpt(o.id, { label: e.target.value })} onKeyDown=${(e) => { if (e.key === 'Enter' && !fixed) { e.preventDefault(); ctx.addOption(q.id); } }} />
+        <div className="seg" role="group" aria-label=${'Result when answer is ' + (o.label || 'this')}>
+          <button className="pass" aria-pressed=${String(o.result === 'pass')} onClick=${() => setOpt(o.id, { result: o.result === 'pass' ? null : 'pass' })}><${I} n="check" s=${12} w=${3} />Pass</button>
+          <button className="fail" aria-pressed=${String(o.result === 'fail')} onClick=${() => setOpt(o.id, { result: o.result === 'fail' ? null : 'fail' })}><${I} n="x" s=${12} w=${3} />Fail</button>
+        </div>
+        ${canNest ? html`<button className=${'fu-btn' + (kids.length ? ' has' : '')} style=${{ width: 118 }} onClick=${() => ctx.addFollow(q.id, o.id)} aria-label=${'Add follow-up question when answer is ' + (o.label || 'this answer')}><${I} n="plus" s=${12} w=${2.6} />Follow-up${kids.length > 0 && html`<span className="tag" style=${{ height: 16, padding: '0 5px', fontSize: 10, background: 'var(--action)', color: 'var(--on-action)' }}>${kids.length}</span>`}</button>` : html`<span></span>`}
+        ${!fixed && q.options.length > 2 ? html`<button className="ibtn danger" aria-label=${'Remove answer ' + (o.label || idx + 1)} onClick=${() => ctx.removeOption(q.id, o.id)}><${I} n="trash" /></button>` : html`<span style=${{ width: 32 }}></span>`}
+      </div>`; })}
+      ${!fixed && html`<button className="link" style=${{ alignSelf: 'flex-start', marginLeft: 26 }} onClick=${() => ctx.addOption(q.id)}>+ Add answer</button>`}
+      ${!canNest && html`<p className="hint">Follow-ups can go three levels deep. This question is on the third level.</p>`}
+    </div>`}
+    ${q.type === 'Integer' && html`<div className="indent row" style=${{ alignItems: 'flex-end' }}>
+      ${[['min', 'Min'], ['max', 'Max'], ['unit', 'Unit']].map(([k, l]) => html`<div key=${k} className="field" style=${{ width: 120 }}><label htmlFor=${k + q.id}>${l}</label><input id=${k + q.id} className="input sm" value=${q[k]} placeholder=${k === 'unit' ? 'kg, psi, °C' : '—'} onChange=${(e) => set({ [k]: e.target.value })} /></div>`)}
+      <span className="hint" style=${{ paddingBottom: 10 }}>A reading outside Min–Max counts as Fail.</span>
+    </div>`}
+    ${!choice && q.type !== 'Integer' && html`<div className="indent" style=${{ height: 44, border: '1px dashed var(--dim)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--muted)' }}><${I} n=${TYPE_ICON[q.type]} s=${18} />${ANSWER_HINT[q.type]}</div>`}
+    ${issues.length > 0 && ctx.showErrors && html`<div className="indent tag fail" style=${{ height: 'auto', padding: '6px 10px', alignSelf: 'flex-start' }}><${I} n="warn" s=${12} />${issues.join(' · ')}</div>`}
+    <div className="divider indent"></div>
+    <div className="indent qfoot">
+      <${Switch} on=${q.required} label="Required" onChange=${(v) => set({ required: v })} />
+      ${choice && html`<${Switch} on=${q.wo} label="Work order on Fail" onChange=${(v) => set({ wo: v })} />`}
+      <div className="row" style=${{ marginLeft: 'auto', gap: 2 }}>
+        <button className="ibtn" aria-label="Move up" title="Move up (Alt+↑)" onClick=${() => ctx.move(q.id, -1)}><${I} n="up" /></button>
+        <button className="ibtn" aria-label="Move down" title="Move down (Alt+↓)" onClick=${() => ctx.move(q.id, 1)}><${I} n="down" /></button>
+        <button className="ibtn" aria-label="Duplicate question" title="Duplicate" onClick=${() => ctx.duplicate(q.id)}><${I} n="copy" /></button>
+        <button className="ibtn danger" aria-label="Delete question" title="Delete" onClick=${() => ctx.remove(q.id)}><${I} n="trash" /></button>
+        <button className="btn btn-quiet btn-sm" style=${{ marginLeft: 8 }} onClick=${() => ctx.select(null)}>Done</button>
+      </div>
+    </div>
+    ${choice && q.wo && html`<div className="indent"><${AlertProfile} q=${q} set=${set} showError=${ctx.showErrors} /></div>`}
+  </div>`;
+}
+
+/* ---------------- navigator ---------------- */
+function Navigator({ flat, active, issues, onSelect, onMove, onReorder, onAdd }) {
+  const [filter, setFilter] = useState('all');
+  const [query, setQuery] = useState('');
+  const [jump, setJump] = useState('');
+  const [jumpErr, setJumpErr] = useState('');
+  const [drag, setDrag] = useState(null);
+  const [over, setOver] = useState(null);
+  const listRef = useRef(null);
+  const questions = flat.filter((f) => !f.isSection);
+  const attention = questions.filter((f) => (issues[f.q.id] || []).length);
+  const withFollow = questions.filter((f) => f.q.follow.length);
+  const needle = query.trim().toLowerCase();
+  const shown = flat.filter((f) => {
+    if (f.isSection) return filter === 'all' && !needle;
+    if (filter === 'attention' && !(issues[f.q.id] || []).length) return false;
+    if (filter === 'required' && !f.q.required) return false;
+    if (filter === 'follow' && !f.q.follow.length && !f.parent) return false;
+    if (needle && (f.q.text + ' ' + f.num).toLowerCase().indexOf(needle) < 0) return false;
+    return true;
+  });
+  const doJump = (e) => {
+    e.preventDefault();
+    const v = jump.trim(); if (!v) return;
+    const hit = questions.find((f) => f.num === v);
+    if (hit) { onSelect(hit.q.id, true); setJump(''); setJumpErr(''); } else setJumpErr('No question ' + v);
+  };
+  useEffect(() => {
+    if (!active || !listRef.current) return;
+    const el = listRef.current.querySelector('[data-id="' + active + '"]');
+    if (el) { const L = listRef.current; const r = el.getBoundingClientRect(); const lr = L.getBoundingClientRect(); if (r.top < lr.top) L.scrollTop += r.top - lr.top - 8; else if (r.bottom > lr.bottom) L.scrollTop += r.bottom - lr.bottom + 8; }
+  }, [active]);
+  const onKey = (e) => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const items = shown.filter((f) => !f.isSection);
+    const i = items.findIndex((f) => f.q.id === active);
+    e.preventDefault();
+    if (e.altKey && active) { onMove(active, e.key === 'ArrowUp' ? -1 : 1); return; }
+    const n = e.key === 'ArrowDown' ? Math.min(items.length - 1, i + 1) : Math.max(0, i - 1);
+    if (items[n]) onSelect(items[n].q.id, true, true);
+  };
+  const filters = [['all', 'All', questions.length], ['attention', 'Needs attention', attention.length], ['required', 'Required', questions.filter((f) => f.q.required).length], ['follow', 'Follow-ups', withFollow.length]];
+  return html`<nav className="navi" aria-label="Question navigator">
+    <div className="navi-top">
+      <div className="row between"><h2 style=${{ fontSize: 15, fontWeight: 600 }}>Questions</h2><span className="small muted" style=${{ fontVariantNumeric: 'tabular-nums' }}>${countLabel(questions)}</span></div>
+      <form className="jump" onSubmit=${doJump}>
+        <label htmlFor="jump" className="sr">Go to question number</label>
+        <input id="jump" className=${'input sm' + (jumpErr ? ' invalid' : '')} style=${{ width: 96 }} inputMode="decimal" placeholder="Go to #" value=${jump} onChange=${(e) => { setJump(e.target.value); setJumpErr(''); }} />
+        <label htmlFor="nsearch" className="sr">Search questions</label>
+        <input id="nsearch" type="search" className="input sm soft" style=${{ flex: 1 }} placeholder="Search" value=${query} onChange=${(e) => setQuery(e.target.value)} />
+      </form>
+      ${jumpErr && html`<span className="small warn">${jumpErr}. Numbers look like 4 or 4.1.</span>`}
+      <div className="row" style=${{ gap: 6, flexWrap: 'wrap' }} role="group" aria-label="Show">
+        ${filters.map(([k, l, n]) => html`<button key=${k} className=${'pill' + (filter === k ? ' on' : '')} aria-pressed=${String(filter === k)} onClick=${() => setFilter(k)}>${k === 'attention' && n > 0 && html`<span className="dot" style=${{ background: 'var(--fail)' }}></span>`}${l}<span className="n">${n}</span></button>`)}
+      </div>
+    </div>
+    <div className="navi-list" ref=${listRef} tabIndex="0" onKeyDown=${onKey} aria-label="Questions. Use arrow keys to move between questions, Alt plus arrow to reorder.">
+      ${shown.length === 0 && html`<p className="small muted" style=${{ padding: 12 }}>${filter === 'attention' ? 'Nothing needs attention.' : 'No questions match.'}</p>`}
+      ${shown.map((f) => {
+        if (f.isSection) return html`<div key=${f.q.id} className="section-nav">${f.q.text || 'Untitled section'}</div>`;
+        const iss = issues[f.q.id] || [];
+        const draggable = true;
+        return html`<button key=${f.q.id} data-id=${f.q.id} type="button" draggable=${draggable}
+          className=${'nitem' + (active === f.q.id ? ' cur' : '') + (over === f.q.id && drag && drag !== f.q.id ? ' drop-before' : '')}
+          style=${{ paddingLeft: 8 + f.depth * 16 }}
+          onClick=${() => onSelect(f.q.id, true)}
+          onDragStart=${(e) => { setDrag(f.q.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', f.q.id); }}
+          onDragOver=${(e) => { if (drag) { e.preventDefault(); setOver(f.q.id); } }}
+          onDragLeave=${() => setOver(null)}
+          onDrop=${(e) => { e.preventDefault(); if (drag && drag !== f.q.id) onReorder(drag, f.q.id); setDrag(null); setOver(null); }}
+          onDragEnd=${() => { setDrag(null); setOver(null); }}>
+          <span className="grip" aria-hidden="true"><${I} n="grip" s=${14} w=${3} /></span>
+          <span className="num">${f.num}</span>
+          <span className="body">
+            <span className=${'txt ellipsis' + (f.q.text ? '' : ' muted')}>${f.q.text || 'Untitled question'}</span>
+            <span className="sub">
+              ${f.parent && html`<span className="tag sel" style=${{ height: 18, fontSize: 10 }}>If ${f.whenLabel}</span>`}
+              <${I} n=${TYPE_ICON[f.q.type]} s=${11} />${f.q.type}
+              ${f.q.required && html`<span className="req">Required</span>`}
+              ${f.q.follow.length > 0 && html`<span>· ${f.q.follow.length} follow-up${f.q.follow.length > 1 ? 's' : ''}</span>`}
+            </span>
+          </span>
+          ${iss.length > 0 && html`<span className="warn" title=${iss.join(', ')} aria-label=${'Needs attention: ' + iss.join(', ')}><${I} n="warn" s=${14} /></span>`}
+        </button>`;
+      })}
+    </div>
+    <div className="navi-foot">
+      <span><span className="kbd">↑</span> <span className="kbd">↓</span> move · <span className="kbd">Alt</span>+<span className="kbd">↑</span> reorder</span>
+      <button className="btn btn-outline btn-xs" onClick=${onAdd}><${I} n="plus" s=${12} w=${2.6} />Question</button>
+    </div>
+  </nav>`;
+}
+
+/* ---------------- side panel ---------------- */
+function SidePanel({ tab, setTab, d, setD, checks, ctx, pulse }) {
+  const tabs = [['details', 'Details', 'sliders'], ['templates', 'Templates', 'layers'], ['docs', 'Documents', 'doc'], ['suggest', 'Suggestions', 'spark']];
+  return html`<aside className=${'side' + (pulse ? ' pulse' : '')} aria-label="Procedure details and question sources">
+    <div className="stabs" role="tablist" aria-label="Side panel">
+      ${tabs.map(([k, l, ic]) => html`<button key=${k} type="button" role="tab" className="stab" aria-selected=${String(tab === k)} onClick=${() => setTab(k)}>${l}</button>`)}
+    </div>
+    ${tab === 'details' && html`<${DetailsTab} d=${d} setD=${setD} checks=${checks} ctx=${ctx} />`}
+    ${tab === 'templates' && html`<${TemplatesTab} ctx=${ctx} />`}
+    ${tab === 'docs' && html`<${DocsTab} d=${d} setD=${setD} ctx=${ctx} />`}
+    ${tab === 'suggest' && html`<${SuggestTab} d=${d} ctx=${ctx} />`}
+  </aside>`;
+}
+function DetailsTab({ d, setD, checks, ctx }) {
+  const f = (k) => (v) => setD({ [k]: v && v.target ? v.target.value : v });
+  const bad = (k) => ctx.showErrors && !d[k];
+  return html`<div className="side-body">
+    <${PanelIntro} title="Procedure details" text="Fields marked * are needed to publish." />
+    <div className="field"><label htmlFor="f-name">Procedure name <span className="req">*</span></label><input id="f-name" className=${'input' + (bad('name') ? ' invalid' : '')} value=${d.name} onChange=${f('name')} placeholder="e.g. Fire Extinguisher – Monthly" /></div>
+    ${ctx.showErrors && (!d.cat || !d.sub) && html`<span className="small warn" style=${{ marginBottom: -8 }}>Choose a category and sub category to publish.</span>`}
+    <div className="row" style=${{ gap: 12 }}>
+      <div className="field" style=${{ flex: 1 }}><label htmlFor="f-cat">Category <span className="req">*</span></label><${Dropdown} id="f-cat" invalid=${bad('cat')} value=${d.cat} onChange=${f('cat')} placeholder="Select…" options=${[].concat(['Inspection', 'Project Management (PM)', 'Rounds', 'Dispatch', 'Health & Safety', 'Custom'])} /></div>
+      <div className="field" style=${{ flex: 1 }}><label htmlFor="f-sub">Sub category <span className="req">*</span></label><${Dropdown} id="f-sub" invalid=${bad('sub')} value=${d.sub} onChange=${f('sub')} placeholder="Select…" options=${[].concat(['Fire Protection', 'Plumbing', 'Boiler', 'Cleaning', 'Electrical', 'Quick Maintenance'])} /></div>
+    </div>
+    <div className="row" style=${{ gap: 12 }}>
+      <div className="field" style=${{ flex: 1 }}><label htmlFor="f-freq">Frequency</label><${Dropdown} id="f-freq" value=${d.freq} onChange=${f('freq')} options=${[{ value: '', label: 'Not set' }].concat(['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Semi-annual', 'Annual'])} /></div>
+      <div className="field" style=${{ flex: 1 }}><label htmlFor="f-pri">Priority</label><${Dropdown} id="f-pri" value=${d.pri} onChange=${f('pri')} options=${['Critical', 'High', 'Medium', 'Low']} /></div>
+    </div>
+    <div className="row" style=${{ gap: 12 }}>
+      <div className="field" style=${{ flex: 1 }}><label htmlFor="f-code">Code</label><input id="f-code" className="input" value=${d.code} onChange=${f('code')} placeholder="FE-M-01" /></div>
+      <div className="field" style=${{ flex: 1 }}><label htmlFor="f-std">Standard</label><${Dropdown} id="f-std" value=${d.std} onChange=${f('std')} options=${[{ value: '', label: 'None' }].concat(['NFPA 10', 'NFPA 72', 'NFPA 70', 'NFPA 80', 'ASME BPVC', 'ANSI Z358.1', 'OSHA 1910'])} /></div>
+    </div>
+    <div role="radiogroup" aria-label="Availability" style=${{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <span className="small muted">Availability</span>
+      ${[['property', 'This property', 'SSL Testing · VDMS163'], ['org', 'Entire organization', 'All properties']].map(([k, l, s]) => html`<button key=${k} type="button" role="radio" className="choice" aria-checked=${String(d.avail === k)} onClick=${() => setD({ avail: k })}><span className="radio"><i></i></span><span style=${{ display: 'flex', flexDirection: 'column' }}><span style=${{ fontWeight: 600 }}>${l}</span><span className="small muted">${s}</span></span></button>`)}
+    </div>
+    <div className="field"><label htmlFor="f-fold">Folder</label><${Dropdown} id="f-fold" value=${d.folder} onChange=${f('folder')} options=${['Inspection', 'Rounds', 'PM', 'Health & Safety', 'Custom']} /></div>
+    <div className="field"><label htmlFor="f-desc">Description</label><textarea id="f-desc" className="textarea" rows="3" value=${d.desc} onChange=${f('desc')} placeholder="What this procedure checks and the standard it follows"></textarea></div>
+  </div>`;
+}
+function PanelIntro({ title, text, icon }) {
+  return html`<div style=${{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>${icon && html`<span className="ptile" style=${{ width: 36, height: 36, background: 'var(--selected)' }}><${I} n=${icon} s=${18} /></span>`}<div style=${{ display: 'flex', flexDirection: 'column', gap: 2 }}><h3 style=${{ fontSize: 15 }}>${title}</h3><span className="small muted">${text}</span></div></div>`;
+}
+function TemplatesTab({ ctx }) {
+  const [q, setQ] = useState('');
+  const n = q.trim().toLowerCase();
+  const list = TEMPLATES.filter((t) => !n || (t.name + ' ' + t.std + ' ' + t.cat).toLowerCase().indexOf(n) >= 0);
+  return html`<div className="side-body">
+    <${PanelIntro} icon="layers" title="Add questions from a template" text="Pick a ready-made checklist, choose the questions you want, and they are added to yours." />
+    <div className="field"><label htmlFor="tsearch">Search templates</label><input id="tsearch" type="search" className="input" placeholder="Name or standard, e.g. NFPA 72" value=${q} onChange=${(e) => setQ(e.target.value)} /></div>
+    ${list.map((t) => html`<div key=${t.key} className="tcard">
+      <div className="row" style=${{ alignItems: 'flex-start' }}><span className="ptile" style=${{ width: 40, height: 40 }}><${I} n=${t.icon} s=${20} w=${1.7} /></span><div style=${{ display: 'flex', flexDirection: 'column', gap: 4 }}><div className="row" style=${{ gap: 4 }}><span className="tag line">${t.cat}</span><span className="tag line">${t.std}</span></div><span style=${{ fontWeight: 600 }}>${t.name}</span><span className="small muted">${t.desc}</span></div></div>
+      <div className="row between"><span className="small muted">${t.specs.length} questions</span><button className="btn btn-primary btn-sm" onClick=${() => ctx.reviewTemplate(t)}>Preview & add</button></div>
+    </div>`)}
+    ${list.length === 0 && html`<p className="muted">No templates match “${q}”.</p>`}
+  </div>`;
+}
+function DocsTab({ d, setD, ctx }) {
+  const [ready, setReady] = useState(false);
+  const [sel, setSel] = useState({});
+  const [context, setContext] = useState('');
+  const all = []; TOPIC_GROUPS.forEach((g) => g.items.forEach((t) => all.push(t)));
+  const selN = all.filter((t) => sel[t.id]).length;
+  const extract = () => { const s = {}; all.forEach((t) => { s[t.id] = true; }); setSel(s); setReady(true); };
+  const fileRef = useRef(null);
+  return html`<div className="side-body">
+    <${PanelIntro} icon="doc" title="Generate questions from a document" text="Add a standard or SOP, pick the topics, and review the questions before they are added." />
+    <input ref=${fileRef} type="file" accept=".pdf,.doc,.docx" multiple className="sr" aria-label="Upload documents" onChange=${(e) => { const docs = ctx.importFiles(e.target.files); e.target.value = ''; if (docs.length) { setD({ docs: d.docs.concat(docs).slice(0, 5) }); setReady(false); } }} />
+    <div className="row" style=${{ gap: 8 }}>
+      <button className="btn btn-outline btn-sm" style=${{ flex: 1 }} onClick=${() => fileRef.current.click()}><${I} n="upl" s=${14} />Upload</button>
+      <button className="btn btn-outline btn-sm" style=${{ flex: 1 }} onClick=${ctx.openDocLib}><${I} n="book" s=${14} />From library</button>
+    </div>
+    <div style=${{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <span className="small muted">Added documents (${d.docs.length}/5)</span>
+      ${d.docs.length === 0 && html`<p className="small muted" style=${{ border: '1px dashed var(--dim)', borderRadius: 4, padding: 14, textAlign: 'center' }}>Upload a standard or SOP. Topics are extracted so you choose what becomes a question.</p>`}
+      ${d.docs.map((x) => html`<div key=${x.key} className="row" style=${{ height: 44, border: '1px solid var(--line)', borderRadius: 4, padding: '0 6px 0 10px', gap: 10 }}><span className="tag fail" style=${{ fontSize: 9 }}>PDF</span><span className="ellipsis" style=${{ flex: 1 }}>${x.name}</span><span className="small muted">${x.size}</span><button className="ibtn" aria-label=${'Remove ' + x.name} onClick=${() => { setD({ docs: d.docs.filter((y) => y.key !== x.key) }); setReady(false); }}><${I} n="x" s=${14} /></button></div>`)}
+    </div>
+    ${d.docs.length > 0 && !ready && html`<button className="btn btn-tonal" onClick=${extract}>Extract topics</button>`}
+    ${ready && d.docs.length > 0 && html`<${Fragment}>
+      <div className="row between"><span style=${{ fontWeight: 600 }}>Topics (${all.length})</span><label className="row small muted" style=${{ gap: 6, cursor: 'pointer' }}><input type="checkbox" checked=${selN === all.length} onChange=${() => { const s = {}; all.forEach((t) => { s[t.id] = selN !== all.length; }); setSel(s); }} />Select all</label></div>
+      ${TOPIC_GROUPS.map((g) => html`<div key=${g.title} style=${{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <span className="section-nav" style=${{ padding: '2px 0' }}>${g.title}</span>
+        ${g.items.map((t) => html`<label key=${t.id} className=${'topic' + (sel[t.id] ? ' on' : '')}><input type="checkbox" checked=${!!sel[t.id]} onChange=${() => setSel(Object.assign({}, sel, { [t.id]: !sel[t.id] }))} style=${{ marginTop: 2 }} /><span style=${{ display: 'flex', flexDirection: 'column', gap: 4 }}><span className="row" style=${{ gap: 6 }}><span className="tag line" style=${{ height: 18, fontSize: 10 }}>${t.std}</span><span style=${{ fontWeight: 500 }}>${t.title}</span></span><span className="small muted">${t.quote}</span></span></label>`)}
+      </div>`)}
+      <div className="field"><label htmlFor="gctx">Instructions (optional)</label><textarea id="gctx" className="textarea" rows="2" value=${context} onChange=${(e) => setContext(e.target.value)} placeholder="e.g. Ask for a photo on every failed check"></textarea></div>
+      <button className="btn btn-primary" disabled=${!selN} onClick=${() => ctx.generate(all.filter((t) => sel[t.id]))}><${I} n="spark" />Generate ${selN} question${selN === 1 ? '' : 's'}</button>
+    <//>`}
+  </div>`;
+}
+function SuggestTab({ d, ctx }) {
+  const [t, setT] = useState(0);
+  const texts = flatten(d.questions).map((f) => f.q.text);
+  return html`<div className="side-body">
+    <${PanelIntro} icon="spark" title="Smart suggestions" text="Suggested from the name, category and standard. Choose a topic and add what you need." />
+    <div className="row" style=${{ flexWrap: 'wrap', gap: 6 }}>${SUGGEST.map((s, i) => html`<button key=${s.label} className=${'pill' + (t === i ? ' on' : '')} aria-pressed=${String(t === i)} onClick=${() => setT(i)}>${s.label}</button>`)}</div>
+    ${SUGGEST[t].items.map((it) => { const added = texts.indexOf(it[0]) >= 0; return html`<div key=${it[0]} className="row" style=${{ border: '1px solid var(--line)', borderRadius: 4, padding: 12, alignItems: 'flex-start' }}>
+      <div style=${{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}><span>${it[0]}</span><span className="small muted">${it[1]}</span></div>
+      ${added ? html`<span className="small" style=${{ color: 'var(--pass)', fontWeight: 500, paddingTop: 6 }}>Added</span>` : html`<button className="btn btn-outline btn-xs" onClick=${() => ctx.addSuggestion(it)}>Add</button>`}
+    </div>`; })}
+  </div>`;
+}
+
+/* ---------------- dialogs ---------------- */
+function ReviewDialog({ review, existing, onClose, onConfirm }) {
+  const dup = review.items.map((q) => existing.indexOf(norm(q.text)) >= 0);
+  const [sel, setSel] = useState(() => dup.map((d) => !d));
+  const n = sel.filter(Boolean).length;
+  const countKids = (q) => q.follow.reduce((a, c) => a + 1 + countKids(c), 0);
+  return html`<div className="scrim" onMouseDown=${(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="rv-t" style=${{ width: 960, height: '90%' }}>
+      <div className="dhead"><${I} n=${review.kind === 'doc' ? 'spark' : 'layers'} s=${20} c="#ffc400" /><h2 id="rv-t" style=${{ fontSize: 20 }}>${review.title}</h2>${review.tags.map((t) => html`<span key=${t} className="tag line">${t}</span>`)}<button className="ibtn lg" style=${{ marginLeft: 'auto' }} aria-label="Close" onClick=${onClose}><${I} n="x" s=${20} /></button></div>
+      <div className="row between" style=${{ padding: '12px 24px', background: 'var(--selected)', color: 'var(--selected-text)' }}><span>Choose what to add. Follow-ups come with their question. You can edit everything afterwards.</span><label className="row" style=${{ gap: 8, color: 'var(--text)', cursor: 'pointer' }}><input type="checkbox" checked=${n === sel.length} onChange=${() => setSel(sel.map(() => n !== sel.length))} />Select all (${sel.length})</label></div>
+      <div className="dbody" style=${{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        ${review.items.map((q, i) => html`<label key=${q.id} className=${'topic' + (sel[i] ? ' on' : '')} style=${{ padding: '14px 16px' }}>
+          <span style=${{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <span className="row" style=${{ gap: 8 }}><span style=${{ fontWeight: 500, fontSize: 15 }}>${i + 1}. ${q.text}</span>${q.std && html`<span className="tag line">${q.std}</span>`}${dup[i] && html`<span className="tag fail">Already in your checklist</span>`}<span className="small muted" style=${{ marginLeft: 'auto' }}>${q.type}</span></span>
+            <span className="opts-line" style=${{ marginTop: 0 }}>${q.options.map((o) => html`<span key=${o.id} className="ochip"><span className="dot" style=${{ background: o.result === 'pass' ? 'var(--pass)' : o.result === 'fail' ? 'var(--fail)' : 'var(--dim)' }}></span>${o.label}</span>`)}${countKids(q) > 0 && html`<span className="tag sel"><${I} n="follow" s=${11} />${countKids(q)} follow-up${countKids(q) > 1 ? 's' : ''}</span>`}</span>
+          </span>
+          <input type="checkbox" aria-label="Include" checked=${sel[i]} onChange=${() => setSel(sel.map((v, j) => (j === i ? !v : v)))} style=${{ width: 18, height: 18, marginTop: 4 }} />
+        </label>`)}
+      </div>
+      <div className="dfoot"><span className="muted">${n} of ${sel.length} selected</span><div className="row"><button className="btn btn-quiet" onClick=${onClose}>Cancel</button><button className="btn btn-primary" disabled=${!n} onClick=${() => onConfirm(review.items.filter((_, i) => sel[i]))}>Add ${n} question${n === 1 ? '' : 's'}</button></div></div>
+    </div>
+  </div>`;
+}
+function Generating({ step }) {
+  const labels = ['Reading document', 'Extracting key sections', 'Identifying possible questions', 'Preparing your checklist'];
+  return html`<div className="scrim"><div className="dialog" role="status" aria-live="polite" style=${{ width: 420, padding: 28, gap: 14 }}>
+    <div className="row"><span className="spin"></span><h2 style=${{ fontSize: 16 }}>Generating questions</h2></div>
+    ${labels.map((l, i) => html`<div key=${l} className="row" style=${{ gap: 10, color: i < step ? 'var(--pass)' : i === step ? 'var(--selected-text)' : 'var(--dim)' }}>${i < step ? html`<${I} n="check" s=${14} w=${3} />` : html`<span style=${{ width: 14, textAlign: 'center' }}>•</span>`}${l}${i === step ? '…' : ''}</div>`)}
+  </div></div>`;
+}
+function DocLibrary({ onClose, onConfirm, mode, docs, onImport }) {
+  const [sel, setSel] = useState({});
+  const [over, setOver] = useState(false);
+  const [q, setQ] = useState('');
+  const fileRef = useRef(null);
+  const n = docs.filter((x) => sel[x.key]).length;
+  const doImport = (files) => { const added = onImport(files); if (added.length) { const s = Object.assign({}, sel); added.forEach((x) => { s[x.key] = true; }); setSel(s); } };
+  const needle = q.trim().toLowerCase();
+  const shown = docs.filter((x) => !needle || (x.name + ' ' + x.sub).toLowerCase().indexOf(needle) >= 0);
+  return html`<div className="scrim" onMouseDown=${(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="dl-t" style=${{ width: 880, maxHeight: '90%' }}>
+      <div className="dhead"><h2 id="dl-t" style=${{ fontSize: 20 }}>Documents</h2><span className="tag">${docs.length}</span>
+        <input ref=${fileRef} type="file" accept=".pdf,.doc,.docx" multiple className="sr" aria-label="Import documents" onChange=${(e) => { doImport(e.target.files); e.target.value = ''; }} />
+        <button className="btn btn-outline btn-sm" style=${{ marginLeft: 'auto' }} onClick=${() => fileRef.current.click()}><${I} n="upl" s=${14} />Import document</button>
+        <button className="ibtn lg" aria-label="Close" onClick=${onClose}><${I} n="x" s=${20} /></button></div>
+      <div className="dbody" style=${{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div role="button" tabIndex="0" onClick=${() => fileRef.current.click()} onKeyDown=${(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileRef.current.click(); } }}
+          onDragOver=${(e) => { e.preventDefault(); setOver(true); }} onDragLeave=${() => setOver(false)} onDrop=${(e) => { e.preventDefault(); setOver(false); doImport(e.dataTransfer.files); }}
+          style=${{ border: '1px dashed ' + (over ? 'var(--action)' : 'var(--dim)'), background: over ? 'var(--selected)' : 'transparent', borderRadius: 8, padding: '18px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--muted)', cursor: 'pointer' }}>
+          <${I} n="upl" s=${20} c="#ffc400" /><span><span style=${{ color: 'var(--action)', fontWeight: 500 }}>Import a document</span> or drop PDF / Word files here</span>
+        </div>
+        <input type="search" className="input soft sm" aria-label="Search documents" placeholder="Search documents" value=${q} onChange=${(e) => setQ(e.target.value)} />
+        <div style=${{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 12 }}>
+        ${shown.map((x) => html`<label key=${x.key} className=${'topic' + (sel[x.key] ? ' on' : '')} style=${{ alignItems: 'center', padding: 14 }}><span className="tag fail" style=${{ height: 40, width: 34, justifyContent: 'center' }}>${x.ext || 'PDF'}</span><span style=${{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}><span className="ellipsis" style=${{ fontWeight: 500 }}>${x.name}</span><span className="small muted">${x.sub} · ${x.size}</span></span>${x.isNew && html`<span className="tag pass">New</span>`}<input type="checkbox" aria-label=${'Select ' + x.name} checked=${!!sel[x.key]} onChange=${() => setSel(Object.assign({}, sel, { [x.key]: !sel[x.key] }))} /></label>`)}
+        </div>
+        ${shown.length === 0 && html`<p className="muted">No documents match.</p>`}
+      </div>
+      <div className="dfoot"><span className="small muted">Select up to 5 documents per procedure.</span><button className="btn btn-primary" disabled=${!n} onClick=${() => onConfirm(docs.filter((x) => sel[x.key]))}>${mode === 'library' ? 'Create procedure from ' : 'Add '}${n || ''} document${n === 1 ? '' : 's'}</button></div>
+    </div>
+  </div>`;
+}
+function Confirm({ title, body, yes, no, onYes, onNo, save, onSave }) {
+  return html`<div className="scrim"><div className="dialog" role="alertdialog" aria-modal="true" aria-labelledby="cf-t" style=${{ width: 480, padding: 28, gap: 12, alignItems: 'center', textAlign: 'center' }}>
+    <${I} n="warn" s=${36} w=${1.8} c="#ffc400" /><h2 id="cf-t" style=${{ fontSize: 18 }}>${title}</h2><p className="muted">${body}</p>
+    <div className="row" style=${{ marginTop: 8 }}><button className="btn btn-danger" onClick=${onYes}>${yes}</button><button className=${save ? 'btn btn-quiet' : 'btn btn-primary'} onClick=${onNo} autoFocus=${!save}>${no}</button>${save && html`<button className="btn btn-primary" onClick=${onSave} autoFocus>${save}</button>`}</div>
+  </div></div>`;
+}
+/* answer evaluation shared by preview modes */
+function hasAnswer(v) { return Array.isArray(v) ? v.length > 0 : v !== undefined && v !== null && String(v).trim() !== ''; }
+function answerResult(q, v) {
+  if (!hasAnswer(v)) return null;
+  if (q.type === 'Checkbox') { const sel = q.options.filter((o) => v.indexOf(o.id) >= 0); if (sel.some((o) => o.result === 'fail')) return 'fail'; if (sel.some((o) => o.result === 'pass')) return 'pass'; return null; }
+  if (isChoice(q.type)) { const o = q.options.find((x) => x.id === v); return o ? o.result : null; }
+  if (q.type === 'Integer') { const n = Number(v); if (isNaN(n)) return 'fail'; if ((q.min !== '' && n < Number(q.min)) || (q.max !== '' && n > Number(q.max))) return 'fail'; return q.min !== '' || q.max !== '' ? 'pass' : null; }
+  return null;
+}
+function matchesWhen(q, v, when) { return q.type === 'Checkbox' ? Array.isArray(v) && v.indexOf(when) >= 0 : v === when; }
+const MEDIA = {
+  'Image Upload': { icon: 'image', add: 'Take photo', item: 'Photo', multi: false },
+  'Multiple Image Upload': { icon: 'images', add: 'Add photo', item: 'Photo', multi: true, max: 4 },
+  'Record Audio': { icon: 'mic', add: 'Record voice note', item: 'Voice note · 0:08', multi: false },
+  'Video Upload': { icon: 'video', add: 'Record video', item: 'Video · 0:15', multi: false },
+  'Upload Document': { icon: 'attach', add: 'Attach file', item: 'inspection-report.pdf', multi: false }
+};
+function AnswerControl({ q, value, onChange, readOnly }) {
+  const t = q.type; const id = 'pv-' + q.id;
+  if (t === 'Yes/No' || t === 'Yes/No/NA') {
+    return html`<div className="row" role="radiogroup" aria-label="Answer" style=${{ flexWrap: 'wrap', gap: 8 }}>${q.options.map((o) => html`<button key=${o.id} type="button" role="radio" aria-checked=${String(value === o.id)} disabled=${readOnly} className=${'simopt ' + (o.result || '')} aria-pressed=${String(value === o.id)} onClick=${() => onChange(value === o.id ? undefined : o.id)}>${o.label}</button>`)}</div>`;
+  }
+  if (t === 'Radio Button') {
+    return html`<div className="optlist" role="radiogroup" aria-label="Answer">${q.options.map((o) => html`<label key=${o.id} className=${'optline' + (value === o.id ? ' on' : '')}><input type="radio" name=${id} disabled=${readOnly} checked=${value === o.id} onChange=${() => onChange(o.id)} />${o.label || 'Untitled answer'}</label>`)}</div>`;
+  }
+  if (t === 'Checkbox') {
+    const arr = Array.isArray(value) ? value : [];
+    return html`<div className="optlist" role="group" aria-label="Answer, select all that apply"><span className="hint">Select all that apply</span>${q.options.map((o) => html`<label key=${o.id} className=${'optline' + (arr.indexOf(o.id) >= 0 ? ' on' : '')}><input type="checkbox" disabled=${readOnly} checked=${arr.indexOf(o.id) >= 0} onChange=${() => onChange(arr.indexOf(o.id) >= 0 ? arr.filter((x) => x !== o.id) : arr.concat([o.id]))} />${o.label || 'Untitled answer'}</label>`)}</div>`;
+  }
+  if (t === 'Dropdown') {
+    return html`<${Dropdown} ariaLabel="Answer" disabled=${readOnly} value=${value || ''} placeholder="Select an answer" onChange=${(v) => onChange(v || undefined)} options=${q.options.map((o) => ({ value: o.id, label: o.label || 'Untitled answer' }))} />`;
+  }
+  if (t === 'Text') {
+    return html`<textarea className="textarea" rows="2" aria-label="Answer" disabled=${readOnly} placeholder="Type your answer" value=${value || ''} onChange=${(e) => onChange(e.target.value)} style=${{ background: 'var(--page)' }}></textarea>`;
+  }
+  if (t === 'Integer') {
+    const range = q.min !== '' || q.max !== '' ? 'Acceptable ' + (q.min !== '' ? q.min : '…') + '–' + (q.max !== '' ? q.max : '…') + (q.unit ? ' ' + q.unit : '') : '';
+    const r = answerResult(q, value);
+    return html`<div style=${{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div className="row" style=${{ gap: 8 }}><input className="input" inputMode="decimal" aria-label="Answer" disabled=${readOnly} placeholder="0" value=${value || ''} onChange=${(e) => onChange(e.target.value.replace(/[^0-9.\-]/g, ''))} style=${{ width: 140, background: 'var(--page)' }} />${q.unit && html`<span className="muted">${q.unit}</span>`}${r && html`<span className=${'tag ' + r}>${r === 'pass' ? 'In range' : 'Out of range'}</span>`}</div>
+      ${range && html`<span className="hint">${range}</span>`}
+    </div>`;
+  }
+  const m = MEDIA[t];
+  if (m) {
+    const arr = Array.isArray(value) ? value : [];
+    const canAdd = m.multi ? arr.length < m.max : arr.length === 0;
+    const isPhoto = t === 'Image Upload' || t === 'Multiple Image Upload';
+    return html`<div className="row" style=${{ flexWrap: 'wrap', gap: 8 }}>
+      ${arr.map((it, i) => isPhoto ? html`<div key=${it} className="thumb"><${I} n="image" s=${20} /><span className="small">${m.item} ${i + 1}</span>${!readOnly && html`<button type="button" className="ibtn" aria-label=${'Remove ' + m.item + ' ' + (i + 1)} onClick=${() => onChange(arr.filter((x) => x !== it))}><${I} n="x" s=${12} /></button>`}</div>`
+        : html`<div key=${it} className="row" style=${{ height: 40, padding: '0 6px 0 12px', borderRadius: 4, background: 'var(--raised)', gap: 8 }}><${I} n=${m.icon} s=${16} c="#ffc400" /><span className="small">${m.item}</span>${!readOnly && html`<button type="button" className="ibtn" aria-label=${'Remove ' + m.item} onClick=${() => onChange([])}><${I} n="x" s=${12} /></button>`}</div>`)}
+      ${canAdd && html`<button type="button" className=${isPhoto ? 'thumb add' : 'btn btn-outline btn-sm'} disabled=${readOnly} onClick=${() => onChange(arr.concat([nid('m')]))}><${I} n=${m.icon} s=${isPhoto ? 20 : 14} />${m.add}</button>`}
+      ${m.multi && html`<span className="hint" style=${{ width: '100%' }}>Up to ${m.max} photos</span>`}
+    </div>`;
+  }
+  return null;
+}
+function Preview({ d, onClose }) {
+  const [mode, setMode] = useState('sim');
+  const [ans, setAns] = useState({});
+  const flat = flatten(d.questions);
+  const visible = (f) => { let p = f; while (p.parent) { if (!matchesWhen(p.parent, ans[p.parent.id], p.q.when)) return false; const pid = p.parent.id; p = flat.find((x) => x.q.id === pid); } return true; };
+  let pass = 0, fail = 0, wo = 0; const fails = [];
+  flat.forEach((f) => { if (f.isSection || !visible(f)) return; const r = answerResult(f.q, ans[f.q.id]); if (r === 'pass') pass++; if (r === 'fail') { fail++; if (f.q.wo) wo++; fails.push(f); } });
+  const shown = flat.filter((f) => !f.isSection && visible(f));
+  const answerable = shown.length;
+  const answered = shown.filter((f) => hasAnswer(ans[f.q.id])).length;
+  const setA = (qid) => (v) => setAns((a) => Object.assign({}, a, { [qid]: v }));
+  return html`<div className="scrim"><div className="dialog" role="dialog" aria-modal="true" aria-labelledby="pv-t" style=${{ width: 1200, height: '94%', background: 'var(--page)' }}>
+    <div className="dhead"><h2 id="pv-t" style=${{ fontSize: 20, flex: 1 }}>Preview</h2>
+      <div className="seg-tabs" role="tablist">${[['sim', 'Try it as an inspector'], ['list', 'Full checklist']].map(([k, l]) => html`<button key=${k} role="tab" aria-selected=${String(mode === k)} onClick=${() => setMode(k)}>${l}</button>`)}</div>
+      <button className="ibtn lg" aria-label="Close preview" onClick=${onClose}><${I} n="x" s=${20} /></button></div>
+    ${mode === 'list' ? html`<div className="dbody"><div style=${{ maxWidth: 760, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      ${flat.map((f) => f.isSection ? html`<div key=${f.q.id} className="section-nav">${f.q.text}</div>` : html`<div key=${f.q.id} style=${{ marginLeft: f.depth * 28, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        ${f.parent && html`<span className="tag sel" style=${{ alignSelf: 'flex-start' }}>Shown if ${f.num.split('.').slice(0, -1).join('.')} is ${f.whenLabel}</span>`}
+        <span style=${{ fontWeight: 500, fontSize: 15 }}>${f.num}. ${f.q.text || 'Untitled question'}${f.q.required && html`<span className="req"> *</span>`}</span>
+        ${f.q.help && html`<span className="small muted">${f.q.help}</span>`}
+        <${AnswerControl} q=${f.q} value=${undefined} onChange=${() => {}} readOnly=${true} />
+        ${isChoice(f.q.type) && f.q.options.some((o) => o.result) && html`<span className="opts-line" style=${{ marginTop: 0 }}>${f.q.options.filter((o) => o.result).map((o) => html`<span key=${o.id} className=${'tag ' + o.result}>${o.label}: ${o.result === 'pass' ? 'Pass' : 'Fail'}</span>`)}</span>`}
+        <span className="hint">${f.q.type}</span>
+      </div>`)}
+    </div></div>` : html`<div className="dbody row" style=${{ justifyContent: 'center', gap: 40, alignItems: 'center' }}>
+      <div className="phone" aria-label="Inspector app">
+        <div style=${{ padding: '18px 18px 12px', borderBottom: '1px solid var(--raised)', display: 'flex', flexDirection: 'column', gap: 8 }}><span className="ellipsis" style=${{ fontWeight: 600, color: '#fff' }}>${d.name || 'Untitled procedure'}</span><div className="progress"><div style=${{ width: (answerable ? (answered / answerable) * 100 : 0) + '%' }}></div></div><span className="small muted">${answered} of ${answerable} answered</span></div>
+        <div style=${{ flex: 1, overflow: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          ${shown.map((f) => { const r = answerResult(f.q, ans[f.q.id]); return html`<div key=${f.q.id} className="simq" style=${{ border: '1px solid ' + (f.parent ? 'var(--tonal)' : 'var(--line)'), background: f.parent ? 'var(--selected)' : 'transparent', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div className="row between">${f.parent ? html`<span className="small" style=${{ color: 'var(--selected-text)' }}>Follow-up</span>` : html`<span></span>`}${r && html`<span className=${'tag ' + r}>${r === 'pass' ? 'Pass' : 'Fail'}</span>`}</div>
+            <span style=${{ fontWeight: 500, marginTop: -6 }}>${f.num}. ${f.q.text || 'Untitled question'}${f.q.required && html`<span className="req"> *</span>`}</span>
+            ${f.q.help && html`<span className="small muted" style=${{ marginTop: -4 }}>${f.q.help}</span>`}
+            <${AnswerControl} q=${f.q} value=${ans[f.q.id]} onChange=${setA(f.q.id)} />
+          </div>`; })}
+        </div>
+      </div>
+      <div style=${{ width: 400, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <h3 style=${{ fontSize: 16 }}>Outcome</h3>
+        <p className="muted">Answer as an inspector would. Follow-ups appear only when their answer is picked.</p>
+        <div className="grid3" style=${{ gap: 10 }}><div className="stat"><b style=${{ color: 'var(--pass)' }}>${pass}</b><span className="small muted">Pass</span></div><div className="stat"><b style=${{ color: 'var(--fail)' }}>${fail}</b><span className="small muted">Fail</span></div><div className="stat"><b style=${{ color: 'var(--action)' }}>${wo}</b><span className="small muted">Work orders</span></div></div>
+        ${fails.map((f) => html`<div key=${f.q.id} className="row" style=${{ padding: '10px 12px', borderRadius: 4, background: 'var(--fail-bg)', color: '#ffb3ad' }}><span style=${{ flex: 1 }}>${f.num}. ${f.q.text}</span>${f.q.wo && html`<span className="small" style=${{ color: 'var(--selected-text)' }}>Work order · ${alertName(f.q.alert) || 'no alert profile'}</span>`}</div>`)}
+        <button className="btn btn-quiet" style=${{ alignSelf: 'flex-start' }} onClick=${() => setAns({})}>Reset answers</button>
+      </div>
+    </div>`}
+  </div></div>`;
+}
+
+/* ---------------- builder ---------------- */
+function Builder({ initial, isEdit, onExit, onPublished, onSaveDraft, flash, libDocs, onImport }) {
+  const [d, setDraft] = useState(initial);
+  const [active, setActive] = useState(null);
+  const [flashId, setFlashId] = useState(null);
+  const [tab, setTab] = useState(initial.docs && initial.docs.length ? 'docs' : 'details');
+  const [showErrors, setShowErrors] = useState(false);
+  const [review, setReview] = useState(null);
+  const [genStep, setGenStep] = useState(-1);
+  const [docLib, setDocLib] = useState(false);
+  const [preview, setPreview] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
+  const [sourcePulse, setSourcePulse] = useState(null);
+  const [publishing, setPublishing] = useState(false);
+  const [readyOpen, setReadyOpen] = useState(false);
+  const [quick, setQuick] = useState('');
+  const [quickType, setQuickType] = useState('Yes/No');
+  const [bulk, setBulk] = useState(false);
+  const focusRef = useRef(null);
+  const readyRef = useRef(null);
+  useOutside(readyRef, () => setReadyOpen(false), readyOpen);
+  const setD = (patch) => setDraft((x) => Object.assign({}, x, patch));
+  const setQs = (fn) => setDraft((x) => Object.assign({}, x, { questions: fn(x.questions) }));
+
+  const flat = useMemo(() => flatten(d.questions), [d.questions]);
+  const infoOf = useMemo(() => { const m = {}; flat.forEach((f) => { m[f.q.id] = { num: f.num, parent: f.parent, parentNum: f.parent ? f.num.split('.').slice(0, -1).join('.') : null }; }); return m; }, [flat]);
+  const issues = useMemo(() => { const m = {}; flat.forEach((f) => { const r = qIssues(f.q, f.parent); if (r.length) m[f.q.id] = r; }); return m; }, [flat]);
+  const qCount = flat.filter((f) => !f.isSection).length;
+  const issueCount = Object.keys(issues).length;
+  const firstIssue = flat.find((f) => issues[f.q.id]);
+
+  const select = useCallback((id, scroll, keepFocusInNav) => {
+    setActive(id);
+    if (id && scroll) {
+      setFlashId(id); setTimeout(() => setFlashId(null), 900);
+      const go = (tries) => {
+        const el = document.getElementById('card-' + id);
+        const input = document.getElementById('qt-' + id);
+        if (!el || (!input && tries > 0)) { if (tries > 0) requestAnimationFrame(() => go(tries - 1)); return; }
+        const c = document.querySelector('.canvas');
+        if (c) c.scrollTo({ top: el.getBoundingClientRect().top - c.getBoundingClientRect().top + c.scrollTop - 90, behavior: 'smooth' });
+        if (!keepFocusInNav && input) input.focus({ preventScroll: true });
+      };
+      requestAnimationFrame(() => go(5));
+    }
+  }, []);
+
+  const checks = [
+    { label: 'Procedure name', ok: !!d.name.trim(), fix: () => { setTab('details'); setTimeout(() => { const e = document.getElementById('f-name'); if (e) e.focus(); }, 30); } },
+    { label: 'Category and sub category', ok: !!d.cat && !!d.sub, fix: () => { setTab('details'); setTimeout(() => { const e = document.getElementById(d.cat ? 'f-sub' : 'f-cat'); if (e) e.focus(); }, 30); } },
+    { label: 'At least one question', ok: qCount > 0, fix: () => addTop('Yes/No') },
+    { label: issueCount ? issueCount + ' question' + (issueCount > 1 ? 's need' : ' needs') + ' attention' : 'All questions complete', ok: !issueCount, fix: () => { if (firstIssue) { setShowErrors(true); select(firstIssue.q.id, true); } }, fixLabel: 'Show' }
+  ];
+  const readyN = checks.filter((c) => !c.ok).length;
+
+  const addTop = (type, text) => { const q = mkQ(text || '', type); setQs((l) => l.concat([q])); setTimeout(() => select(q.id, true), 0); return q; };
+  const ctx = {
+    active: active, flash: flashId, issues: issues, infoOf: infoOf, showErrors: showErrors,
+    select: select,
+    update: (id, fn) => setQs((l) => updateQ(l, id, fn)),
+    changeType: (id, t) => setQs((l) => updateQ(l, id, (x) => {
+      if (!isChoice(t) && x.follow.length) return x;
+      const next = Object.assign({}, x, { type: t, options: mkOpts(t) });
+      if (isChoice(x.type) && isChoice(t)) {
+        next.options = next.options.map((o) => { const old = x.options.find((p) => p.label === o.label); return old ? Object.assign({}, o, { id: old.id, result: old.result }) : o; });
+        next.follow = x.follow.map((c) => (next.options.some((o) => o.id === c.when) ? c : Object.assign({}, c, { when: (next.options.find((o) => o.result === 'fail') || next.options[0]).id })));
+      }
+      if (!isChoice(t)) next.wo = false;
+      return next;
+    })),
+    addOption: (id) => setQs((l) => updateQ(l, id, (x) => Object.assign({}, x, { options: x.options.concat([opt('')]) }))),
+    removeOption: (id, oid) => setQs((l) => updateQ(l, id, (x) => {
+      const kids = x.follow.filter((c) => c.when === oid).length;
+      if (kids) flash({ msg: 'Answer removed. Its ' + kids + ' follow-up' + (kids > 1 ? 's are' : ' is') + ' kept: choose a new answer for ' + (kids > 1 ? 'them' : 'it') + '.' });
+      return Object.assign({}, x, { options: x.options.filter((o) => o.id !== oid), follow: x.follow.map((c) => (c.when === oid ? Object.assign({}, c, { when: null }) : c)) });
+    })),
+    addFollow: (id, oid) => { const c = mkQ('', 'Text', { when: oid }); setQs((l) => updateQ(l, id, (x) => Object.assign({}, x, { follow: x.follow.concat([c]) }))); setTimeout(() => select(c.id, true), 0); },
+    addAfter: (id) => {
+      const loc = findLoc(d.questions, id); if (!loc) return;
+      const extra = loc.parent ? { when: loc.q.when } : {};
+      const q = mkQ('', loc.parent ? 'Text' : 'Yes/No', extra);
+      setQs((l) => insertAt(l, loc.parent && loc.parent.id, loc.index + 1, q));
+      setTimeout(() => select(q.id, true), 0);
+    },
+    insertAt: (index) => { const q = mkQ('', 'Yes/No'); setQs((l) => insertAt(l, null, index, q)); setTimeout(() => select(q.id, true), 0); },
+    move: (id, dir) => setQs((l) => { const loc = findLoc(l, id); return loc ? moveQ(l, id, loc.index + dir) : l; }),
+    duplicate: (id) => { const loc = findLoc(d.questions, id); if (!loc) return; const c = cloneQ(loc.q); setQs((l) => insertAt(l, loc.parent && loc.parent.id, loc.index + 1, c)); setTimeout(() => select(c.id, true), 0); flash({ msg: 'Question duplicated' }); },
+    remove: (id) => {
+      const [next, info] = removeQ(d.questions, id); if (!info) return;
+      setD({ questions: next }); setActive(null);
+      const kids = flatten([info.q]).length - 1;
+      flash({ msg: (info.q.type === 'Section' ? 'Section' : 'Question') + ' deleted' + (kids > 0 ? ' with ' + kids + ' follow-up' + (kids > 1 ? 's' : '') : ''), undo: () => setQs((l) => insertAt(l, info.parentId, info.index, info.q)) });
+    },
+    reviewTemplate: (t) => setReview({ kind: 'tpl', title: t.name, tags: [t.cat, t.std], items: t.specs.map((s) => build(s, 'Template', t.std)), meta: t }),
+    generate: (topics) => {
+      setGenStep(0); let s = 0;
+      const tick = () => { s += 1; if (s < 4) { setGenStep(s); setTimeout(tick, 550); } else { setGenStep(-1); setReview({ kind: 'doc', title: 'Generated questions', tags: d.docs.map((x) => x.name), items: topics.map((t) => build(t.spec, 'Document', t.std)) }); } };
+      setTimeout(tick, 550);
+    },
+    addSuggestion: (it) => { const q = build(it, 'Suggested', ''); setQs((l) => l.concat([q])); flash({ msg: 'Added as question ' + (qCount + 1) }); },
+    openDocLib: () => setDocLib(true),
+    importFiles: (files) => onImport(files)
+  };
+  const openSource = (t) => { setTab(t); setSourcePulse(t); setTimeout(() => setSourcePulse(null), 900); };
+  const confirmReview = (items) => {
+    const patch = { questions: d.questions.concat(items) };
+    if (review.kind === 'tpl') { const t = review.meta; if (!d.name.trim()) patch.name = t.name; if (!d.cat) patch.cat = 'Inspection'; if (!d.sub) patch.sub = t.cat === 'Health & Safety' ? 'Quick Maintenance' : t.cat; if (!d.std) patch.std = t.std; if (!d.freq) patch.freq = t.freq; patch.icon = t.icon; }
+    if (review.kind === 'doc') { if (!d.std) patch.std = 'NFPA 10'; }
+    setD(patch); setReview(null);
+    const added = flatten(items).length - items.length;
+    flash({ msg: items.length + ' question' + (items.length > 1 ? 's' : '') + (added ? ' and ' + added + ' follow-up' + (added > 1 ? 's' : '') : '') + ' added' });
+    setTimeout(() => select(items[0].id, true), 50);
+  };
+  const tryPublish = () => {
+    if (readyN) { setShowErrors(true); setReadyOpen(true); return; }
+    setPublishing(true);
+    setTimeout(() => { setPublishing(false); onPublished(d); }, 1200);
+  };
+  const quickAdd = (e) => {
+    e.preventDefault();
+    const lines = (bulk ? quick.split(/\n+/) : [quick]).map((x) => x.replace(/^\s*(\d+[.)]|[-*•])\s*/, '').trim()).filter(Boolean);
+    if (!lines.length) return;
+    const qs = lines.map((t) => mkQ(t, guessType(t, quickType)));
+    setQs((l) => l.concat(qs)); setQuick('');
+    const guessed = qs.filter((q) => q.type !== quickType).length;
+    if (lines.length > 1 || guessed) flash({ msg: lines.length + ' question' + (lines.length > 1 ? 's' : '') + ' added' + (guessed ? ' · ' + guessed + ' given a matching answer type' : '') });
+    const el = document.getElementById('quick-input'); if (el) el.focus();
+  };
+  const onCanvasKey = (e) => {
+    if (!e.altKey || !active || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    e.preventDefault(); ctx.move(active, e.key === 'ArrowUp' ? -1 : 1);
+  };
+  const topLevel = d.questions;
+  const activeInfo = active ? infoOf[active] : null;
+  const qList = flat.filter((f) => !f.isSection);
+  const ai = active ? qList.findIndex((f) => f.q.id === active) : -1;
+
+  const tryClose = () => (d.questions.length || d.name ? setConfirmClose(true) : onExit());
+  return html`<div className="bshell">
+    <${TopBar} crumbs=${[{ label: 'North Star Group' }, { label: 'Procedures', onClick: tryClose }, { label: isEdit ? 'Edit procedure' : 'Create procedure' }]} />
+    <header className="bhead">
+      <button className="ibtn xl" aria-label="Close builder" onClick=${tryClose}><img src=${ASSET['chev-left']} width="24" height="24" alt="" /></button>
+      <div className="ptitle" style=${{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span className="small muted" style=${{ lineHeight: '16px', letterSpacing: '.4px' }}>${isEdit ? 'Editing published procedure' : 'Draft procedure'}</span>
+        <label htmlFor="title" className="sr">Procedure name</label>
+        <input id="title" className="title-input" value=${d.name} placeholder="Untitled procedure" onChange=${(e) => setD({ name: e.target.value })} />
+      </div>
+      <div className="row" style=${{ marginLeft: 'auto', gap: 10 }}>
+        <div ref=${readyRef} style=${{ position: 'relative' }}>
+          <button className=${'ready' + (readyN ? '' : ' ok')} aria-expanded=${String(readyOpen)} onClick=${() => setReadyOpen(!readyOpen)}>${readyN ? html`<${I} n="warn" s=${13} />${readyN} to fix` : html`<${I} n="check" s=${13} w=${3} />Ready to publish`}</button>
+          ${readyOpen && html`<div className="popover" style=${{ right: 0, top: 40, width: 320, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <h3 style=${{ fontSize: 14 }}>${readyN ? 'Before you publish' : 'Everything is ready'}</h3>
+            ${checks.map((c) => html`<div key=${c.label} className="check">${c.ok ? html`<span className="ok"><${I} n="check" s=${14} w=${3} /></span>` : html`<span className="no"><${I} n="warn" s=${14} /></span>`}<span style=${{ flex: 1 }}>${c.label}</span>${!c.ok && html`<button className="link" onClick=${() => { setReadyOpen(false); c.fix(); }}>${c.fixLabel || 'Fix'}</button>`}</div>`)}
+          </div>`}
+        </div>
+        <button className="btn btn-quiet" onClick=${() => onSaveDraft(d)}>Save draft</button>
+        <button className="btn btn-outline" disabled=${!qCount} style=${qCount ? null : { borderColor: 'var(--line)', color: 'var(--dim)' }} onClick=${() => setPreview(true)}><${I} n="eye" />Preview</button>
+        <button className="btn btn-primary" onClick=${tryPublish}>${isEdit ? 'Update procedure' : 'Publish'}</button>
+      </div>
+    </header>
+    <div className="bbody">
+      <${Navigator} flat=${flat} active=${active} issues=${issues} onSelect=${select}
+        onMove=${ctx.move} onAdd=${() => addTop('Yes/No')}
+        onReorder=${(dragId, targetId) => {
+          const a = findLoc(d.questions, dragId); const b = findLoc(d.questions, targetId);
+          if (!a || !b) return;
+          const sameParent = (a.parent && a.parent.id) === (b.parent && b.parent.id);
+          if (!sameParent) { flash({ msg: 'Drag within the same level. Follow-ups stay with their question.' }); return; }
+          setQs((l) => moveQ(l, dragId, b.index > a.index ? b.index - 1 : b.index));
+        }} />
+      <main className="canvas" onKeyDown=${onCanvasKey} aria-label="Checklist">
+        <div className="canvas-in">
+          ${qCount > 0 && html`<div className="stepper">
+            <span style=${{ fontWeight: 600, color: '#fff', fontSize: 16 }}>Checklist</span>
+            <span className="small muted" style=${{ fontVariantNumeric: 'tabular-nums' }}>${activeInfo ? (activeInfo.parent ? 'Follow-up ' + activeInfo.num + ' (under question ' + activeInfo.num.split('.')[0] + ')' : 'Question ' + activeInfo.num + ' of ' + qList.filter((f) => !f.parent).length) : countLabel(qList)}</span>
+            <div className="row" style=${{ gap: 4 }}>
+              <button className="ibtn" aria-label="Previous question" disabled=${ai <= 0} onClick=${() => select(qList[Math.max(0, ai - 1)].q.id, true)}><${I} n="chevU" /></button>
+              <button className="ibtn" aria-label="Next question" disabled=${ai >= qList.length - 1} onClick=${() => select(qList[Math.min(qList.length - 1, ai + 1)].q.id, true)}><${I} n="chevD" /></button>
+            </div>
+            <div className="row" style=${{ marginLeft: 'auto', gap: 8 }}>
+              <button className="btn btn-quiet btn-sm" onClick=${() => { const s = section('New section'); setQs((l) => l.concat([s])); }}><${I} n="section" s=${14} />Section</button>              <button className="btn btn-primary btn-sm" onClick=${() => addTop('Yes/No')}><${I} n="plus" s=${14} w=${2.6} />Question</button>
+            </div>
+          </div>`}
+
+          ${qCount === 0 && html`<div className="empty">
+            <h2 style=${{ fontSize: 20 }}>Build your checklist</h2>
+            <p className="muted" style=${{ maxWidth: 460 }}>Start from a template or a standards document, or type questions straight in below. You can mix all three.</p>
+            <div className="start">
+              <button onClick=${() => openSource('templates')}><${I} n="layers" s=${22} c="#ffc400" /><span style=${{ fontWeight: 600 }}>Use a template</span><span className="small muted">Ready-made checklists for common standards.</span></button>
+              <button onClick=${() => openSource('docs')}><${I} n="doc" s=${22} c="#ffc400" /><span style=${{ fontWeight: 600 }}>Use a document</span><span className="small muted">Generate questions from an NFPA standard or your SOP.</span></button>
+              <button onClick=${() => { const el = document.getElementById('quick-input'); if (el) el.focus(); }}><${I} n="pen" s=${22} c="#ffc400" /><span style=${{ fontWeight: 600 }}>Type questions</span><span className="small muted">Add one by one, or paste a whole list.</span></button>
+            </div>
+          </div>`}
+
+          ${topLevel.map((q, i) => html`<${Fragment} key=${q.id}>
+            ${i > 0 && html`<div className="inserter"><button onClick=${() => ctx.insertAt(i)} aria-label=${'Insert question here'}><${I} n="plus" s=${11} w=${3} />Insert question</button></div>`}
+            <${QuestionBlock} q=${q} info=${infoOf[q.id] || { num: '' }} ctx=${ctx} depth=${0} />
+          <//>`)}
+
+          <form className="quick" onSubmit=${quickAdd} aria-label="Quick add">
+            <div className="row between"><span style=${{ fontWeight: 600 }}>${bulk ? 'Paste several questions' : 'Quick add'}</span><button type="button" className="link" onClick=${() => setBulk(!bulk)}>${bulk ? 'Add one at a time' : 'Paste a list instead'}</button></div>
+            <div className="row" style=${{ alignItems: 'flex-start' }}>
+              ${bulk ? html`<textarea id="quick-input" className="textarea" rows="5" style=${{ flex: 1 }} value=${quick} onChange=${(e) => setQuick(e.target.value)} placeholder=${'One question per line, for example:\nIs the exit sign lit?\nIs the fire door closed?\nRecord the room temperature'}></textarea>`
+                : html`<input id="quick-input" className="input" style=${{ flex: 1 }} value=${quick} onChange=${(e) => setQuick(e.target.value)} placeholder="Type a question and press Enter" />`}
+              <label htmlFor="quick-type" className="sr">Answer type</label>
+              <${Dropdown} id="quick-type" ariaLabel="Answer type" style=${{ width: 190 }} menuWidth=${240} value=${quickType} onChange=${setQuickType} options=${[].concat.apply([], TYPE_GROUPS.map((g) => g.items.map(([t, ic]) => ({ value: t, label: t, icon: ic, group: g.g }))))} />
+              <button className="btn btn-primary" type="submit" disabled=${!quick.trim()}>${bulk ? 'Add all' : 'Add'}</button>
+            </div>
+            <span className="hint">${bulk ? 'Numbers and bullets at the start of lines are removed.' : 'Each question gets the answer type on the right. Change it on the card later.'}</span>
+          </form>
+        </div>
+      </main>
+      <${SidePanel} tab=${tab} setTab=${setTab} d=${d} setD=${setD} checks=${checks} ctx=${ctx} pulse=${sourcePulse} />
+    </div>
+    ${review && html`<${ReviewDialog} review=${review} existing=${flat.map((f) => norm(f.q.text || ''))} onClose=${() => setReview(null)} onConfirm=${confirmReview} />`}
+    ${genStep >= 0 && html`<${Generating} step=${genStep} />`}
+    ${docLib && html`<${DocLibrary} mode="builder" docs=${libDocs} onImport=${onImport} onClose=${() => setDocLib(false)} onConfirm=${(docs) => { const have = d.docs.map((x) => x.key); setD({ docs: d.docs.concat(docs.filter((x) => have.indexOf(x.key) < 0)).slice(0, 5) }); setDocLib(false); setTab('docs'); }} />`}
+    ${preview && html`<${Preview} d=${d} onClose=${() => setPreview(false)} />`}
+    ${confirmClose && html`<${Confirm} title="Save before closing?" body=${isEdit ? 'Save your changes as a draft to finish later. The published version stays live until you publish again.' : 'Save this procedure as a draft to finish later. Drafts appear in Procedures under Drafts.'} yes="Discard" no="Keep editing" save="Save as draft" onSave=${() => onSaveDraft(d)} onYes=${onExit} onNo=${() => setConfirmClose(false)} />`}
+    ${publishing && html`<div className="scrim"><div className="dialog" role="status" style=${{ width: 360, padding: 32, alignItems: 'center', gap: 16 }}><span className="spin" style=${{ width: 56, height: 56, borderWidth: 6 }}></span><span style=${{ fontWeight: 500 }}>${isEdit ? 'Updating procedure' : 'Publishing procedure'}</span></div></div>`}
+  </div>`;
+}
+
+/* ---------------- library & view ---------------- */
+function NavRail({ expanded, onToggle }) {
+  const sections = [
+    ['Command center', [['dashboard', 'Dashboard'], ['shapes', 'Assets']]],
+    ['Property management', [['building-2', 'Properties'], ['clipboard-check', 'Procedures', true]]],
+    ['Identity & access', [['id-card', 'Users']]]
+  ];
+  if (expanded) {
+    return html`<nav className="rail rail-x" aria-label="Main">
+      <div className="rail-head"><span className="rail-word"><img src=${ASSET['logo-wordmark']} width="109" height="36" alt="Serve" /></span>
+        <button className="rail-logo ibtn-nav" aria-label="Collapse navigation" aria-expanded="true" onClick=${onToggle}><img src=${ASSET['panel-left-close']} width="24" height="24" alt="" /><span className="tip" aria-hidden="true">Collapse</span></button></div>
+      <div className="rail-sections">${sections.map(([title, items]) => html`<div key=${title} className="rail-sec">
+        <span className="rail-sh">${title}</span>
+        ${items.map(([ic, l, cur]) => html`<button key=${l} className="rail-row" aria-current=${cur ? 'page' : undefined}><img src=${ASSET[ic]} width="24" height="24" alt="" /><span>${l}</span></button>`)}
+      </div>`)}</div>
+      <button className="acct" aria-label="Account menu"><span className="av"><span>AD</span></span><span className="acct-t"><b>Admin</b><i>admin@sclera.com</i></span></button>
+    </nav>`;
+  }
+  return html`<nav className="rail" aria-label="Main">
+    <button className="rail-logo" aria-label="Expand navigation" aria-expanded="false" onClick=${onToggle}>
+      <img className="mono" src=${ASSET.logo} alt="" /><img className="open" src=${ASSET['panel-left-open']} width="24" height="24" alt="" /><span className="tip" aria-hidden="true">Expand</span>
+    </button>
+    <div className="rail-sections">${sections.map(([title, items], i) => html`<${Fragment} key=${title}>
+      ${i > 0 && html`<div className="rail-div" role="separator"></div>`}
+      <div className="rail-sec">${items.map(([ic, l, cur]) => html`<button key=${l} className="rail-item" aria-label=${l} aria-current=${cur ? 'page' : undefined}><span className="ic"><img src=${ASSET[ic]} alt="" /></span><span className="tip" aria-hidden="true">${l}</span></button>`)}</div>
+    <//>`)}</div>
+    <button className="avatar" aria-label="Account: Admin, admin@sclera.com"><span>AD</span></button>
+  </nav>`;
+}
+function TopBar({ crumbs }) {
+  return html`<header className="topbar">
+    <nav className="crumbs" aria-label="Breadcrumb">${crumbs.map((c, i) => {
+      const last = i === crumbs.length - 1;
+      return html`<span key=${i} className="crumb">${last ? html`<span className="cur" aria-current="page">${c.label}</span>` : html`<a role="link" tabIndex="0" onClick=${c.onClick} onKeyDown=${(e) => { if (e.key === 'Enter' && c.onClick) c.onClick(); }}>${c.label}</a><img src=${ASSET['chev-right']} alt="" />`}</span>`;
+    })}</nav>
+    <div className="tb-right">
+      <button className="orgmenu" aria-haspopup="menu" aria-label="Organisation: Organisation 1"><span>Organisation 1</span><img src=${ASSET['chev-down']} alt="" /></button>
+      <label className="search"><span className="sic"><img src=${ASSET.search} alt="" /></span><input type="search" aria-label="Search in Sclera" placeholder="search in sclera" /></label>
+      <div className="tb-icons"><button aria-label="Notifications" title="Notifications"><img src=${ASSET.bell} alt="" /></button><button aria-label="Help" title="Help"><img src=${ASSET.help} alt="" /></button><button aria-label="Theme" title="Theme"><img src=${ASSET.sun} alt="" /></button></div>
+    </div>
+  </header>`;
+}
+const FOLDERS = ['Inspection', 'Rounds', 'PM', 'Health & Safety', 'Custom'];
+function toFix(p) {
+  let n = 0; if (!p.name || !p.name.trim()) n++; if (!p.cat || !p.sub) n++;
+  const fl = flatten(p.questions || []); const qs = fl.filter((f) => !f.isSection);
+  if (!qs.length) n++; if (fl.some((f) => qIssues(f.q, f.parent).length)) n++;
+  return n;
+}
+function ProcCard({ p, onOpen }) {
+  const draft = p.status === 'draft';
+  const fix = draft ? toFix(p) : 0;
+  return html`<button className=${'pcard' + (draft ? ' draft' : '')} onClick=${() => onOpen(p)} aria-label=${(draft ? 'Draft: ' : '') + (p.name || 'Untitled procedure')}>
+    <span className="row" style=${{ alignItems: 'flex-start', gap: 14, width: '100%' }}><span className="ptile"><${I} n=${p.icon || 'doc'} s=${28} w=${1.6} /></span><span style=${{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, flex: 1 }}>
+      <span className="row" style=${{ gap: 6 }}>${draft ? html`<span className="tag">Draft</span>` : html`<span className="tag pass">Published</span><span className=${'tag ' + (PRI_CLASS[p.pri] || '')}>${p.pri}</span>`}${!draft && p.pending && html`<span className="tag warn">Unpublished changes</span>`}${draft && (fix ? html`<span className="tag fail">${fix} to fix</span>` : html`<span className="tag pass">Ready to publish</span>`)}</span>
+      <span className=${'ellipsis' + (p.name ? '' : ' muted')} style=${{ fontWeight: 500, fontSize: 16, color: p.name ? '#fff' : undefined }}>${p.name || 'Untitled procedure'}</span><span className="small muted clamp2">${p.desc || 'No description yet.'}</span></span></span>
+    <span className="meta3"><span><span>${draft ? 'Folder' : 'Frequency'}</span>${(draft ? p.folder : p.freq) || '—'}</span><span><span>${draft ? 'Last edited' : 'Updated'}</span>${p.updated}</span><span><span>Questions</span>${p.count}</span></span>
+    <span className="row" style=${{ gap: 6 }}>${p.cat ? html`<span className="tag">${p.cat}</span>` : html`<span className="tag line">No category</span>`}${p.std && html`<span className="tag line">${p.std}</span>`}${draft && html`<span className="small" style=${{ marginLeft: 'auto', color: 'var(--action)', fontWeight: 500 }}>Continue editing →</span>`}</span>
+  </button>`;
+}
+function Library({ procs, onOpen, onCreate, onCreateFromDocs, libDocs, onImport, flash }) {
+  const [q, setQ] = useState('');
+  const [f, setF] = useState({ cat: '', std: '', pri: '' });
+  const [docLib, setDocLib] = useState(false);
+  const [status, setStatus] = useState('all');
+  const [view, setView] = useState('grid');
+  const [folder, setFolder] = useState(null);
+  const n = q.trim().toLowerCase();
+  const base = procs.filter((p) => (!f.cat || p.cat === f.cat) && (!f.std || p.std === f.std) && (!f.pri || p.pri === f.pri) && (!n || ((p.name || '') + ' ' + (p.std || '')).toLowerCase().indexOf(n) >= 0));
+  const byStatus = base.filter((p) => status === 'all' || p.status === status);
+  const list = view === 'folders' && folder ? byStatus.filter((p) => p.folder === folder) : byStatus;
+  const uniq = (k) => Array.from(new Set(procs.map((p) => p[k]).filter(Boolean)));
+  const active = Object.keys(f).filter((k) => f[k]).length;
+  const drafts = base.filter((p) => p.status === 'draft').length;
+  const pub = base.filter((p) => p.status === 'published').length;
+  const showFolders = view === 'folders' && !folder;
+  const inFolder = folder && view === 'folders';
+  return html`<div className="main">
+    <${TopBar} crumbs=${[{ label: 'North Star Group' }].concat(inFolder ? [{ label: 'Procedures', onClick: () => setFolder(null) }, { label: folder }] : [{ label: 'Procedures' }])} />
+    <div className=${'phead' + (inFolder ? '' : ' nobk')}>
+      ${inFolder && html`<button className="ibtn xl" aria-label="Back to all folders" onClick=${() => setFolder(null)}><img src=${ASSET['chev-left']} width="24" height="24" alt="" /></button>`}
+      <div className="ptitle"><h1>${inFolder ? folder : 'Procedures'}</h1><span className="psub">${showFolders ? FOLDERS.length + ' folders' : list.length + ' procedure' + (list.length === 1 ? '' : 's')} · North Star Group</span></div>
+      <div className="pacts"><button className="btn btn-outline" onClick=${() => setDocLib(true)}><${I} n="book" />Documents</button><button className="btn btn-outline"><${I} n="upl" />Import</button><button className="btn btn-primary" onClick=${() => onCreate(folder)}><img src=${ASSET.plus} width="16" height="16" alt="" />Create procedure</button></div>
+    </div>
+    <div className="lib-head">
+      <div className="dtabs" role="tablist" aria-label="Status">
+        ${[['all', 'All', base.length], ['published', 'Published', pub], ['draft', 'Drafts', drafts]].map(([k, l, c]) => html`<button key=${k} role="tab" className="dtab" aria-selected=${String(status === k)} onClick=${() => setStatus(k)}>${l}<span className=${'badge' + (k === 'draft' && c ? '' : ' quiet')}>${c}</span></button>`)}
+      </div>
+      <div className="row between" style=${{ paddingBottom: 16, flexWrap: 'wrap', gap: 12 }}>
+        <div className="row" style=${{ gap: 12, flexWrap: 'wrap' }}>
+          <label className="search"><span className="sic"><img src=${ASSET.search} alt="" /></span><input type="search" aria-label="Search procedures" placeholder="Search by name or standard" value=${q} onChange=${(e) => setQ(e.target.value)} /></label>
+          ${[['cat', 'Category'], ['std', 'Standard'], ['pri', 'Priority']].map(([k, l]) => html`<div key=${k} className="field on-page" style=${{ width: 160 }}><label htmlFor=${'lf-' + k}>${l}</label><${Dropdown} id=${'lf-' + k} size="sm" className="on-page" value=${f[k]} onChange=${(v) => setF(Object.assign({}, f, { [k]: v }))} options=${[{ value: '', label: 'All' }].concat(uniq(k))} /></div>`)}
+          ${active > 0 && html`<button className="link" onClick=${() => setF({ cat: '', std: '', pri: '' })}>Clear filters</button>`}
+        </div>
+        <div className="seg-tabs" role="group" aria-label="View">
+          <button aria-pressed=${String(view === 'grid')} onClick=${() => { setView('grid'); setFolder(null); }}><${I} n="grid" s=${14} />Grid</button>
+          <button aria-pressed=${String(view === 'folders')} onClick=${() => setView('folders')}><${I} n="folder" s=${14} />Folders</button>
+        </div>
+      </div>
+    </div>
+    <div className="scroll" style=${{ padding: '0 24px 24px' }}>
+      ${showFolders ? html`<div style=${{ display: 'grid', gridTemplateColumns: 'repeat(5,minmax(0,1fr))', gap: 16 }}>${FOLDERS.map((fo) => { const inF = byStatus.filter((p) => p.folder === fo); const dr = inF.filter((p) => p.status === 'draft').length; return html`<button key=${fo} className="fcard" onClick=${() => setFolder(fo)}><${I} n="folder" s=${40} w=${1.3} c="#a6a6ae" /><span style=${{ fontWeight: 600, color: '#fff', fontSize: 15, marginTop: 6 }}>${fo}</span><span className="small muted">${inF.length} procedure${inF.length === 1 ? '' : 's'}${dr ? ' · ' + dr + ' draft' + (dr > 1 ? 's' : '') : ''}</span></button>`; })}</div>`
+      : list.length ? html`<div className="grid3">${list.map((p) => html`<${ProcCard} key=${p.key} p=${p} onOpen=${onOpen} />`)}</div>`
+      : html`<div className="empty"><h2 style=${{ fontSize: 16 }}>${status === 'draft' ? 'No drafts' : folder ? 'No procedures in ' + folder + ' yet' : 'No procedures match'}</h2><p className="muted">${status === 'draft' ? 'When you close the builder with Save as draft, the procedure appears here.' : 'Clear a filter or create a new procedure.'}</p><button className="btn btn-primary" onClick=${() => onCreate(folder)}>Create procedure</button></div>`}
+    </div>
+    ${docLib && html`<${DocLibrary} mode="library" docs=${libDocs} onImport=${onImport} onClose=${() => setDocLib(false)} onConfirm=${(docs) => { setDocLib(false); onCreateFromDocs(docs); }} />`}
+  </div>`;
+}
+function ViewPage({ p, onBack, onEdit, flash, onDiscardPending }) {
+  const flat = flatten(p.questions);
+  const qs = flat.filter((f) => !f.isSection);
+  const [exp, setExp] = useState(false);
+  const [fmt, setFmt] = useState(null);
+  const stats = [['Questions', qs.filter((f) => !f.parent).length, 'Top-level checks', 'list'], ['Required', qs.filter((f) => f.q.required).length, 'Must be answered', 'check'], ['Follow-ups', qs.filter((f) => f.parent).length, 'Shown on a matching answer', 'follow'], ['Work orders', qs.filter((f) => f.q.wo).length, 'Raised on Fail', 'warn']];
+  return html`<div className="main">
+    <${TopBar} crumbs=${[{ label: 'North Star Group' }, { label: 'Procedures', onClick: onBack }, { label: p.name || 'Untitled procedure' }]} />
+    <div className="phead">
+      <button className="ibtn xl" aria-label="Back to procedures" onClick=${onBack}><img src=${ASSET['chev-left']} width="24" height="24" alt="" /></button>
+      <div className="ptitle"><span className="psub">Procedure</span><div className="row" style=${{ gap: 12 }}><h1>${p.name || 'Untitled procedure'}</h1><span className="tag pass">Published</span><span className=${'tag ' + (PRI_CLASS[p.pri] || '')}>${p.pri}</span></div></div>
+      <div className="pacts"><button className="btn btn-outline" onClick=${() => setExp(true)}><${I} n="dl" />Export</button><button className="btn btn-primary" onClick=${onEdit}><${I} n="pen" />Edit</button></div>
+    </div>
+    <div className="scroll" style=${{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div className="row" style=${{ gap: 12, alignItems: 'stretch' }}>${stats.map(([l, v, note, ic]) => html`<div key=${l} className="metric"><div className="mbody"><span className="mlabel">${l}</span><span className="mval">${v}</span><span className="mnote">${note}</span></div><span className="ichip"><${I} n=${ic} s=${20} w=${1.5} /></span></div>`)}</div>
+      <div style=${{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+      <section style=${{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }} aria-label="Checklist">
+        ${p.pending && html`<div className="row" role="status" style=${{ padding: '12px 16px', borderRadius: 8, border: '1px solid var(--action)', background: 'var(--selected)', marginBottom: 8 }}><${I} n="pen" c="#ffc400" /><span style=${{ flex: 1 }}>You have unpublished changes saved as a draft (${p.pending.savedAt}). This page shows the published version.</span><button className="btn btn-quiet btn-sm" onClick=${onDiscardPending}>Discard draft</button><button className="btn btn-primary btn-sm" onClick=${onEdit}>Continue editing</button></div>`}
+        ${p.desc &&html`<p className="muted" style=${{ marginBottom: 8, maxWidth: '65ch' }}>${p.desc}</p>`}
+        ${flat.map((f) => f.isSection ? html`<div key=${f.q.id} className="section-nav" style=${{ padding: '14px 0 4px' }}>${f.q.text}</div>` : html`<div key=${f.q.id} style=${{ marginLeft: f.depth * 28, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface)', padding: '12px 16px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <span className="qnum">${f.num}</span>
+          <span style=${{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            ${f.parent && html`<span className="tag sel" style=${{ alignSelf: 'flex-start' }}>If ${f.num.split('.').slice(0, -1).join('.')} is ${f.whenLabel}</span>`}
+            <span style=${{ fontWeight: 500 }}>${f.q.text}${f.q.required && html`<span className="req"> *</span>`}</span>
+            <span className="opts-line" style=${{ marginTop: 0 }}>${f.q.options.map((o) => html`<span key=${o.id} className="ochip"><span className="dot" style=${{ background: o.result === 'pass' ? 'var(--pass)' : o.result === 'fail' ? 'var(--fail)' : 'var(--dim)' }}></span>${o.label}</span>`)}${!isChoice(f.q.type) && html`<span className="ochip muted">${ANSWER_HINT[f.q.type]}${f.q.unit ? ' (' + f.q.unit + ')' : ''}</span>`}${f.q.wo && html`<span className="tag warn"><img src=${ASSET['bell-ring']} width="14" height="14" alt="" />Work order · ${alertName(f.q.alert) || 'No alert profile'}</span>`}</span>
+          </span>
+          <span className="small muted">${f.q.type}</span>
+        </div>`)}
+      </section>
+      <aside style=${{ width: 360, flexShrink: 0, position: 'sticky', top: 0 }}>
+        <section className="dcard" aria-labelledby="pd-t">
+          <div className="dcard-head"><h2 id="pd-t">Procedure details</h2><button className="link" onClick=${onEdit}>Edit</button></div>
+          <div className="fields">${[['Category', p.cat], ['Sub category', p.sub], ['Standard', p.std], ['Frequency', p.freq], ['Code', p.code], ['Availability', p.avail === 'org' ? 'Entire organization' : 'This property'], ['Folder', p.folder], ['Updated', p.updated]].map(([k, v]) => html`<div key=${k} className="fld"><span>${k}</span><span>${v || '—'}</span></div>`)}</div>
+        </section>
+      </aside>
+      </div>
+    </div>
+    ${exp && html`<div className="scrim"><div className="dialog" role="dialog" aria-modal="true" aria-labelledby="ex-t" style=${{ width: 640 }}>
+      <div className="dhead"><h2 id="ex-t" style=${{ fontSize: 20 }}>Export procedure</h2><button className="ibtn lg" style=${{ marginLeft: 'auto' }} aria-label="Close" onClick=${() => setExp(false)}><${I} n="x" s=${20} /></button></div>
+      <div className="dbody" role="radiogroup" aria-label="Format" style=${{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 14 }}>${[['pdf', 'PDF', 'Readable format', 'Formatted for reading or printing.', 'fail'], ['xls', 'XLS', 'Structured format', 'Structured data of the checklist.', 'pass']].map(([k, e, t, s, c]) => html`<button key=${k} role="radio" aria-checked=${String(fmt === k)} className="choice" style=${{ flexDirection: 'column', padding: 22, textAlign: 'center' }} onClick=${() => setFmt(k)}><span className=${'tag ' + c} style=${{ width: 56, height: 68, justifyContent: 'center', fontSize: 16 }}>${e}</span><span style=${{ fontWeight: 600 }}>${t}</span><span className="small muted">${s}</span></button>`)}</div>
+      <div className="dfoot"><span></span><button className="btn btn-primary" disabled=${!fmt} onClick=${() => { setExp(false); flash({ msg: 'Exporting as ' + fmt.toUpperCase() }); }}>Export</button></div>
+    </div></div>`}
+  </div>`;
+}
+
+/* ---------------- app ---------------- */
+function App() {
+  const [screen, setScreen] = useState('library');
+  const [railX, setRailX] = useState(() => { try { return localStorage.getItem('sclera-rail') === 'expanded'; } catch (e) { return false; } });
+  const toggleRail = () => setRailX((x) => { try { localStorage.setItem('sclera-rail', x ? 'collapsed' : 'expanded'); } catch (e) {} return !x; });
+  const countOf = (qs) => flatten(qs).filter((f) => !f.isSection && !f.parent).length;
+  const [procs, setProcs] = useState(() => {
+    const pub = PROCS.map((p) => Object.assign({}, p, { status: 'published', questions: p.key === 'fe' ? feQuestions() : (TEMPLATES.find((t) => t.key === p.key) || { specs: [] }).specs.map((s) => build(s, 'Template', p.std)), code: p.key === 'fe' ? 'FE-M-01' : '', avail: 'property' }));
+    const draftQs = [build(['Is the emergency light working when mains power is cut?', 'Yes/No', { required: true, wo: true }], 'Manual', ''), build(['Does the light stay on for the full test duration?', 'Yes/No'], 'Manual', ''), mkQ('', 'Yes/No')];
+    const dr = Object.assign(blankDraft(), { key: 'draft-el', status: 'draft', name: 'Emergency Lighting – Monthly', cat: 'Inspection', sub: '', folder: 'Inspection', desc: 'Monthly function test of emergency and exit lighting.', icon: 'bolt', questions: draftQs, updated: 'Sep 28, 2026' });
+    return [dr].concat(pub).map((p) => Object.assign(p, { count: countOf(p.questions) }));
+  });
+  const [libDocs, setLibDocs] = useState(LIB_DOCS);
+  const [current, setCurrent] = useState(null);
+  const [draft, setDraftInit] = useState(null);
+  const [isEdit, setIsEdit] = useState(false);
+  const [toast, setToast] = useState(null);
+  const tRef = useRef(null);
+  const flash = (t) => { setToast(t); clearTimeout(tRef.current); tRef.current = setTimeout(() => setToast(null), t.undo ? 6000 : 3200); };
+  const importDocs = (files) => {
+    const docs = filesToDocs(files); const skipped = (files ? files.length : 0) - docs.length;
+    if (docs.length) setLibDocs((l) => docs.concat(l));
+    if (docs.length || skipped) flash({ msg: (docs.length ? docs.length + ' document' + (docs.length > 1 ? 's' : '') + ' imported' : 'Nothing imported') + (skipped ? ' · ' + skipped + ' skipped: only PDF and Word files are supported' : '') });
+    return docs;
+  };
+  const create = (folder, docs) => { setDraftInit(Object.assign(blankDraft(), { key: nid('p'), folder: folder || 'Inspection', docs: docs || [] })); setIsEdit(false); setScreen('builder'); };
+  const now = () => 'Sep 29, 2026';
+  const open = (p) => {
+    if (p.status === 'draft') { setDraftInit(Object.assign(blankDraft(), JSON.parse(JSON.stringify(p)))); setIsEdit(false); setScreen('builder'); return; }
+    setCurrent(p); setScreen('view');
+  };
+  const saveDraft = (dd) => {
+    if (isEdit) {
+      setProcs((l) => l.map((x) => (x.key === dd.key ? Object.assign({}, x, { pending: Object.assign({}, dd, { savedAt: now() }) }) : x)));
+      setCurrent((c) => (c && c.key === dd.key ? Object.assign({}, c, { pending: Object.assign({}, dd, { savedAt: now() }) }) : c));
+      setScreen('view'); flash({ msg: 'Changes saved as a draft. The published version is still live.' });
+      return;
+    }
+    const rec = Object.assign({}, dd, { status: 'draft', updated: now(), count: countOf(dd.questions) });
+    setProcs((l) => (l.some((x) => x.key === rec.key) ? l.map((x) => (x.key === rec.key ? rec : x)) : [rec].concat(l)));
+    setScreen('library'); flash({ msg: 'Saved to Drafts' });
+  };
+  return html`<div className="app">
+    <${NavRail} expanded=${railX} onToggle=${toggleRail} />
+    ${screen === 'library' && html`<${Library} procs=${procs} libDocs=${libDocs} onImport=${importDocs} flash=${flash} onCreate=${(folder) => create(folder)} onCreateFromDocs=${(docs) => create(null, docs)} onOpen=${open} />`}
+    ${screen === 'view' && current && html`<${ViewPage} p=${current} onBack=${() => setScreen('library')} flash=${flash}
+      onDiscardPending=${() => { const c = Object.assign({}, current); delete c.pending; setCurrent(c); setProcs((l) => l.map((x) => (x.key === c.key ? c : x))); flash({ msg: 'Draft changes discarded' }); }}
+      onEdit=${() => { const src = current.pending || current; setDraftInit(Object.assign(blankDraft(), JSON.parse(JSON.stringify(src)), { key: current.key })); setIsEdit(true); setScreen('builder'); }} />`}
+    ${screen === 'builder' && draft && html`<${Builder} key=${draft.key || 'new'} initial=${draft} isEdit=${isEdit} flash=${flash} libDocs=${libDocs} onImport=${importDocs} onSaveDraft=${saveDraft}
+      onExit=${() => setScreen(isEdit ? 'view' : 'library')}
+      onPublished=${(dd) => { const rec = Object.assign({}, dd, { status: 'published', updated: now(), count: countOf(dd.questions), icon: dd.icon || 'fe' }); delete rec.pending; delete rec.savedAt; setProcs((l) => (l.some((x) => x.key === rec.key) ? l.map((x) => (x.key === rec.key ? rec : x)) : [rec].concat(l))); setCurrent(rec); setScreen('view'); flash({ msg: isEdit ? 'Procedure updated' : 'Procedure published' }); }} />`}
+    <${Toast} toast=${toast} onUndo=${() => { if (toast && toast.undo) toast.undo(); setToast(null); }} />
+  </div>`;
+}
+
+class Guard extends React.Component {
+  constructor(p) { super(p); this.state = { err: null }; }
+  static getDerivedStateFromError(err) { return { err: err }; }
+  render() {
+    if (!this.state.err) return this.props.children;
+    return html`<div className="empty" style=${{ margin: 48 }}><h2 style=${{ fontSize: 18 }}>Something went wrong in the prototype</h2><p className="muted">${String(this.state.err.message || this.state.err)}</p><button className="btn btn-primary" onClick=${() => location.reload()}>Reload</button></div>`;
+  }
+}
+ReactDOM.createRoot(document.getElementById('root')).render(html`<${Guard}><${App} /><//>`);
+})();
+</script>

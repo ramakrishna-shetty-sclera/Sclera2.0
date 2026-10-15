@@ -73,6 +73,24 @@
             <artifactId>openfga-sdk</artifactId>
         </dependency>
 
+        <!-- AI question generation: OpenAI-compatible LLM API + document text extraction -->
+        <dependency>
+            <groupId>com.github.victools</groupId>
+            <artifactId>jsonschema-generator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.victools</groupId>
+            <artifactId>jsonschema-module-jackson</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+        </dependency>
+
         <!-- Database -->
         <dependency>
             <groupId>org.flywaydb</groupId>
@@ -126,6 +144,21 @@
             <artifactId>spring-kafka-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- Integration tests run against a real, throwaway Postgres container.
+             H2 cannot do CREATE SCHEMA + search_path switching + JSONB, which is
+             the whole schema-per-tenant mechanism, so it would test nothing that
+             matters. Versions come from the Spring Boot parent. -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -133,6 +166,36 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+            <!-- *IT classes run on `mvn verify` (they need Docker); `mvn test`
+                 stays unit-only. Without this plugin Surefire matches only
+                 *Test/*Tests, so *IT classes are silently never discovered and
+                 the build reports "Tests run: 0" while passing. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <!-- Testcontainers' docker-java defaults to Docker API
+                             1.32; Docker Engine 29+ rejects anything below 1.40
+                             with a 400, which surfaces as "Could not find a valid
+                             Docker environment" even though the CLI works. 1.40 is
+                             the one value that suits both ends — the ceiling of
+                             Docker 19.03 and the floor of 29.x. Note docker-java
+                             reads the api.version system property; the
+                             DOCKER_API_VERSION env var is NOT read. -->
+                        <api.version>1.40</api.version>
+                    </systemPropertyVariables>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

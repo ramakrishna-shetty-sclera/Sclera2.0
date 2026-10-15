@@ -2,8 +2,10 @@
 spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/${SCLERA_DB_NAME:sclera_procedure}
-    username: ${SCLERA_DB_USER:sclera}
-    password: ${SCLERA_DB_PASSWORD:sclera}
+    # The request role, created by V5__app_role.sql. Not the owner and not a
+    # superuser, which is the only reason row-level security does anything.
+    username: ${SCLERA_DB_USER:sclera_app}
+    password: ${SCLERA_DB_PASSWORD:sclera_app}
     hikari:
       minimum-idle: 2
       maximum-pool-size: 10
@@ -38,10 +40,23 @@ springdoc:
     path: /v3/api-docs
 
 sclera:
+  # AI question generation defaults ON in local dev (base default is off), so
+  # the run script needs no flag. The API key is still env-only, never here:
+  # without ANTHROPIC_API_KEY the endpoints exist and generation jobs fail
+  # with a clear message.
+  ai:
+    enabled: ${AI_QUESTION_GENERATION_ENABLED:true}
   health:
     dapr:
       # Flip to true when running under `dapr run` with a sidecar
       enabled: ${SCLERA_DAPR_HEALTH_ENABLED:false}
+  properties:
+    # Stand-in until a property service exists: codes for the two properties
+    # setup-demo-users.ps1 seeds, so the property switcher can show VDMS001
+    # rather than an id. A property with no entry shows the first block of its id.
+    labels:
+      "[aaaaaaaa-0000-0000-0000-000000000001]": VDMS001
+      "[aaaaaaaa-0000-0000-0000-000000000002]": VDMS002
 
 logging:
   level:

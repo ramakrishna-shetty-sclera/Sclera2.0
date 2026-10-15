@@ -8,8 +8,8 @@ import {
   scanUrlFor,
   type ReactiveService,
 } from '../api/reactiveServices'
-import { listTemplates } from '../api/templates'
-import type { QuestionTemplate } from '../api/types'
+import { listPublishedProcedures } from '../api/templates'
+import type { ProcedureTemplate } from '../api/types'
 import { listLocations, type Location } from '../api/locations'
 import { Modal } from '../components/Modal'
 
@@ -136,7 +136,7 @@ function CreateServiceModal({
   onSaved: () => void
   onError: (m: string) => void
 }) {
-  const [procedures, setProcedures] = useState<QuestionTemplate[]>([])
+  const [procedures, setProcedures] = useState<ProcedureTemplate[]>([])
   const [locations, setLocations] = useState<Location[]>([])
   const [name, setName] = useState('')
   const [procedureId, setProcedureId] = useState('')
@@ -144,7 +144,7 @@ function CreateServiceModal({
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    listTemplates({ status: 'PUBLISHED', size: 100 }).then((r) => setProcedures(r.data)).catch(() => {})
+    listPublishedProcedures().then(setProcedures).catch(() => {})
     listLocations().then(setLocations).catch(() => {})
   }, [])
 
@@ -182,7 +182,7 @@ function CreateServiceModal({
             <option value="">Select…</option>
             {procedures.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name} (v{p.version})
+                {p.name} (v{p.currentPublishedVersionNo})
               </option>
             ))}
           </select>

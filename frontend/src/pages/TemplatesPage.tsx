@@ -1,26 +1,43 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { listTemplates } from '../api/templates'
-import type { Pagination, QuestionTemplate, TemplateStatus } from '../api/types'
-import { StatusBadge } from '../components/StatusBadge'
+import { listProcedures } from '../api/templates'
+import type { Pagination, ProcedureTemplate } from '../api/types'
 import { Pager } from '../components/Pager'
+import { DocumentLibraryDialog } from '../components/v3/DocumentLibraryDialog'
+import { FOLDERS, PRIORITY_CLASS } from '../components/v3/procedureVocab'
+
+/**
+ * The procedure library, in the Sclera 2.0 design (docs/procedures-v3.html):
+ * a card grid behind All / Published / Drafts tabs.
+ *
+ * The tabs are cuts of the model, not a status field: Published means a
+ * current published version exists, Drafts means a draft is open — a
+ * procedure with both (published, being edited) appears under each and its
+ * card says "Unpublished changes". Archived is its own tab because an
+ * archived procedure is out of every other conversation.
+ */
+type Cut = 'all' | 'published' | 'draft' | 'archived'
 
 export function TemplatesPage() {
   const navigate = useNavigate()
-  const [templates, setTemplates] = useState<QuestionTemplate[]>([])
+  const [procedures, setProcedures] = useState<ProcedureTemplate[]>([])
   const [pagination, setPagination] = useState<Pagination | null>(null)
-  const [status, setStatus] = useState<TemplateStatus | ''>('')
+  const [cut, setCut] = useState<Cut>('all')
+  const [query, setQuery] = useState('')
   const [page, setPage] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [docLibOpen, setDocLibOpen] = useState(false)
+  const [view, setView] = useState<'grid' | 'folders'>('grid')
+  const [folder, setFolder] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    listTemplates({ status: status || undefined, page, size: 20 })
+    listProcedures({ status: cut === 'archived' ? 'ARCHIVED' : 'ACTIVE', page, size: 30 })
       .then((r) => {
         if (cancelled) return
-        setTemplates(r.data)
+        setProcedures(r.data)
         setPagination(r.pagination)
         setError(null)
       })
@@ -29,63 +46,239 @@ export function TemplatesPage() {
     return () => {
       cancelled = true
     }
-  }, [status, page])
+  }, [cut === 'archived', page])
+
+  const needle = query.trim().toLowerCase()
+  const base = useMemo(
+    () =>
+      procedures.filter(
+        (p) => !needle || `${p.name} ${p.description ?? ''}`.toLowerCase().includes(needle),
+      ),
+    [procedures, needle],
+  )
+  const published = base.filter((p) => p.currentPublishedVersionNo != null)
+  const drafts = base.filter((p) => p.draftVersionNo != null)
+  const byStatus = cut === 'published' ? published : cut === 'draft' ? drafts : base
+  const inFolder = view === 'folders' && folder != null
+  const shown = inFolder ? byStatus.filter((p) => folderOf(p) === folder) : byStatus
+  const showFolders = view === 'folders' && folder == null
+
+  const tabs: [Cut, string, number][] = [
+    ['all', 'All', base.length],
+    ['published', 'Published', published.length],
+    ['draft', 'Drafts', drafts.length],
+    ['archived', 'Archived', cut === 'archived' ? base.length : 0],
+  ]
 
   return (
-    <div>
-      <div className="page-head">
-        <h1>Templates</h1>
-        <div className="page-actions">
-          <select
-            value={status}
-            onChange={(e) => {
-              setStatus(e.target.value as TemplateStatus | '')
-              setPage(0)
-            }}
-          >
-            <option value="">All statuses</option>
-            <option value="DRAFT">Draft</option>
-            <option value="PUBLISHED">Published</option>
-            <option value="ARCHIVED">Archived</option>
-          </select>
+    <div className="v3 v3-page">
+      <div className="phead">
+        <div className="ptitle">
+          <h1>Procedures</h1>
+          <span className="psub">
+            {shown.length} procedure{shown.length === 1 ? '' : 's'} · every published version is
+            kept; editing starts a new draft
+          </span>
+        </div>
+        <div className="pacts">
+          <button className="btn btn-outline" onClick={() => setDocLibOpen(true)}>
+            ⌸ Documents
+          </button>
           <Link className="btn btn-primary" to="/templates/new">
-            New template
+            + Create procedure
           </Link>
         </div>
       </div>
 
-      {error && <div className="alert alert-error">{error}</div>}
-      {loading ? (
-        <p className="muted">Loading…</p>
-      ) : templates.length === 0 ? (
-        <p className="muted">No templates yet. Create one to start running inspections.</p>
-      ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Category</th>
-              <th>Status</th>
-              <th>Version</th>
-              <th>Updated</th>
-            </tr>
-          </thead>
-          <tbody>
-            {templates.map((t) => (
-              <tr key={t.id} className="clickable" onClick={() => navigate(`/templates/${t.id}`)}>
-                <td>{t.name}</td>
-                <td>{t.category ?? '—'}</td>
-                <td>
-                  <StatusBadge status={t.status} />
-                </td>
-                <td>v{t.version}</td>
-                <td>{new Date(t.updatedAt).toLocaleString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {docLibOpen && (
+        <DocumentLibraryDialog
+          confirmLabel="Create procedure from"
+          onClose={() => setDocLibOpen(false)}
+          onConfirm={(docs) => {
+            setDocLibOpen(false)
+            navigate('/templates/new', { state: { docIds: docs.map((d) => d.id) } })
+          }}
+        />
       )}
-      <Pager pagination={pagination} onPage={setPage} />
+
+      <div className="lib-head">
+        <div className="dtabs" role="tablist" aria-label="Status">
+          {tabs.map(([k, label, n]) => (
+            <button
+              key={k}
+              role="tab"
+              className="dtab"
+              aria-selected={cut === k}
+              onClick={() => {
+                setCut(k)
+                setPage(0)
+              }}
+            >
+              {label}
+              <span className={`count-badge${k === 'draft' && n > 0 ? '' : ' quiet'}`}>
+                {k === 'archived' && cut !== 'archived' ? '…' : n}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="row between" style={{ paddingBottom: 16 }}>
+          <label className="search">
+            <span aria-hidden="true">⌕</span>
+            <input
+              type="search"
+              aria-label="Search procedures"
+              placeholder="Search by name or description"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </label>
+          <div className="seg-tabs" role="group" aria-label="View">
+            <button
+              aria-pressed={view === 'grid'}
+              onClick={() => {
+                setView('grid')
+                setFolder(null)
+              }}
+            >
+              ▦ Grid
+            </button>
+            <button aria-pressed={view === 'folders'} onClick={() => setView('folders')}>
+              🗀 Folders
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="scroll" style={{ padding: '0 24px 24px' }}>
+        {error && <div className="alert-error">{error}</div>}
+        {inFolder && (
+          <div className="row" style={{ gap: 8, paddingBottom: 12 }}>
+            <button className="link" onClick={() => setFolder(null)}>
+              ‹ All folders
+            </button>
+            <span className="small muted">
+              {folder} · {shown.length} procedure{shown.length === 1 ? '' : 's'}
+            </span>
+          </div>
+        )}
+        {loading ? (
+          <p className="muted">Loading…</p>
+        ) : showFolders ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,minmax(0,1fr))', gap: 16 }}>
+            {FOLDERS.map((f) => {
+              const inF = byStatus.filter((p) => folderOf(p) === f)
+              const dr = inF.filter((p) => p.draftVersionNo != null).length
+              return (
+                <button key={f} className="fcard" onClick={() => setFolder(f)}>
+                  <span aria-hidden="true" style={{ fontSize: 36, lineHeight: 1 }}>
+                    🗀
+                  </span>
+                  <span style={{ fontWeight: 600, color: 'var(--heading)', fontSize: 15, marginTop: 6 }}>{f}</span>
+                  <span className="small muted">
+                    {inF.length} procedure{inF.length === 1 ? '' : 's'}
+                    {dr ? ` · ${dr} draft${dr > 1 ? 's' : ''}` : ''}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        ) : shown.length === 0 ? (
+          <div className="empty">
+            <h2 style={{ fontSize: 16 }}>
+              {cut === 'draft'
+                ? 'No open drafts'
+                : cut === 'archived'
+                  ? 'Nothing archived'
+                  : 'No procedures yet'}
+            </h2>
+            <p className="muted">
+              {cut === 'draft'
+                ? 'Editing a procedure opens a draft, and it appears here until it is published.'
+                : 'Create one to start authoring, or clear the search.'}
+            </p>
+            <Link className="btn btn-primary" to="/templates/new">
+              Create procedure
+            </Link>
+          </div>
+        ) : (
+          <div className="grid3">
+            {shown.map((p) => (
+              <ProcCard key={p.id} p={p} onOpen={() => navigate(`/templates/${p.id}`)} />
+            ))}
+          </div>
+        )}
+        <Pager pagination={pagination} onPage={setPage} />
+      </div>
     </div>
+  )
+}
+
+/** The design's default folder — a procedure filed nowhere shows under Inspection. */
+function folderOf(p: ProcedureTemplate): string {
+  return p.meta?.folder || 'Inspection'
+}
+
+function ProcCard({ p, onOpen }: { p: ProcedureTemplate; onOpen: () => void }) {
+  const archived = p.status === 'ARCHIVED'
+  const isPublished = p.currentPublishedVersionNo != null
+  const hasDraft = p.draftVersionNo != null
+  const draftOnly = hasDraft && !isPublished
+  const meta = p.meta ?? {}
+
+  return (
+    <button className={`pcard${draftOnly ? ' draft' : ''}`} onClick={onOpen}>
+      <span className="row" style={{ alignItems: 'flex-start', gap: 14, width: '100%' }}>
+        <span className="ptile" aria-hidden="true">
+          ☑
+        </span>
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, flex: 1 }}>
+          <span className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+            {archived ? (
+              <span className="tag">Archived</span>
+            ) : isPublished ? (
+              <span className="tag pass">Published</span>
+            ) : (
+              <span className="tag">Draft</span>
+            )}
+            {isPublished && hasDraft && !archived && (
+              <span className="tag warn">Unpublished changes</span>
+            )}
+            {meta.priority && !archived && (
+              <span className={`tag ${PRIORITY_CLASS[meta.priority] ?? ''}`}>{meta.priority}</span>
+            )}
+          </span>
+          <span
+            className="ellipsis"
+            style={{ fontWeight: 500, fontSize: 16, color: 'var(--heading)' }}
+          >
+            {p.name}
+          </span>
+          <span className="small muted clamp2">{p.description || 'No description yet.'}</span>
+        </span>
+      </span>
+      <span className="meta3">
+        <span>
+          <span>{draftOnly ? 'Folder' : 'Frequency'}</span>
+          {(draftOnly ? folderOf(p) : meta.frequency) || '—'}
+        </span>
+        <span>
+          <span>{draftOnly ? 'Draft' : 'Published'}</span>
+          {draftOnly ? `v${p.draftVersionNo}` : `v${p.currentPublishedVersionNo}`}
+        </span>
+        <span>
+          <span>Updated</span>
+          {new Date(p.updatedAt).toLocaleDateString()}
+        </span>
+      </span>
+      <span className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+        {meta.category ? <span className="tag">{meta.category}</span> : <span className="tag line">No category</span>}
+        {meta.standard && <span className="tag line">{meta.standard}</span>}
+        {draftOnly && !archived && (
+          <span className="small" style={{ marginLeft: 'auto', color: 'var(--action)', fontWeight: 500 }}>
+            Continue editing →
+          </span>
+        )}
+      </span>
+    </button>
   )
 }
