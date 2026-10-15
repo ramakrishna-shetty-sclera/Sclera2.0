@@ -18,6 +18,7 @@ import { Refusal } from '../components/Refusal'
 import { BuilderNavigator, flattenDrafts } from '../components/v3/BuilderNavigator'
 import { BuilderQuestionCard, type BuilderCtx } from '../components/v3/BuilderQuestionCard'
 import { BuilderSidePanel, type SideTab } from '../components/v3/BuilderSidePanel'
+import { PreviewDialog } from '../components/v3/PreviewDialog'
 import {
   addFollowIn,
   addOptionIn,
@@ -158,6 +159,10 @@ export function TemplateEditorPage() {
   const [thresholds, setThresholds] = useState<Threshold[]>([])
   const [documents, setDocuments] = useState<DocumentRef[]>([])
   const rowVersionRef = useRef<number | null>(null)
+  /** The draft's own version number — what Preview evaluates against. Distinct from rowVersion, the optimistic lock. */
+  const [versionNo, setVersionNo] = useState<number | null>(null)
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewBusy, setPreviewBusy] = useState(false)
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve())
   const [savedSnapshot, setSavedSnapshot] = useState(() => snapshotOf(2, [newItem('YES_NO')]))
   const failedSnapshot = useRef<string | null>(null)
@@ -210,6 +215,7 @@ export function TemplateEditorPage() {
         })
         setSchema(draft.definition.schema)
         rowVersionRef.current = draft.rowVersion
+        setVersionNo(draft.versionNo)
         const loadedThresholds = draft.definition.thresholds ?? []
         const loadedDocuments = draft.definition.documents ?? []
         setThresholds(loadedThresholds)
@@ -281,6 +287,7 @@ export function TemplateEditorPage() {
         }),
       )
       rowVersionRef.current = saved.rowVersion
+      setVersionNo(saved.versionNo)
       const minted = keysFromSaved(sent, saved.definition.items)
       setItems((prev) => applyKeys(prev, minted))
       setSavedSnapshot(snapshotOf(s.schema, applyKeys(sent, minted), s.thresholds, s.documents))
@@ -417,6 +424,7 @@ export function TemplateEditorPage() {
         }),
       )
       rowVersionRef.current = saved.rowVersion
+      setVersionNo(saved.versionNo)
       const reloaded = fromDocument(saved.definition)
       setThresholds(saved.definition.thresholds ?? [])
       setDocuments(saved.definition.documents ?? [])
@@ -516,7 +524,8 @@ export function TemplateEditorPage() {
     )
   }
 
-  async function onSave(leaveAfter = false) {
+  /** True once the save actually went through — Preview waits on this before it opens. */
+  async function onSave(leaveAfter = false): Promise<boolean> {
     setBusy(true)
     setError(null)
     setRefusal(null)
@@ -531,7 +540,7 @@ export function TemplateEditorPage() {
           definition,
         })
         navigate(`/templates/${created.id}${leaveAfter ? '' : '/edit'}`)
-        return
+        return true
       }
 
       if (identityChanged()) {
@@ -546,6 +555,7 @@ export function TemplateEditorPage() {
         }),
       )
       rowVersionRef.current = saved.rowVersion
+      setVersionNo(saved.versionNo)
       const minted = keysFromSaved(items, saved.definition.items)
       setItems((prev) => applyKeys(prev, minted))
       setThresholds(saved.definition.thresholds ?? [])
@@ -554,6 +564,7 @@ export function TemplateEditorPage() {
       failedSnapshot.current = null
       setAutosave({ phase: 'idle', at: new Date() })
       if (leaveAfter) navigate(`/templates/${id}`)
+      return true
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         setConflict(true)
@@ -561,9 +572,28 @@ export function TemplateEditorPage() {
       } else {
         setRefusal(e instanceof Error ? e : new Error('Could not save'))
       }
+      return false
     } finally {
       setBusy(false)
     }
+  }
+
+  /**
+   * Preview reads a *stored* version, and a follow-up's trigger only
+   * resolves once its parent's options have real server keys — so a dirty
+   * draft is saved first, exactly like "+ Follow-up" already does. Opening
+   * is skipped, not just delayed, if that save is refused.
+   */
+  async function openPreview() {
+    if (!editing || isEffectivelyEmpty(items)) return
+    if (dirty) {
+      setPreviewBusy(true)
+      const ok = await onSave(false)
+      setPreviewBusy(false)
+      if (!ok) return
+    }
+    if (versionNo == null) return
+    setPreviewOpen(true)
   }
 
   /** Saves, then publishes. The server's blockers come back as one refusal list. */
@@ -586,6 +616,7 @@ export function TemplateEditorPage() {
         }),
       )
       rowVersionRef.current = saved.rowVersion
+      setVersionNo(saved.versionNo)
       await publishProcedure(id!, saved.rowVersion)
       navigate(`/templates/${id}`)
     } catch (e) {
@@ -614,6 +645,7 @@ export function TemplateEditorPage() {
         }
         const result = await importQuestions(s.id!, candidateIds)
         rowVersionRef.current = result.draft.rowVersion
+        setVersionNo(result.draft.versionNo)
         const reloaded = fromDocument(result.draft.definition)
         setThresholds(result.draft.definition.thresholds ?? [])
         setDocuments(result.draft.definition.documents ?? [])
@@ -784,6 +816,20 @@ export function TemplateEditorPage() {
             </div>
             <button className="btn btn-quiet" disabled={busy || conflict} onClick={() => void onSave(true)}>
               Save draft
+            </button>
+            <button
+              className="btn btn-outline"
+              disabled={busy || conflict || !editing || isEffectivelyEmpty(items)}
+              title={
+                !editing
+                  ? 'Save the procedure first'
+                  : isEffectivelyEmpty(items)
+                    ? 'Add a question first'
+                    : undefined
+              }
+              onClick={() => void openPreview()}
+            >
+              {previewBusy ? 'Saving…' : 'Preview'}
             </button>
             {editing && (
               <button className="btn btn-primary" disabled={busy || conflict} onClick={() => void onPublish()}>
@@ -970,6 +1016,21 @@ export function TemplateEditorPage() {
           />
         </div>
       </div>
+
+      {previewOpen && versionNo != null && (
+        <PreviewDialog
+          procedureName={name}
+          templateId={id!}
+          versionNo={versionNo}
+          items={items}
+          schema={schema}
+          thresholds={thresholds}
+          documents={documents}
+          resultTypes={resultTypes}
+          savedAt={autosave.at}
+          onClose={() => setPreviewOpen(false)}
+        />
+      )}
     </div>
   )
 }
