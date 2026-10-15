@@ -1350,6 +1350,61 @@
   background: var(--raised);
 }
 
+/* ---- evaluation preview ---- */
+.v3 .phone {
+  width: 390px;
+  max-height: 70vh;
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.v3 .simopt {
+  min-width: 72px;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--action);
+  background: transparent;
+  color: var(--action);
+  font-weight: 500;
+  font-size: 14px;
+}
+.v3 .simopt[aria-pressed='true'] {
+  background: var(--tonal);
+  border-color: var(--tonal);
+  color: var(--selected-text);
+}
+.v3 .progress {
+  height: 4px;
+  border-radius: 9999px;
+  background: var(--raised);
+  overflow: hidden;
+}
+.v3 .progress > div {
+  height: 100%;
+  background: var(--action);
+  transition: width 0.2s ease;
+}
+.v3 .stat {
+  padding: 16px;
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.v3 .stat b {
+  font-size: 24px;
+  line-height: 28px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---- overlays ---- */
 .v3 .scrim {
   position: fixed;
