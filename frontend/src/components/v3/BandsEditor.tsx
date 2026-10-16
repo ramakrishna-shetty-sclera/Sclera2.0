@@ -13,17 +13,23 @@ export function BandResultSelect({
   resultTypes,
   onChange,
   label,
+  width = 150,
 }: {
   value: string
   resultTypes: ResultType[]
   onChange: (result: string) => void
   label: string
+  width?: number | string
 }) {
   const stale = value !== '' && !resultTypes.some((r) => r.key === value)
+  const type = value ? resultTypes.find((r) => r.key === value) : undefined
+  const colorStyle: React.CSSProperties | undefined = type
+    ? { borderColor: type.color, color: type.color, background: `${type.color}1a` }
+    : undefined
   return (
     <select
       className={`select sm${stale ? ' invalid' : ''}`}
-      style={{ width: 150, flexShrink: 0 }}
+      style={{ ...colorStyle, width, flexShrink: 0 }}
       aria-label={label}
       value={value}
       onChange={(e) => onChange(e.target.value)}

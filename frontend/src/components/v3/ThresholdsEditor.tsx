@@ -39,41 +39,50 @@ export function ThresholdsEditor({
         and the procedure still publishes; scoring is something an organization opts into.
       </span>
       {thresholds.map((band, i) => (
-        <div key={i} className="optrow" style={{ flexWrap: 'wrap' }}>
-          <input
-            type="number"
-            aria-label={`Threshold ${i + 1} minimum percentage`}
-            className="input soft sm"
-            style={{ width: 70 }}
-            min={0}
-            max={100}
-            value={band.min ?? ''}
-            placeholder="0"
-            onChange={(e) => patch(i, { min: e.target.value.trim() === '' ? null : Number(e.target.value) })}
-          />
-          <span className="small muted">% to</span>
-          <input
-            type="number"
-            aria-label={`Threshold ${i + 1} maximum percentage`}
-            className="input soft sm"
-            style={{ width: 70 }}
-            min={0}
-            max={100}
-            value={band.max ?? ''}
-            placeholder="100"
-            onChange={(e) => patch(i, { max: e.target.value.trim() === '' ? null : Number(e.target.value) })}
-          />
-          <span className="small muted">% is</span>
+        <div key={i} className="tcard" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div className="row between">
+            <span className="small muted">Band {i + 1}</span>
+            <button type="button" className="ibtn danger" aria-label={`Remove threshold ${i + 1}`} onClick={() => remove(i)}>
+              🗑
+            </button>
+          </div>
+          <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+            <input
+              type="number"
+              aria-label={`Threshold ${i + 1} minimum percentage`}
+              className="input soft sm"
+              style={{ flex: 1, minWidth: 0 }}
+              min={0}
+              max={100}
+              value={band.min ?? ''}
+              placeholder="0"
+              onChange={(e) => patch(i, { min: e.target.value.trim() === '' ? null : Number(e.target.value) })}
+            />
+            <span className="small muted">to</span>
+            <input
+              type="number"
+              aria-label={`Threshold ${i + 1} maximum percentage`}
+              className="input soft sm"
+              style={{ flex: 1, minWidth: 0 }}
+              min={0}
+              max={100}
+              value={band.max ?? ''}
+              placeholder="100"
+              onChange={(e) => patch(i, { max: e.target.value.trim() === '' ? null : Number(e.target.value) })}
+            />
+            <span className="small muted">%</span>
+          </div>
           <BandResultSelect
             value={band.result ?? ''}
             resultTypes={resultTypes}
             onChange={(result) => patch(i, { result: result || null })}
             label={`Result for threshold ${i + 1}`}
+            width="100%"
           />
           {hasSections && (
             <select
               className="select sm"
-              style={{ width: 150 }}
+              style={{ width: '100%' }}
               aria-label={`What threshold ${i + 1} is read against`}
               title="What this band is read against"
               value={band.scope ?? ''}
@@ -83,9 +92,6 @@ export function ThresholdsEditor({
               <option value="SECTION">Each section</option>
             </select>
           )}
-          <button type="button" className="ibtn danger" aria-label={`Remove threshold ${i + 1}`} onClick={() => remove(i)}>
-            🗑
-          </button>
         </div>
       ))}
       <button type="button" className="link" style={{ alignSelf: 'flex-start' }} onClick={() => onChange([...thresholds, {}])}>
