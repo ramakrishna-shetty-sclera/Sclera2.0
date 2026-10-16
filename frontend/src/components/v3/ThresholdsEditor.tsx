@@ -32,8 +32,8 @@ export function ThresholdsEditor({
   }
 
   return (
-    <div className="field" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <label>Score thresholds</label>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <h3 style={{ fontSize: 15 }}>Score thresholds</h3>
       <span className="small muted">
         What a final score means — e.g. 90 to 100 is a Pass, 70 to 89 is Amber, below that is a Fail. Leave this empty
         and the procedure still publishes; scoring is something an organization opts into.
