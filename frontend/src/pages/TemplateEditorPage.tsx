@@ -12,7 +12,15 @@ import { importQuestions, type ImportResult } from '../api/ai'
 import { ApiError } from '../api/client'
 import { ITEM_TYPES, isChoice, numberItems, typeLabel } from '../api/document'
 import { listDocuments } from '../api/documents'
-import type { DocumentRef, ItemType, ProcedureDocument, ResultType, TemplateMeta, Threshold } from '../api/types'
+import type {
+  DefinitionDocument,
+  DocumentRef,
+  ItemType,
+  ProcedureDocument,
+  ResultType,
+  TemplateMeta,
+  Threshold,
+} from '../api/types'
 import { listResultTypes } from '../api/resultTypes'
 import { useAuth } from '../auth/AuthContext'
 import { Refusal } from '../components/Refusal'
@@ -273,18 +281,53 @@ export function TemplateEditorPage() {
     return run
   }
 
+  /**
+   * After a 409, re-reads the draft. When its content is still what this page
+   * last synced, only the rowVersion moved on (a stale tab, a draft opened
+   * again after a publish), so nothing of anyone's is at risk: adopt the new
+   * counter and report true. If the content differs, someone really edited it —
+   * leave the rowVersion alone so the conflict banner can protect their work.
+   */
+  async function adoptLatestVersion(): Promise<boolean> {
+    try {
+      const draft = await getDraft(id!)
+      const theirs = snapshotOf(
+        draft.definition.schema,
+        fromDocument(draft.definition),
+        draft.definition.thresholds ?? [],
+        draft.definition.documents ?? [],
+      )
+      if (theirs !== latest.current.savedSnapshot) return false
+      rowVersionRef.current = draft.rowVersion
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /** One save, retried once if the only thing wrong was a stale rowVersion. Call it inside the queue. */
+  async function saveWithRecovery(definition: DefinitionDocument, changeNote?: string) {
+    const send = () => saveDraft(id!, { definition, rowVersion: rowVersionRef.current!, changeNote })
+    try {
+      return await send()
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409 && (await adoptLatestVersion())) return send()
+      throw e
+    }
+  }
+
   const latest = useRef({
-    id, editing, items, schema, thresholds, documents, changeNote, conflict, busy, savingFor, savedSnapshot,
+    id, editing, name, items, schema, thresholds, documents, changeNote, conflict, busy, savingFor, savedSnapshot,
   })
   latest.current = {
-    id, editing, items, schema, thresholds, documents, changeNote, conflict, busy, savingFor, savedSnapshot,
+    id, editing, name, items, schema, thresholds, documents, changeNote, conflict, busy, savingFor, savedSnapshot,
   }
 
   async function autosaveNow() {
     const s = latest.current
     const snapshot = snapshotOf(s.schema, s.items, s.thresholds, s.documents)
     const skip = autosaveSkipReason({
-      ready: s.editing && rowVersionRef.current !== null,
+      ready: s.editing && rowVersionRef.current !== null && s.name.trim() !== '',
       conflict: s.conflict,
       busy: s.busy || s.savingFor !== null,
       snapshot,
@@ -299,11 +342,10 @@ export function TemplateEditorPage() {
     setAutosave((a) => ({ ...a, phase: 'saving' }))
     try {
       const saved = await enqueue(() =>
-        saveDraft(s.id!, {
-          definition: toDocument(s.schema, sent, s.thresholds, s.documents),
-          rowVersion: rowVersionRef.current!,
-          changeNote: s.changeNote.trim() || undefined,
-        }),
+        saveWithRecovery(
+          toDocument(s.schema, sent, s.thresholds, s.documents),
+          s.changeNote.trim() || undefined,
+        ),
       )
       rowVersionRef.current = saved.rowVersion
       setVersionNo(saved.versionNo)
@@ -424,8 +466,9 @@ export function TemplateEditorPage() {
     setRefusal(null)
     try {
       if (!editing) {
+        if (!requireName()) return
         const created = await createProcedure({
-          name: name.trim() || 'Untitled procedure',
+          name: name.trim(),
           description: description.trim() || undefined,
           meta,
           definition: toDocument(schema, items, thresholds, documents),
@@ -435,13 +478,7 @@ export function TemplateEditorPage() {
       }
 
       const definition = toDocument(schema, items, thresholds, documents)
-      const saved = await enqueue(() =>
-        saveDraft(id!, {
-          definition,
-          rowVersion: rowVersionRef.current!,
-          changeNote: changeNote.trim() || undefined,
-        }),
-      )
+      const saved = await enqueue(() => saveWithRecovery(definition, changeNote.trim() || undefined))
       rowVersionRef.current = saved.rowVersion
       setVersionNo(saved.versionNo)
       const reloaded = fromDocument(saved.definition)
@@ -536,16 +573,29 @@ export function TemplateEditorPage() {
   }
 
   /**
+   * A procedure is not created, saved, previewed or published until it has a
+   * name. The server refuses an empty one too, but the author should be told
+   * here, before any request, and be taken to the field.
+   */
+  function requireName(): boolean {
+    if (name.trim() !== '') return true
+    setError('Give the procedure a name first.')
+    document.getElementById('procedure-name')?.focus()
+    return false
+  }
+
+  /**
    * The docs/suggest save-first path: generation and chat are template-scoped,
    * so a brand-new procedure is created as a draft and the builder reopens on
    * the same tab, with any picked documents riding along in navigation state.
    */
   async function saveAndContinue(docIds: string[], tab: SideTab) {
+    if (!requireName()) return
     setBusy(true)
     setRefusal(null)
     try {
       const created = await createProcedure({
-        name: name.trim() || 'Untitled procedure',
+        name: name.trim(),
         description: description.trim() || undefined,
         meta,
         definition: currentDefinition(),
@@ -570,6 +620,7 @@ export function TemplateEditorPage() {
 
   /** True once the save actually went through — Preview waits on this before it opens. */
   async function onSave(leaveAfter = false): Promise<boolean> {
+    if (!requireName()) return false
     setBusy(true)
     setError(null)
     setRefusal(null)
@@ -591,13 +642,7 @@ export function TemplateEditorPage() {
         await updateProcedure(id!, { name: name.trim(), description: description.trim() || undefined, meta })
         setOriginal({ name: name.trim(), description: description.trim(), metaJson: JSON.stringify(meta) })
       }
-      const saved = await enqueue(() =>
-        saveDraft(id!, {
-          definition,
-          rowVersion: rowVersionRef.current!,
-          changeNote: changeNote.trim() || undefined,
-        }),
-      )
+      const saved = await enqueue(() => saveWithRecovery(definition, changeNote.trim() || undefined))
       rowVersionRef.current = saved.rowVersion
       setVersionNo(saved.versionNo)
       const minted = keysFromSaved(items, saved.definition.items)
@@ -643,6 +688,7 @@ export function TemplateEditorPage() {
   /** Saves, then publishes. The server's blockers come back as one refusal list. */
   async function onPublish() {
     if (!editing) return
+    if (!requireName()) return
     setShowErrors(true)
     setBusy(true)
     setError(null)
@@ -652,13 +698,7 @@ export function TemplateEditorPage() {
       if (identityChanged()) {
         await updateProcedure(id!, { name: name.trim(), description: description.trim() || undefined, meta })
       }
-      const saved = await enqueue(() =>
-        saveDraft(id!, {
-          definition,
-          rowVersion: rowVersionRef.current!,
-          changeNote: changeNote.trim() || undefined,
-        }),
-      )
+      const saved = await enqueue(() => saveWithRecovery(definition, changeNote.trim() || undefined))
       rowVersionRef.current = saved.rowVersion
       setVersionNo(saved.versionNo)
       await publishProcedure(id!, saved.rowVersion)
@@ -680,11 +720,10 @@ export function TemplateEditorPage() {
       return await enqueue(async () => {
         const s = latest.current
         if (snapshotOf(s.schema, s.items, s.thresholds, s.documents) !== s.savedSnapshot) {
-          const saved = await saveDraft(s.id!, {
-            definition: toDocument(s.schema, s.items, s.thresholds, s.documents),
-            rowVersion: rowVersionRef.current!,
-            changeNote: s.changeNote.trim() || undefined,
-          })
+          const saved = await saveWithRecovery(
+            toDocument(s.schema, s.items, s.thresholds, s.documents),
+            s.changeNote.trim() || undefined,
+          )
           rowVersionRef.current = saved.rowVersion
         }
         const result = await importQuestions(s.id!, candidateIds)
@@ -741,6 +780,7 @@ export function TemplateEditorPage() {
   let saveStatus: string
   if (!editing) saveStatus = 'Not saved yet'
   else if (conflict) saveStatus = 'Not saved — reload to see their version'
+  else if (!name.trim()) saveStatus = 'Not saved — give the procedure a name first'
   else if (autosave.phase === 'saving' || busy) saveStatus = 'Saving…'
   else if (autosave.phase === 'failed' && docDirty) saveStatus = 'Could not autosave — use Save draft'
   else if (waitingOn) saveStatus = `Waiting: ${waitingOn}`
@@ -815,6 +855,7 @@ export function TemplateEditorPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span className="small muted">{editing ? 'Editing draft' : 'New procedure'}</span>
             <input
+              id="procedure-name"
               className="title-input"
               aria-label="Procedure name"
               value={name}
@@ -862,25 +903,37 @@ export function TemplateEditorPage() {
                 </div>
               )}
             </div>
-            <button className="btn btn-quiet" disabled={busy || conflict} onClick={() => void onSave(true)}>
+            <button
+              className="btn btn-quiet"
+              disabled={busy || conflict || !name.trim()}
+              title={!name.trim() ? 'Give the procedure a name first' : undefined}
+              onClick={() => void onSave(true)}
+            >
               Save draft
             </button>
             <button
               className="btn btn-outline"
-              disabled={busy || conflict || !editing || isEffectivelyEmpty(items)}
+              disabled={busy || conflict || !editing || !name.trim() || isEffectivelyEmpty(items)}
               title={
                 !editing
                   ? 'Save the procedure first'
-                  : isEffectivelyEmpty(items)
-                    ? 'Add a question first'
-                    : undefined
+                  : !name.trim()
+                    ? 'Give the procedure a name first'
+                    : isEffectivelyEmpty(items)
+                      ? 'Add a question first'
+                      : undefined
               }
               onClick={() => void openPreview()}
             >
               {previewBusy ? 'Saving…' : 'Preview'}
             </button>
             {editing && (
-              <button className="btn btn-primary" disabled={busy || conflict} onClick={() => void onPublish()}>
+              <button
+                className="btn btn-primary"
+                disabled={busy || conflict || !name.trim()}
+                title={!name.trim() ? 'Give the procedure a name first' : undefined}
+                onClick={() => void onPublish()}
+              >
                 Publish
               </button>
             )}
