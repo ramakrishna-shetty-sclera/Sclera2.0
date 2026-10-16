@@ -358,23 +358,6 @@ function Expanded({
         </div>
       )}
 
-      <div className="indent" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <DocumentRefList
-          refs={item.key ? ctx.documents.filter((d) => d.questionKey === item.key) : []}
-          library={ctx.libraryDocuments}
-          onRemove={ctx.onRemoveDocument}
-        />
-        <button
-          type="button"
-          className="link"
-          disabled={!item.key}
-          title={item.key ? undefined : 'Save this question first — a citation points at its server-minted key'}
-          onClick={() => item.key && ctx.onAttachDocument(item.key)}
-        >
-          + Attach document
-        </button>
-      </div>
-
       {choice && (
         <div className="indent" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div className="row small muted" style={{ gap: 10 }}>
@@ -574,6 +557,15 @@ function Expanded({
         {choice && (
           <Switch on={item.workOrder} label="Work order on fail" onChange={(v) => ctx.onPatch(item.uid, { workOrder: v })} />
         )}
+        <button
+          type="button"
+          className="btn btn-quiet btn-xs"
+          disabled={!item.key}
+          title={item.key ? undefined : 'Save this question first — a citation points at its server-minted key'}
+          onClick={() => item.key && ctx.onAttachDocument(item.key)}
+        >
+          📎 Attach document
+        </button>
         <div className="row" style={{ marginLeft: 'auto', gap: 2 }}>
           <button className="ibtn" type="button" aria-label="Move up" disabled={index === 0} onClick={() => ctx.onMove(item.uid, -1)}>
             ↑
@@ -608,6 +600,11 @@ function Expanded({
           />
         </div>
       )}
+      <DocumentRefList
+        refs={item.key ? ctx.documents.filter((d) => d.questionKey === item.key) : []}
+        library={ctx.libraryDocuments}
+        onRemove={ctx.onRemoveDocument}
+      />
     </div>
   )
 }

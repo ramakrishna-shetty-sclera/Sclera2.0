@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { createDocument, readableSize, uploadFile } from '../../api/documents'
+import { createDocument, openDocument, readableSize, uploadFile } from '../../api/documents'
 import type { ProcedureDocument } from '../../api/types'
 
 /**
@@ -11,6 +11,12 @@ import type { ProcedureDocument } from '../../api/types'
  * Takes the caller's already-loaded `documents` rather than fetching its own
  * copy, so a document uploaded mid-dialog (`onUploaded`) and the caller's own
  * citation list stay in step with no second source of truth.
+ *
+ * `onConfirm` is optional: when given (every editor attach action), this is
+ * a multi-select-and-attach picker. When omitted — the Procedures list's own
+ * "Documents" button, which has nothing to attach to — it is a plain browse
+ * and upload view of the exact same library, so both entry points show
+ * identical content and an upload from either shows up in both.
  */
 export function DocumentCiteDialog({
   documents,
@@ -20,7 +26,7 @@ export function DocumentCiteDialog({
 }: {
   documents: ProcedureDocument[]
   onUploaded: (doc: ProcedureDocument) => void
-  onConfirm: (ids: string[]) => void
+  onConfirm?: (ids: string[]) => void
   onClose: () => void
 }) {
   const [selected, setSelected] = useState<Record<string, boolean>>({})
@@ -28,6 +34,7 @@ export function DocumentCiteDialog({
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement | null>(null)
+  const canAttach = Boolean(onConfirm)
 
   // Only an active document can be cited — the server refuses publishing a
   // citation of one that isn't, so there is nothing to select here.
@@ -78,7 +85,7 @@ export function DocumentCiteDialog({
       >
         <div className="dhead">
           <h2 id="dc-t" style={{ fontSize: 20 }}>
-            Attach a document
+            {canAttach ? 'Attach a document' : 'Documents'}
           </h2>
           <input
             ref={fileInput}
@@ -130,27 +137,45 @@ export function DocumentCiteDialog({
                       {doc.sizeBytes != null ? ` · ${readableSize(doc.sizeBytes)}` : ''}
                     </span>
                   </span>
-                  <input
-                    type="checkbox"
-                    aria-label={`Select ${doc.name}`}
-                    checked={!!selected[doc.id]}
-                    onChange={() => toggle(doc.id)}
-                  />
+                  {canAttach ? (
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${doc.name}`}
+                      checked={!!selected[doc.id]}
+                      onChange={() => toggle(doc.id)}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-quiet btn-xs"
+                      onClick={() => void openDocument(doc.location)}
+                    >
+                      Open
+                    </button>
+                  )}
                 </label>
               ))}
             </div>
           )}
         </div>
         <div className="dfoot">
-          <span className="small muted">{picked.length} selected</span>
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={picked.length === 0}
-            onClick={() => onConfirm(picked.map((d) => d.id))}
-          >
-            Attach {picked.length || ''} document{picked.length === 1 ? '' : 's'}
-          </button>
+          {canAttach ? (
+            <>
+              <span className="small muted">{picked.length} selected</span>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={picked.length === 0}
+                onClick={() => onConfirm!(picked.map((d) => d.id))}
+              >
+                Attach {picked.length || ''} document{picked.length === 1 ? '' : 's'}
+              </button>
+            </>
+          ) : (
+            <button type="button" className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={onClose}>
+              Close
+            </button>
+          )}
         </div>
       </div>
     </div>

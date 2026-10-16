@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { favouriteProcedure, listProcedures, unfavouriteProcedure } from '../api/templates'
-import type { Pagination, ProcedureTemplate } from '../api/types'
+import { listDocuments } from '../api/documents'
+import type { Pagination, ProcedureDocument, ProcedureTemplate } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { Pager } from '../components/Pager'
-import { DocumentLibraryDialog } from '../components/v3/DocumentLibraryDialog'
+import { DocumentCiteDialog } from '../components/v3/DocumentCiteDialog'
 import { FOLDERS, PRIORITY_CLASS } from '../components/v3/procedureVocab'
 
 /**
@@ -32,8 +33,15 @@ export function TemplatesPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [docLibOpen, setDocLibOpen] = useState(false)
+  const [libraryDocuments, setLibraryDocuments] = useState<ProcedureDocument[]>([])
   const [view, setView] = useState<'grid' | 'folders'>('grid')
   const [folder, setFolder] = useState<string | null>(null)
+
+  useEffect(() => {
+    listDocuments()
+      .then(setLibraryDocuments)
+      .catch(() => setLibraryDocuments([]))
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -109,13 +117,10 @@ export function TemplatesPage() {
       </div>
 
       {docLibOpen && (
-        <DocumentLibraryDialog
-          confirmLabel="Create procedure from"
+        <DocumentCiteDialog
+          documents={libraryDocuments}
+          onUploaded={(doc) => setLibraryDocuments((prev) => [doc, ...prev])}
           onClose={() => setDocLibOpen(false)}
-          onConfirm={(docs) => {
-            setDocLibOpen(false)
-            navigate('/templates/new', { state: { docIds: docs.map((d) => d.id) } })
-          }}
         />
       )}
 
