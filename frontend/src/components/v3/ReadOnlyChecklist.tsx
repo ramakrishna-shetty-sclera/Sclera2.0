@@ -1,17 +1,38 @@
 import { numberItems, typeLabel, isChoice } from '../../api/document'
-import type { DefinitionItem } from '../../api/types'
+import type { DefinitionItem, DocumentRef, ProcedureDocument } from '../../api/types'
+import { ReadOnlyDocumentLinks } from './DocumentRefList'
 
 /**
  * A procedure document rendered the way docs/procedures-v3.html's ViewPage
  * does: one card per question with its number, its answers as chips (the dot
  * carries the result), follow-ups indented with an "If … is …" tag, and
  * sections as uppercase headings between cards.
+ *
+ * `documents`/`libraryDocuments` are optional so an older caller that has
+ * neither still renders exactly as before — but when given, every citation
+ * shows in its own scope: the whole-procedure ones once at the top, a
+ * question's own underneath it.
  */
-export function ReadOnlyChecklist({ items }: { items: DefinitionItem[] }) {
+export function ReadOnlyChecklist({
+  items,
+  documents = [],
+  libraryDocuments = [],
+}: {
+  items: DefinitionItem[]
+  documents?: DocumentRef[]
+  libraryDocuments?: ProcedureDocument[]
+}) {
   const numbers = numberItems(items)
+  const procedureDocs = documents.filter((d) => !d.questionKey)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {renderLevel(items, null, 0, numbers)}
+      {procedureDocs.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingBottom: 4 }}>
+          <span className="small muted">Reference documents</span>
+          <ReadOnlyDocumentLinks refs={procedureDocs} library={libraryDocuments} />
+        </div>
+      )}
+      {renderLevel(items, null, 0, numbers, documents, libraryDocuments)}
     </div>
   )
 }
@@ -28,6 +49,8 @@ function renderLevel(
   parent: DefinitionItem | null,
   depth: number,
   numbers: Map<DefinitionItem, string>,
+  documents: DocumentRef[],
+  libraryDocuments: ProcedureDocument[],
 ): React.ReactNode[] {
   return items.flatMap((item) => {
     if (item.type === 'SECTION') {
@@ -71,12 +94,16 @@ function renderLevel(
             )}
             {item.workOrder && <span className="tag warn">Work order on fail</span>}
           </span>
+          <ReadOnlyDocumentLinks
+            refs={item.key ? documents.filter((d) => d.questionKey === item.key) : []}
+            library={libraryDocuments}
+          />
         </span>
         <span className="small muted" style={{ flexShrink: 0 }}>
           {typeLabel(item.type)}
         </span>
       </div>,
-      ...renderLevel(item.follow, item, depth + 1, numbers),
+      ...renderLevel(item.follow, item, depth + 1, numbers, documents, libraryDocuments),
     ]
   })
 }

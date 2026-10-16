@@ -364,7 +364,6 @@ export interface ProcedureDocument {
   name: string
   mimeType?: string | null
   sizeBytes?: number | null
-  location: string
   active: boolean
   uploadedBy?: string | null
   uploadedAt?: string | null

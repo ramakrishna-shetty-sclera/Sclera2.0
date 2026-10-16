@@ -18,12 +18,13 @@ import {
 } from '../../api/ai'
 import { ApiError } from '../../api/client'
 import { typeLabel } from '../../api/document'
-import type { TemplateMeta } from '../../api/types'
+import type { ResultType, TemplateMeta, Threshold } from '../../api/types'
 import type { ItemDraft } from '../itemTree'
 import { DocumentLibraryDialog, formatBytes } from './DocumentLibraryDialog'
 import { CATEGORIES, FOLDERS, FREQUENCIES, PRIORITIES, STANDARDS, SUB_CATEGORIES } from './procedureVocab'
 import { resultDot } from './ReadOnlyChecklist'
 import { STARTER_TEMPLATES, toItemDraft, type StarterTemplate } from './starterTemplates'
+import { ThresholdsEditor } from './ThresholdsEditor'
 
 const POLL_MS = 1500
 
@@ -36,6 +37,11 @@ export interface SidePanelDetails {
   onDescription: (v: string) => void
   onChangeNote: (v: string) => void
   onMeta: (patch: Partial<TemplateMeta>) => void
+  /** Document-level — rides here because `details` is the one channel by which document state already reaches a side-panel tab. */
+  thresholds: Threshold[]
+  resultTypes: ResultType[]
+  hasSections: boolean
+  onThresholds: (next: Threshold[]) => void
 }
 
 export type SideTab = 'details' | 'templates' | 'docs' | 'suggest'
@@ -373,6 +379,13 @@ function DetailsTab({ details }: { details: SidePanelDetails }) {
           onChange={(e) => details.onChangeNote(e.target.value)}
         />
       </div>
+      <div className="divider" />
+      <ThresholdsEditor
+        thresholds={details.thresholds}
+        resultTypes={details.resultTypes}
+        hasSections={details.hasSections}
+        onChange={details.onThresholds}
+      />
     </div>
   )
 }

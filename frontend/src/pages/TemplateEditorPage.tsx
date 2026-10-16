@@ -10,14 +10,26 @@ import {
 } from '../api/templates'
 import { importQuestions, type ImportResult } from '../api/ai'
 import { ApiError } from '../api/client'
-import { isChoice, numberItems } from '../api/document'
-import type { DefinitionDocument, DocumentRef, ItemType, ResultType, TemplateMeta, Threshold } from '../api/types'
+import { ITEM_TYPES, isChoice, numberItems, typeLabel } from '../api/document'
+import { listDocuments } from '../api/documents'
+import type {
+  DefinitionDocument,
+  DocumentRef,
+  ItemType,
+  ProcedureDocument,
+  ResultType,
+  TemplateMeta,
+  Threshold,
+} from '../api/types'
 import { listResultTypes } from '../api/resultTypes'
 import { useAuth } from '../auth/AuthContext'
 import { Refusal } from '../components/Refusal'
 import { BuilderNavigator, flattenDrafts } from '../components/v3/BuilderNavigator'
 import { BuilderQuestionCard, type BuilderCtx } from '../components/v3/BuilderQuestionCard'
 import { BuilderSidePanel, type SideTab } from '../components/v3/BuilderSidePanel'
+import { DocumentCiteDialog } from '../components/v3/DocumentCiteDialog'
+import { DocumentRefList } from '../components/v3/DocumentRefList'
+import { PreviewDialog } from '../components/v3/PreviewDialog'
 import {
   addFollowIn,
   addOptionIn,
@@ -47,6 +59,14 @@ import {
 
 /** How often a changed draft is saved without being asked. */
 const AUTOSAVE_MS = 30_000
+
+/**
+ * Every type Quick add can seed in bulk — everything but Section, which has
+ * its own `+ Section` button right beside it and is a heading, not a
+ * question. Previously hard-coded to just the first seven of ITEM_TYPES,
+ * leaving the five media types unreachable from Quick add for no reason.
+ */
+const QUICK_ADD_TYPES = ITEM_TYPES.filter((t) => t !== 'SECTION')
 
 /**
  * `thresholds` and `documents` have no editor here yet — nothing on this
@@ -158,6 +178,10 @@ export function TemplateEditorPage() {
   const [thresholds, setThresholds] = useState<Threshold[]>([])
   const [documents, setDocuments] = useState<DocumentRef[]>([])
   const rowVersionRef = useRef<number | null>(null)
+  /** The draft's own version number — what Preview evaluates against. Distinct from rowVersion, the optimistic lock. */
+  const [versionNo, setVersionNo] = useState<number | null>(null)
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewBusy, setPreviewBusy] = useState(false)
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve())
   const [savedSnapshot, setSavedSnapshot] = useState(() => snapshotOf(2, [newItem('YES_NO')]))
   const failedSnapshot = useRef<string | null>(null)
@@ -173,6 +197,9 @@ export function TemplateEditorPage() {
   const [loaded, setLoaded] = useState(!editing)
   const [original, setOriginal] = useState({ name: '', description: '', metaJson: '{}' })
   const [resultTypes, setResultTypes] = useState<ResultType[]>([])
+  const [libraryDocuments, setLibraryDocuments] = useState<ProcedureDocument[]>([])
+  /** Which scope the attach-document dialog is open for; null means closed. Absent `questionKey` means the whole procedure. */
+  const [citeFor, setCiteFor] = useState<{ questionKey?: string } | null>(null)
   const [savingFor, setSavingFor] = useState<string | null>(null)
   /** The uid of the expanded card. Everything else shows as a summary. */
   const [active, setActive] = useState<string | null>(null)
@@ -190,6 +217,11 @@ export function TemplateEditorPage() {
     listResultTypes(true)
       .then(setResultTypes)
       .catch(() => setResultTypes([]))
+    // No active filter: a citation made while a document was active has to
+    // keep resolving — with its real "inactive" badge — after it no longer is.
+    listDocuments()
+      .then(setLibraryDocuments)
+      .catch(() => setLibraryDocuments([]))
   }, [])
 
   useEffect(() => {
@@ -210,6 +242,7 @@ export function TemplateEditorPage() {
         })
         setSchema(draft.definition.schema)
         rowVersionRef.current = draft.rowVersion
+        setVersionNo(draft.versionNo)
         const loadedThresholds = draft.definition.thresholds ?? []
         const loadedDocuments = draft.definition.documents ?? []
         setThresholds(loadedThresholds)
@@ -315,6 +348,7 @@ export function TemplateEditorPage() {
         ),
       )
       rowVersionRef.current = saved.rowVersion
+      setVersionNo(saved.versionNo)
       const minted = keysFromSaved(sent, saved.definition.items)
       setItems((prev) => applyKeys(prev, minted))
       setSavedSnapshot(snapshotOf(s.schema, applyKeys(sent, minted), s.thresholds, s.documents))
@@ -445,6 +479,7 @@ export function TemplateEditorPage() {
       const definition = toDocument(schema, items, thresholds, documents)
       const saved = await enqueue(() => saveWithRecovery(definition, changeNote.trim() || undefined))
       rowVersionRef.current = saved.rowVersion
+      setVersionNo(saved.versionNo)
       const reloaded = fromDocument(saved.definition)
       setThresholds(saved.definition.thresholds ?? [])
       setDocuments(saved.definition.documents ?? [])
@@ -479,6 +514,31 @@ export function TemplateEditorPage() {
     setRefused(blocked)
     if (blocked) return
     setItems((prev) => removeOptionIn(prev, uid, option))
+  }
+
+  // --- reference documents ---------------------------------------------
+
+  /** `undefined` cites the whole procedure; a question's own server key cites just that question. */
+  function openCiteDialog(questionKey?: string) {
+    setCiteFor({ questionKey })
+  }
+
+  function onDocumentUploaded(doc: ProcedureDocument) {
+    setLibraryDocuments((prev) => [doc, ...prev])
+  }
+
+  function onCiteConfirm(ids: string[]) {
+    const questionKey = citeFor?.questionKey
+    setDocuments((prev) => {
+      const already = new Set(prev.filter((d) => d.questionKey === questionKey).map((d) => d.id))
+      const added = ids.filter((id) => !already.has(id)).map((id) => ({ id, questionKey }))
+      return [...prev, ...added]
+    })
+    setCiteFor(null)
+  }
+
+  function removeDocumentRef(ref: DocumentRef) {
+    setDocuments((prev) => prev.filter((d) => !(d.id === ref.id && d.questionKey === ref.questionKey)))
   }
 
   function addQuestion(type: ItemType = 'YES_NO', text = '') {
@@ -544,7 +604,8 @@ export function TemplateEditorPage() {
     )
   }
 
-  async function onSave(leaveAfter = false) {
+  /** True once the save actually went through — Preview waits on this before it opens. */
+  async function onSave(leaveAfter = false): Promise<boolean> {
     setBusy(true)
     setError(null)
     setRefusal(null)
@@ -559,7 +620,7 @@ export function TemplateEditorPage() {
           definition,
         })
         navigate(`/templates/${created.id}${leaveAfter ? '' : '/edit'}`)
-        return
+        return true
       }
 
       if (identityChanged()) {
@@ -568,6 +629,7 @@ export function TemplateEditorPage() {
       }
       const saved = await enqueue(() => saveWithRecovery(definition, changeNote.trim() || undefined))
       rowVersionRef.current = saved.rowVersion
+      setVersionNo(saved.versionNo)
       const minted = keysFromSaved(items, saved.definition.items)
       setItems((prev) => applyKeys(prev, minted))
       setThresholds(saved.definition.thresholds ?? [])
@@ -576,6 +638,7 @@ export function TemplateEditorPage() {
       failedSnapshot.current = null
       setAutosave({ phase: 'idle', at: new Date() })
       if (leaveAfter) navigate(`/templates/${id}`)
+      return true
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         setConflict(true)
@@ -583,9 +646,28 @@ export function TemplateEditorPage() {
       } else {
         setRefusal(e instanceof Error ? e : new Error('Could not save'))
       }
+      return false
     } finally {
       setBusy(false)
     }
+  }
+
+  /**
+   * Preview reads a *stored* version, and a follow-up's trigger only
+   * resolves once its parent's options have real server keys — so a dirty
+   * draft is saved first, exactly like "+ Follow-up" already does. Opening
+   * is skipped, not just delayed, if that save is refused.
+   */
+  async function openPreview() {
+    if (!editing || isEffectivelyEmpty(items)) return
+    if (dirty) {
+      setPreviewBusy(true)
+      const ok = await onSave(false)
+      setPreviewBusy(false)
+      if (!ok) return
+    }
+    if (versionNo == null) return
+    setPreviewOpen(true)
   }
 
   /** Saves, then publishes. The server's blockers come back as one refusal list. */
@@ -602,6 +684,7 @@ export function TemplateEditorPage() {
       }
       const saved = await enqueue(() => saveWithRecovery(definition, changeNote.trim() || undefined))
       rowVersionRef.current = saved.rowVersion
+      setVersionNo(saved.versionNo)
       await publishProcedure(id!, saved.rowVersion)
       navigate(`/templates/${id}`)
     } catch (e) {
@@ -629,6 +712,7 @@ export function TemplateEditorPage() {
         }
         const result = await importQuestions(s.id!, candidateIds)
         rowVersionRef.current = result.draft.rowVersion
+        setVersionNo(result.draft.versionNo)
         const reloaded = fromDocument(result.draft.definition)
         setThresholds(result.draft.definition.thresholds ?? [])
         setDocuments(result.draft.definition.documents ?? [])
@@ -722,6 +806,8 @@ export function TemplateEditorPage() {
     issues,
     savingFor,
     showErrors,
+    documents,
+    libraryDocuments,
     onSelect: select,
     onPatch,
     onRetype,
@@ -731,6 +817,8 @@ export function TemplateEditorPage() {
     onAddOption,
     onPatchOption,
     onRemoveOption,
+    onAttachDocument: openCiteDialog,
+    onRemoveDocument: removeDocumentRef,
   }
 
   function tryClose() {
@@ -800,6 +888,20 @@ export function TemplateEditorPage() {
             <button className="btn btn-quiet" disabled={busy || conflict} onClick={() => void onSave(true)}>
               Save draft
             </button>
+            <button
+              className="btn btn-outline"
+              disabled={busy || conflict || !editing || isEffectivelyEmpty(items)}
+              title={
+                !editing
+                  ? 'Save the procedure first'
+                  : isEffectivelyEmpty(items)
+                    ? 'Add a question first'
+                    : undefined
+              }
+              onClick={() => void openPreview()}
+            >
+              {previewBusy ? 'Saving…' : 'Preview'}
+            </button>
             {editing && (
               <button className="btn btn-primary" disabled={busy || conflict} onClick={() => void onPublish()}>
                 Publish
@@ -843,6 +945,9 @@ export function TemplateEditorPage() {
                       ✦ Generate with AI
                     </button>
                   )}
+                  <button type="button" className="btn btn-outline" onClick={() => openCiteDialog()}>
+                    📎 Attach document
+                  </button>
                   <button
                     type="button"
                     className="btn btn-quiet"
@@ -855,6 +960,17 @@ export function TemplateEditorPage() {
                   </button>
                 </div>
               </div>
+
+              {documents.some((d) => !d.questionKey) && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: -8 }}>
+                  <span className="small muted">Reference documents</span>
+                  <DocumentRefList
+                    refs={documents.filter((d) => !d.questionKey)}
+                    library={libraryDocuments}
+                    onRemove={removeDocumentRef}
+                  />
+                </div>
+              )}
 
               {isEffectivelyEmpty(items) && (
                 <div className="empty" style={{ padding: '28px 0 8px' }}>
@@ -939,13 +1055,11 @@ export function TemplateEditorPage() {
                     value={quickType}
                     onChange={(e) => setQuickType(e.target.value as ItemType)}
                   >
-                    {(['YES_NO', 'YES_NO_NA', 'RADIO', 'CHECKBOX', 'DROPDOWN', 'TEXT', 'INTEGER'] as ItemType[]).map(
-                      (t) => (
-                        <option key={t} value={t}>
-                          {t === 'YES_NO' ? 'Yes / No' : t === 'YES_NO_NA' ? 'Yes / No / N/A' : t.charAt(0) + t.slice(1).toLowerCase()}
-                        </option>
-                      ),
-                    )}
+                    {QUICK_ADD_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {typeLabel(t)}
+                      </option>
+                    ))}
                   </select>
                   <button className="btn btn-primary" type="submit" disabled={!quick.trim()}>
                     Add
@@ -975,6 +1089,10 @@ export function TemplateEditorPage() {
               onDescription: setDescription,
               onChangeNote: setChangeNote,
               onMeta: (patch) => setMeta((m) => ({ ...m, ...patch })),
+              thresholds,
+              resultTypes,
+              hasSections: items.some((i) => i.type === 'SECTION'),
+              onThresholds: setThresholds,
             }}
             onImport={onAiImport}
             onAddItems={(added) =>
@@ -985,6 +1103,31 @@ export function TemplateEditorPage() {
           />
         </div>
       </div>
+
+      {previewOpen && versionNo != null && (
+        <PreviewDialog
+          procedureName={name}
+          templateId={id!}
+          versionNo={versionNo}
+          items={items}
+          schema={schema}
+          thresholds={thresholds}
+          documents={documents}
+          libraryDocuments={libraryDocuments}
+          resultTypes={resultTypes}
+          savedAt={autosave.at}
+          onClose={() => setPreviewOpen(false)}
+        />
+      )}
+
+      {citeFor && (
+        <DocumentCiteDialog
+          documents={libraryDocuments}
+          onUploaded={onDocumentUploaded}
+          onConfirm={onCiteConfirm}
+          onClose={() => setCiteFor(null)}
+        />
+      )}
     </div>
   )
 }

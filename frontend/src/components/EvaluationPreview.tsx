@@ -1,148 +1,186 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ApiError } from '../api/client'
-import { isChoice } from '../api/document'
+import { isChoice, numberItems, typeLabel } from '../api/document'
 import { evaluateVersion } from '../api/templates'
-import type { EvaluationResponse, QuestionVerdict, ResultType } from '../api/types'
+import type { DocumentRef, EvaluationResponse, ProcedureDocument, QuestionVerdict, ResultType } from '../api/types'
+import { flattenDrafts } from './v3/BuilderNavigator'
+import { ReadOnlyDocumentLinks } from './v3/DocumentRefList'
 import type { ItemDraft } from './itemTree'
 
 /** What the trial answer for one question looks like, the same shape the server reads. */
 type Trial = Record<string, { value: unknown } | undefined>
 
-/**
- * Only a choice question or an INTEGER reading decides a result or a score —
- * text and media "decide nothing", a section is never answered — so those are
- * the only two kinds worth a trial-answer control here.
- */
-function scoresSomething(item: ItemDraft): boolean {
-  return isChoice(item.type) || item.type === 'INTEGER'
+/** How long to let trial answers settle before re-evaluating, so a quick run of clicks is one request, not several. */
+const DEBOUNCE_MS = 250
+
+function hasAnswer(value: unknown): boolean {
+  if (Array.isArray(value)) return value.length > 0
+  return value !== undefined && value !== null && String(value).trim() !== ''
 }
 
-function ResultBadge({ result, resultTypes }: { result?: string | null; resultTypes: ResultType[] }) {
-  if (!result) return <span className="muted small">no result yet</span>
+/** Whether `value` selects `when` — array membership for Checkbox, equality otherwise. */
+function selects(value: unknown, when: string): boolean {
+  return Array.isArray(value) ? value.includes(when) : value === when
+}
+
+function percent(value?: number | null): string {
+  return value == null ? '—' : `${Math.round(value)}%`
+}
+
+/**
+ * A result-type key, resolved live to that type's own name and colour — never
+ * a hard-coded pass/fail. A key that does not resolve (an inactive or deleted
+ * result type a published version still legitimately references) falls back
+ * to the raw key in a neutral tag rather than erroring.
+ */
+function ResultChip({ result, resultTypes }: { result?: string | null; resultTypes: ResultType[] }) {
+  if (!result) return null
   const type = resultTypes.find((r) => r.key === result)
   return (
-    <span className="badge" style={type ? { background: type.color, color: '#fff' } : undefined}>
+    <span
+      className="tag"
+      style={type ? { background: `${type.color}26`, color: type.color, border: `1px solid ${type.color}` } : undefined}
+    >
       {type?.name ?? result}
     </span>
   )
 }
 
-function percent(value?: number | null): string {
-  return value == null ? '—' : `${value}%`
-}
-
 /**
- * One question's trial-answer control, and everything hanging off it.
- *
- * A follow-up only renders once its parent's trial answer selects it — the
- * same reachability rule the server applies, kept in step here so the
- * preview never asks for an answer the server would then report in
- * `ignored`.
- *
- * `item.key` absent means this question has never been saved, so the stored
- * version has no key to evaluate it against yet — it is silently skipped,
- * the same rule "+ Follow-up" already teaches (save first, then it counts).
+ * One reachable question's trial-answer control, verdict tag and critical
+ * flag. Reachability is decided by the caller — by the time this renders, the
+ * question is already known to be visible.
  */
-function PreviewQuestion({
+function TrialQuestionCard({
   item,
-  parentKey,
+  number,
+  isFollow,
   trial,
   onAnswer,
   resultTypes,
-  verdictFor,
+  verdict,
+  documents,
+  libraryDocuments,
 }: {
   item: ItemDraft
-  parentKey: string | null
+  number: string
+  isFollow: boolean
   trial: Trial
   onAnswer: (key: string, value: unknown) => void
   resultTypes: ResultType[]
-  verdictFor: (key: string) => QuestionVerdict | undefined
+  verdict: QuestionVerdict | undefined
+  documents: DocumentRef[]
+  libraryDocuments: ProcedureDocument[]
 }) {
-  if (item.type === 'SECTION') {
-    return <div className="preview-section">{item.text}</div>
-  }
-  if (!item.key) return null
-  if (parentKey && trial[parentKey]?.value !== item.when) return null
-
-  const scoring = scoresSomething(item)
-  const verdict = verdictFor(item.key)
+  const current = item.key ? trial[item.key]?.value : undefined
   const keyedOptions = item.options.filter((o): o is typeof o & { key: string } => Boolean(o.key))
-  const current = trial[item.key]?.value
+
+  function pillStyle(pressed: boolean, resultKey: string): React.CSSProperties | undefined {
+    if (!pressed) return undefined
+    const type = resultKey ? resultTypes.find((r) => r.key === resultKey) : undefined
+    return type ? { background: `${type.color}33`, borderColor: type.color, color: type.color } : undefined
+  }
 
   return (
-    <>
-      {scoring && (
-        <div className="preview-row">
-          <span className="preview-text">{item.text}</span>
+    <div
+      style={{
+        border: `1px solid ${isFollow ? 'var(--tonal)' : 'var(--line)'}`,
+        background: isFollow ? 'var(--selected)' : 'transparent',
+        borderRadius: 8,
+        padding: 12,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+      }}
+    >
+      <div className="row between">
+        <span>{isFollow && <span className="small" style={{ color: 'var(--selected-text)' }}>Follow-up</span>}</span>
+        <span className="row" style={{ gap: 6 }}>
+          {item.critical && <span className="tag warn">Critical</span>}
+          <ResultChip result={verdict?.result} resultTypes={resultTypes} />
+        </span>
+      </div>
+      <span style={{ fontWeight: 500, marginTop: -6 }}>
+        {number}. {item.text || 'Untitled question'}
+        {item.required && <span className="req"> *</span>}
+      </span>
+      {item.help && (
+        <span className="small muted" style={{ marginTop: -4 }}>
+          {item.help}
+        </span>
+      )}
+      <ReadOnlyDocumentLinks
+        refs={item.key ? documents.filter((d) => d.questionKey === item.key) : []}
+        library={libraryDocuments}
+      />
 
-          {isChoice(item.type) && item.type !== 'CHECKBOX' && (
-            <select
-              value={typeof current === 'string' ? current : ''}
-              onChange={(e) => onAnswer(item.key!, e.target.value || undefined)}
-            >
-              <option value="">— not answered —</option>
-              {keyedOptions.map((o) => (
-                <option key={o.uid} value={o.key}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          )}
-
-          {item.type === 'CHECKBOX' && (
-            <span className="preview-checkboxes">
-              {keyedOptions.map((o) => {
-                const selected = Array.isArray(current) ? (current as string[]) : []
-                return (
-                  <label className="checkbox small" key={o.uid}>
-                    <input
-                      type="checkbox"
-                      checked={selected.includes(o.key)}
-                      onChange={(e) => {
-                        const next = e.target.checked
-                          ? [...selected, o.key]
-                          : selected.filter((k) => k !== o.key)
-                        onAnswer(item.key!, next.length > 0 ? next : undefined)
-                      }}
-                    />
-                    {o.label}
-                  </label>
-                )
-              })}
-            </span>
-          )}
-
-          {item.type === 'INTEGER' && (
-            <input
-              type="number"
-              value={typeof current === 'number' ? current : ''}
-              onChange={(e) =>
-                onAnswer(item.key!, e.target.value.trim() === '' ? undefined : Number(e.target.value))
-              }
-            />
-          )}
-
-          <ResultBadge result={verdict?.result} resultTypes={resultTypes} />
-          {verdict?.score != null && (
-            <span className="muted small">
-              {verdict.score}
-              {verdict.possible != null ? ` / ${verdict.possible}` : ''}
-            </span>
-          )}
+      {isChoice(item.type) && item.type !== 'CHECKBOX' && (
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          {keyedOptions.map((o) => {
+            const pressed = current === o.key
+            return (
+              <button
+                key={o.uid}
+                type="button"
+                className="simopt"
+                aria-pressed={pressed}
+                style={pillStyle(pressed, o.result)}
+                onClick={() => onAnswer(item.key!, pressed ? undefined : o.key)}
+              >
+                {o.label}
+              </button>
+            )
+          })}
         </div>
       )}
-      {item.follow.map((child) => (
-        <PreviewQuestion
-          key={child.uid}
-          item={child}
-          parentKey={item.key!}
-          trial={trial}
-          onAnswer={onAnswer}
-          resultTypes={resultTypes}
-          verdictFor={verdictFor}
+
+      {item.type === 'CHECKBOX' && (
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          {keyedOptions.map((o) => {
+            const selected = Array.isArray(current) ? (current as string[]) : []
+            const pressed = selected.includes(o.key)
+            return (
+              <button
+                key={o.uid}
+                type="button"
+                className="simopt"
+                aria-pressed={pressed}
+                style={pillStyle(pressed, o.result)}
+                onClick={() => {
+                  const next = pressed ? selected.filter((k) => k !== o.key) : [...selected, o.key]
+                  onAnswer(item.key!, next.length > 0 ? next : undefined)
+                }}
+              >
+                {o.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {item.type === 'INTEGER' && (
+        <input
+          type="number"
+          className="input"
+          style={{ maxWidth: 160 }}
+          value={typeof current === 'number' ? current : ''}
+          onChange={(e) => onAnswer(item.key!, e.target.value.trim() === '' ? undefined : Number(e.target.value))}
         />
-      ))}
-    </>
+      )}
+
+      {item.type === 'TEXT' && (
+        <input
+          type="text"
+          className="input"
+          value={typeof current === 'string' ? current : ''}
+          onChange={(e) => onAnswer(item.key!, e.target.value.trim() === '' ? undefined : e.target.value)}
+        />
+      )}
+
+      {!isChoice(item.type) && item.type !== 'INTEGER' && item.type !== 'TEXT' && (
+        <span className="small muted">{typeLabel(item.type)} — not simulated in preview</span>
+      )}
+    </div>
   )
 }
 
@@ -156,19 +194,30 @@ function PreviewQuestion({
  * above: the endpoint evaluates a stored version by id, so a question added
  * since the last autosave has no key yet and will not appear here until it
  * is saved. `savedAt` is what triggers a fresh read after one lands.
+ *
+ * Which questions currently show is computed client-side from the trial
+ * answers so far (the same reachability rule the server applies), not from
+ * the endpoint's response — a follow-up has to appear the instant its
+ * trigger is picked, not after a debounced round trip lands.
  */
 export function EvaluationPreview({
+  procedureName,
   templateId,
   versionNo,
   items,
   resultTypes,
   savedAt,
+  documents,
+  libraryDocuments,
 }: {
+  procedureName: string
   templateId: string
   versionNo: number
   items: ItemDraft[]
   resultTypes: ResultType[]
   savedAt: Date | null
+  documents: DocumentRef[]
+  libraryDocuments: ProcedureDocument[]
 }) {
   const [trial, setTrial] = useState<Trial>({})
   const [result, setResult] = useState<EvaluationResponse | null>(null)
@@ -179,24 +228,27 @@ export function EvaluationPreview({
     setTrial((prev) => ({ ...prev, [key]: value === undefined ? undefined : { value } }))
   }
 
-  // Re-evaluates whenever a trial answer changes, or a fresh autosave lands —
-  // the structure may have changed even if no trial answer did.
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    setError(null)
-    evaluateVersion(templateId, versionNo, trial)
-      .then((r) => {
-        if (!cancelled) setResult(r)
-      })
-      .catch((e) => {
-        if (cancelled) return
-        setResult(null)
-        setError(e instanceof ApiError ? e.message : 'Could not evaluate this draft')
-      })
-      .finally(() => !cancelled && setLoading(false))
+    const timer = window.setTimeout(() => {
+      setLoading(true)
+      setError(null)
+      evaluateVersion(templateId, versionNo, trial)
+        .then((r) => {
+          if (!cancelled) setResult(r)
+        })
+        .catch((e) => {
+          if (cancelled) return
+          setResult(null)
+          setError(e instanceof ApiError ? e.message : 'Could not evaluate this draft')
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false)
+        })
+    }, DEBOUNCE_MS)
     return () => {
       cancelled = true
+      window.clearTimeout(timer)
     }
     // trial is a plain object rebuilt on every answer; comparing it by
     // reference is exactly what "an answer changed" means here.
@@ -209,64 +261,152 @@ export function EvaluationPreview({
     return map
   }, [result])
 
+  const indexed = useMemo(() => {
+    const flat = flattenDrafts(items)
+    const numbers = numberItems(items)
+    const byKey = new Map<string, { item: ItemDraft; number: string }>()
+    flat.forEach((f) => {
+      if (f.item.key) byKey.set(f.item.key, { item: f.item, number: numbers.get(f.item) ?? '' })
+    })
+    return { flat, numbers, byKey }
+  }, [items])
+
+  // A single forward pass is enough: flattenDrafts always lists a parent
+  // before its own children, so a node's reachability is already known by
+  // the time its follow-ups are reached.
+  const visible = useMemo(() => {
+    const reachable = new Map<ItemDraft, boolean>()
+    const out: { item: ItemDraft; parent: ItemDraft | null; number: string }[] = []
+    for (const f of indexed.flat) {
+      const parentOk = f.parent ? (reachable.get(f.parent) ?? false) : true
+      const parentValue = f.parent?.key ? trial[f.parent.key]?.value : undefined
+      const ok = f.parent ? parentOk && Boolean(f.item.when) && selects(parentValue, f.item.when) : true
+      reachable.set(f.item, ok)
+      if (ok && f.item.type !== 'SECTION' && f.item.key) {
+        out.push({ item: f.item, parent: f.parent, number: indexed.numbers.get(f.item) ?? '' })
+      }
+    }
+    return out
+  }, [indexed, trial])
+
+  const answerable = visible.length
+  const answered = visible.filter((v) => hasAnswer(v.item.key ? trial[v.item.key]?.value : undefined)).length
+
+  const overallType = result?.overall.result ? resultTypes.find((r) => r.key === result.overall.result) : undefined
+  const criticalItems = (result?.critical ?? [])
+    .map((k) => indexed.byKey.get(k))
+    .filter((x): x is { item: ItemDraft; number: string } => Boolean(x))
+  const procedureDocs = documents.filter((d) => !d.questionKey)
+
   return (
-    <div className="card">
-      <div className="field-label">Preview</div>
-      <p className="muted small">
-        Pick trial answers to see what this draft currently produces. This reflects the last save, not
-        every keystroke above — questions added since then have no key yet, so they will not appear
-        here until saved.
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <p className="small muted">
+        Pick trial answers to see what this draft currently produces. This reflects the last save — a question added
+        since then has no key yet and will not appear here until it is saved.
       </p>
+      {procedureDocs.length > 0 && (
+        <div className="row small" style={{ gap: 8, alignItems: 'center' }}>
+          <span className="muted">Reference documents:</span>
+          <ReadOnlyDocumentLinks refs={procedureDocs} library={libraryDocuments} />
+        </div>
+      )}
+      {error && <div className="alert-error">{error}</div>}
 
-      {error && <div className="alert alert-error">{error}</div>}
-
-      {result && (
-        <>
-          <div className="preview-summary">
-            <ResultBadge result={result.overall.result} resultTypes={resultTypes} />
-            <span>{percent(result.overall.percentage)}</span>
-            <span className="muted small">
-              {result.overall.answered} answered · {result.overall.complete ? 'complete' : 'running'}
+      <div className="row" style={{ gap: 40, justifyContent: 'center', flexWrap: 'wrap', paddingTop: 4 }}>
+        <div className="phone" aria-label="Inspector app">
+          <div
+            style={{
+              padding: '18px 18px 12px',
+              borderBottom: '1px solid var(--line-soft)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+            }}
+          >
+            <span className="ellipsis" style={{ fontWeight: 600, color: 'var(--heading)' }}>
+              {procedureName || 'Untitled procedure'}
             </span>
-            {result.critical.length > 0 && (
-              <span className="badge badge-red">Critical failure ({result.critical.length})</span>
-            )}
-            {loading && <span className="muted small">Evaluating…</span>}
+            <div className="progress">
+              <div style={{ width: `${answerable ? (answered / answerable) * 100 : 0}%` }} />
+            </div>
+            <span className="small muted">
+              {answered} of {answerable} answered
+            </span>
+          </div>
+          <div style={{ flex: 1, overflow: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {visible.length === 0 && <p className="small muted">Nothing to try yet — add a question first.</p>}
+            {visible.map((v) => (
+              <TrialQuestionCard
+                key={v.item.uid}
+                item={v.item}
+                number={v.number}
+                isFollow={Boolean(v.parent)}
+                trial={trial}
+                onAnswer={onAnswer}
+                resultTypes={resultTypes}
+                verdict={v.item.key ? verdictByKey.get(v.item.key) : undefined}
+                documents={documents}
+                libraryDocuments={libraryDocuments}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div style={{ width: 340, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <h3 style={{ fontSize: 16 }}>Outcome</h3>
+          <p className="muted small">
+            Answer as an inspector would. Follow-ups appear only when their answer is picked.
+          </p>
+
+          <div className="grid3" style={{ gap: 10 }}>
+            <div className="stat">
+              <b style={overallType ? { color: overallType.color } : undefined}>{overallType?.name ?? '—'}</b>
+              <span className="small muted">Result</span>
+            </div>
+            <div className="stat">
+              <b>{percent(result?.overall.percentage)}</b>
+              <span className="small muted">Score</span>
+            </div>
+            <div className="stat">
+              <b style={{ color: 'var(--action)' }}>{result?.workOrders.length ?? 0}</b>
+              <span className="small muted">Work orders</span>
+            </div>
           </div>
 
-          {result.sections.length > 1 && (
-            <ul className="preview-sections">
-              {result.sections.map((s) => (
-                <li key={s.key ?? 'top'}>
-                  <span>{s.text ?? 'Top-level questions'}</span>
-                  <ResultBadge result={s.result} resultTypes={resultTypes} />
-                  <span className="muted small">{percent(s.percentage)}</span>
-                </li>
-              ))}
-            </ul>
+          {criticalItems.length > 0 && (
+            <div className="alert-error">
+              Failed on {criticalItems.length === 1 ? 'a critical question' : `${criticalItems.length} critical questions`}:{' '}
+              {criticalItems.map((c) => `${c.number}. ${c.item.text || 'Untitled question'}`).join('; ')}
+            </div>
           )}
 
-          {result.workOrders.length > 0 && (
-            <p className="field-hint">
-              {result.workOrders.length} work order{result.workOrders.length === 1 ? '' : 's'} would be
-              raised by these answers.
-            </p>
+          {result && result.workOrders.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {result.workOrders.map((w) => {
+                const found = indexed.byKey.get(w.key)
+                return (
+                  <div
+                    key={w.key}
+                    className="row"
+                    style={{ padding: '10px 12px', borderRadius: 4, background: 'var(--fail-bg)', gap: 8 }}
+                  >
+                    <span style={{ flex: 1 }}>
+                      {found ? `${found.number}. ${found.item.text || 'Untitled question'}` : w.key}
+                    </span>
+                    <span className="small" style={{ color: 'var(--selected-text)', flexShrink: 0 }}>
+                      Work order · {w.alertProfile || 'no alert profile set'}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
           )}
-        </>
-      )}
 
-      <div className="preview-questions">
-        {items.map((item) => (
-          <PreviewQuestion
-            key={item.uid}
-            item={item}
-            parentKey={null}
-            trial={trial}
-            onAnswer={onAnswer}
-            resultTypes={resultTypes}
-            verdictFor={(key) => verdictByKey.get(key)}
-          />
-        ))}
+          <button type="button" className="btn btn-quiet" style={{ alignSelf: 'flex-start' }} onClick={() => setTrial({})}>
+            Reset answers
+          </button>
+          {loading && <span className="small muted">Evaluating…</span>}
+        </div>
       </div>
     </div>
   )

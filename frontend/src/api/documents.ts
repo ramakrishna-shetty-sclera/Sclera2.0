@@ -1,29 +1,11 @@
-import { apiFetch } from './client'
+import { apiDownload, apiFetch, apiUpload } from './client'
 import type { ProcedureDocument } from './types'
 
-// The reference-document library lives in the procedure service, which must be
-// routed at /api/v1/procedure-documents/** by the gateway. The file itself goes
-// to the helper service's storage port (routed at /api/v1/helper/**) and never
-// through the procedure service: this service only ever stores the opaque
-// `location` the upload hands back, plus metadata.
+// The reference-document library lives in the procedure service. Bytes are
+// uploaded straight here and stored on the row — the same way api/ai.ts's
+// uploadAiDocument already stores an AI source document — no second service,
+// no Dapr call.
 const BASE = '/api/v1/procedure-documents'
-const STORAGE = '/api/v1/helper/documents'
-
-/** What the storage port returns for an uploaded file. */
-export interface UploadedFile {
-  location: string
-  downloadUrl: string
-  sizeBytes: number
-  /** True when the store is a stand-in. A fake artifact must not reach a customer unnoticed. */
-  stub: boolean
-}
-
-export interface DocumentRequest {
-  name: string
-  mimeType?: string
-  sizeBytes?: number
-  location: string
-}
 
 /** Omit `active` to get both. Property scope comes from the header the client already sends. */
 export function listDocuments(active?: boolean): Promise<ProcedureDocument[]> {
@@ -32,16 +14,11 @@ export function listDocuments(active?: boolean): Promise<ProcedureDocument[]> {
   }).then((r) => r.data)
 }
 
-/** Step one of an upload: the bytes, to the storage port. */
-export function uploadFile(file: File): Promise<UploadedFile> {
+/** One multipart upload — the bytes land straight on the new row, nothing to register afterwards. */
+export function uploadDocument(file: File): Promise<ProcedureDocument> {
   const form = new FormData()
   form.append('file', file)
-  return apiFetch<UploadedFile>(STORAGE, { method: 'POST', form }).then((r) => r.data)
-}
-
-/** Step two: the library row that points at the stored file. */
-export function createDocument(body: DocumentRequest): Promise<ProcedureDocument> {
-  return apiFetch<ProcedureDocument>(BASE, { method: 'POST', body }).then((r) => r.data)
+  return apiUpload<ProcedureDocument>(BASE, form).then((r) => r.data)
 }
 
 export function activateDocument(id: string): Promise<ProcedureDocument> {
@@ -57,17 +34,22 @@ export function deleteDocument(id: string): Promise<void> {
   return apiFetch<void>(`${BASE}/${id}`, { method: 'DELETE' }).then(() => undefined)
 }
 
-/** A fresh link for a stored file, generated now and never kept: a signed link expires. */
-export function freshDownloadUrl(location: string): Promise<string> {
-  return apiFetch<{ downloadUrl: string }>(`${STORAGE}/url`, { query: { location } }).then(
-    (r) => r.data.downloadUrl,
-  )
+/** Opens a document in a new tab — served directly from this service, no signed link to fetch first. */
+export function openDocument(id: string): void {
+  window.open(`${BASE}/${id}/content`, '_blank', 'noopener')
 }
 
-/** Opens a document in a new tab, asking for the link at the moment it is wanted. */
-export async function openDocument(location: string): Promise<void> {
-  const url = await freshDownloadUrl(location)
-  window.open(url, '_blank', 'noopener')
+/**
+ * Fetches a reference document's bytes, to hand to another system that needs
+ * its own copy — the AI document library's "From library" picker bridges a
+ * reference-only document into `ai_document` this way, by downloading it
+ * here and re-uploading it through `uploadAiDocument`, rather than the two
+ * systems ever sharing storage.
+ */
+export function fetchDocumentFile(doc: ProcedureDocument): Promise<File> {
+  return apiDownload(`${BASE}/${doc.id}/content`).then(
+    ({ blob }) => new File([blob], doc.name, { type: doc.mimeType || blob.type }),
+  )
 }
 
 /** '1.4 MB'. The size is metadata the author may leave out, so absent reads as nothing. */
