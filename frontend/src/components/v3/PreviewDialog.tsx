@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { DocumentRef, ResultType, Threshold } from '../../api/types'
+import type { DocumentRef, ProcedureDocument, ResultType, Threshold } from '../../api/types'
 import { EvaluationPreview } from '../EvaluationPreview'
 import { toDocument, type ItemDraft } from '../itemTree'
 import { ReadOnlyChecklist } from './ReadOnlyChecklist'
@@ -25,6 +25,7 @@ export function PreviewDialog({
   schema,
   thresholds,
   documents,
+  libraryDocuments,
   resultTypes,
   savedAt,
   onClose,
@@ -36,6 +37,7 @@ export function PreviewDialog({
   schema: number
   thresholds: Threshold[]
   documents: DocumentRef[]
+  libraryDocuments: ProcedureDocument[]
   resultTypes: ResultType[]
   savedAt: Date | null
   onClose: () => void
@@ -83,10 +85,16 @@ export function PreviewDialog({
               items={items}
               resultTypes={resultTypes}
               savedAt={savedAt}
+              documents={documents}
+              libraryDocuments={libraryDocuments}
             />
           ) : (
             <div style={{ maxWidth: 760, margin: '0 auto' }}>
-              <ReadOnlyChecklist items={toDocument(schema, items, thresholds, documents).items} />
+              <ReadOnlyChecklist
+                items={toDocument(schema, items, thresholds, documents).items}
+                documents={documents}
+                libraryDocuments={libraryDocuments}
+              />
             </div>
           )}
         </div>

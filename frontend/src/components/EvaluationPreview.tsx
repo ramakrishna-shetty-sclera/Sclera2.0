@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { ApiError } from '../api/client'
 import { isChoice, numberItems, typeLabel } from '../api/document'
 import { evaluateVersion } from '../api/templates'
-import type { EvaluationResponse, QuestionVerdict, ResultType } from '../api/types'
+import type { DocumentRef, EvaluationResponse, ProcedureDocument, QuestionVerdict, ResultType } from '../api/types'
 import { flattenDrafts } from './v3/BuilderNavigator'
+import { ReadOnlyDocumentLinks } from './v3/DocumentRefList'
 import type { ItemDraft } from './itemTree'
 
 /** What the trial answer for one question looks like, the same shape the server reads. */
@@ -58,6 +59,8 @@ function TrialQuestionCard({
   onAnswer,
   resultTypes,
   verdict,
+  documents,
+  libraryDocuments,
 }: {
   item: ItemDraft
   number: string
@@ -66,6 +69,8 @@ function TrialQuestionCard({
   onAnswer: (key: string, value: unknown) => void
   resultTypes: ResultType[]
   verdict: QuestionVerdict | undefined
+  documents: DocumentRef[]
+  libraryDocuments: ProcedureDocument[]
 }) {
   const current = item.key ? trial[item.key]?.value : undefined
   const keyedOptions = item.options.filter((o): o is typeof o & { key: string } => Boolean(o.key))
@@ -104,6 +109,10 @@ function TrialQuestionCard({
           {item.help}
         </span>
       )}
+      <ReadOnlyDocumentLinks
+        refs={item.key ? documents.filter((d) => d.questionKey === item.key) : []}
+        library={libraryDocuments}
+      />
 
       {isChoice(item.type) && item.type !== 'CHECKBOX' && (
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
@@ -198,6 +207,8 @@ export function EvaluationPreview({
   items,
   resultTypes,
   savedAt,
+  documents,
+  libraryDocuments,
 }: {
   procedureName: string
   templateId: string
@@ -205,6 +216,8 @@ export function EvaluationPreview({
   items: ItemDraft[]
   resultTypes: ResultType[]
   savedAt: Date | null
+  documents: DocumentRef[]
+  libraryDocuments: ProcedureDocument[]
 }) {
   const [trial, setTrial] = useState<Trial>({})
   const [result, setResult] = useState<EvaluationResponse | null>(null)
@@ -283,6 +296,7 @@ export function EvaluationPreview({
   const criticalItems = (result?.critical ?? [])
     .map((k) => indexed.byKey.get(k))
     .filter((x): x is { item: ItemDraft; number: string } => Boolean(x))
+  const procedureDocs = documents.filter((d) => !d.questionKey)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -290,6 +304,12 @@ export function EvaluationPreview({
         Pick trial answers to see what this draft currently produces. This reflects the last save — a question added
         since then has no key yet and will not appear here until it is saved.
       </p>
+      {procedureDocs.length > 0 && (
+        <div className="row small" style={{ gap: 8, alignItems: 'center' }}>
+          <span className="muted">Reference documents:</span>
+          <ReadOnlyDocumentLinks refs={procedureDocs} library={libraryDocuments} />
+        </div>
+      )}
       {error && <div className="alert-error">{error}</div>}
 
       <div className="row" style={{ gap: 40, justifyContent: 'center', flexWrap: 'wrap', paddingTop: 4 }}>
@@ -325,6 +345,8 @@ export function EvaluationPreview({
                 onAnswer={onAnswer}
                 resultTypes={resultTypes}
                 verdict={v.item.key ? verdictByKey.get(v.item.key) : undefined}
+                documents={documents}
+                libraryDocuments={libraryDocuments}
               />
             ))}
           </div>

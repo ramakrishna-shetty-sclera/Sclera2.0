@@ -11,13 +11,16 @@ import {
 import { importQuestions, type ImportResult } from '../api/ai'
 import { ApiError } from '../api/client'
 import { ITEM_TYPES, isChoice, numberItems, typeLabel } from '../api/document'
-import type { DocumentRef, ItemType, ResultType, TemplateMeta, Threshold } from '../api/types'
+import { listDocuments } from '../api/documents'
+import type { DocumentRef, ItemType, ProcedureDocument, ResultType, TemplateMeta, Threshold } from '../api/types'
 import { listResultTypes } from '../api/resultTypes'
 import { useAuth } from '../auth/AuthContext'
 import { Refusal } from '../components/Refusal'
 import { BuilderNavigator, flattenDrafts } from '../components/v3/BuilderNavigator'
 import { BuilderQuestionCard, type BuilderCtx } from '../components/v3/BuilderQuestionCard'
 import { BuilderSidePanel, type SideTab } from '../components/v3/BuilderSidePanel'
+import { DocumentCiteDialog } from '../components/v3/DocumentCiteDialog'
+import { DocumentRefList } from '../components/v3/DocumentRefList'
 import { PreviewDialog } from '../components/v3/PreviewDialog'
 import {
   addFollowIn,
@@ -186,6 +189,9 @@ export function TemplateEditorPage() {
   const [loaded, setLoaded] = useState(!editing)
   const [original, setOriginal] = useState({ name: '', description: '', metaJson: '{}' })
   const [resultTypes, setResultTypes] = useState<ResultType[]>([])
+  const [libraryDocuments, setLibraryDocuments] = useState<ProcedureDocument[]>([])
+  /** Which scope the attach-document dialog is open for; null means closed. Absent `questionKey` means the whole procedure. */
+  const [citeFor, setCiteFor] = useState<{ questionKey?: string } | null>(null)
   const [savingFor, setSavingFor] = useState<string | null>(null)
   /** The uid of the expanded card. Everything else shows as a summary. */
   const [active, setActive] = useState<string | null>(null)
@@ -203,6 +209,11 @@ export function TemplateEditorPage() {
     listResultTypes(true)
       .then(setResultTypes)
       .catch(() => setResultTypes([]))
+    // No active filter: a citation made while a document was active has to
+    // keep resolving — with its real "inactive" badge — after it no longer is.
+    listDocuments()
+      .then(setLibraryDocuments)
+      .catch(() => setLibraryDocuments([]))
   }, [])
 
   useEffect(() => {
@@ -467,6 +478,31 @@ export function TemplateEditorPage() {
     setRefused(blocked)
     if (blocked) return
     setItems((prev) => removeOptionIn(prev, uid, option))
+  }
+
+  // --- reference documents ---------------------------------------------
+
+  /** `undefined` cites the whole procedure; a question's own server key cites just that question. */
+  function openCiteDialog(questionKey?: string) {
+    setCiteFor({ questionKey })
+  }
+
+  function onDocumentUploaded(doc: ProcedureDocument) {
+    setLibraryDocuments((prev) => [doc, ...prev])
+  }
+
+  function onCiteConfirm(ids: string[]) {
+    const questionKey = citeFor?.questionKey
+    setDocuments((prev) => {
+      const already = new Set(prev.filter((d) => d.questionKey === questionKey).map((d) => d.id))
+      const added = ids.filter((id) => !already.has(id)).map((id) => ({ id, questionKey }))
+      return [...prev, ...added]
+    })
+    setCiteFor(null)
+  }
+
+  function removeDocumentRef(ref: DocumentRef) {
+    setDocuments((prev) => prev.filter((d) => !(d.id === ref.id && d.questionKey === ref.questionKey)))
   }
 
   function addQuestion(type: ItemType = 'YES_NO', text = '') {
@@ -747,6 +783,8 @@ export function TemplateEditorPage() {
     issues,
     savingFor,
     showErrors,
+    documents,
+    libraryDocuments,
     onSelect: select,
     onPatch,
     onRetype,
@@ -756,6 +794,8 @@ export function TemplateEditorPage() {
     onAddOption,
     onPatchOption,
     onRemoveOption,
+    onAttachDocument: openCiteDialog,
+    onRemoveDocument: removeDocumentRef,
   }
 
   function tryClose() {
@@ -882,6 +922,9 @@ export function TemplateEditorPage() {
                       ✦ Generate with AI
                     </button>
                   )}
+                  <button type="button" className="btn btn-outline" onClick={() => openCiteDialog()}>
+                    📎 Attach document
+                  </button>
                   <button
                     type="button"
                     className="btn btn-quiet"
@@ -894,6 +937,17 @@ export function TemplateEditorPage() {
                   </button>
                 </div>
               </div>
+
+              {documents.some((d) => !d.questionKey) && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: -8 }}>
+                  <span className="small muted">Reference documents</span>
+                  <DocumentRefList
+                    refs={documents.filter((d) => !d.questionKey)}
+                    library={libraryDocuments}
+                    onRemove={removeDocumentRef}
+                  />
+                </div>
+              )}
 
               {isEffectivelyEmpty(items) && (
                 <div className="empty" style={{ padding: '28px 0 8px' }}>
@@ -1036,9 +1090,19 @@ export function TemplateEditorPage() {
           schema={schema}
           thresholds={thresholds}
           documents={documents}
+          libraryDocuments={libraryDocuments}
           resultTypes={resultTypes}
           savedAt={autosave.at}
           onClose={() => setPreviewOpen(false)}
+        />
+      )}
+
+      {citeFor && (
+        <DocumentCiteDialog
+          documents={libraryDocuments}
+          onUploaded={onDocumentUploaded}
+          onConfirm={onCiteConfirm}
+          onClose={() => setCiteFor(null)}
         />
       )}
     </div>

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { ITEM_TYPES, hasFixedOptions, isChoice, typeLabel } from '../../api/document'
-import type { ItemType, ResultType, Rollup } from '../../api/types'
+import type { DocumentRef, ItemType, ProcedureDocument, ResultType, Rollup } from '../../api/types'
 import { BandsEditor } from './BandsEditor'
+import { DocumentRefList } from './DocumentRefList'
 import { triggerOptions, type ItemDraft, type OptionDraft } from '../itemTree'
 import { resultDot } from './ReadOnlyChecklist'
 
@@ -18,6 +19,9 @@ export interface BuilderCtx {
   issues: Map<string, string[]>
   savingFor: string | null
   showErrors: boolean
+  /** Every citation on the whole document — a question filters this to its own key. */
+  documents: DocumentRef[]
+  libraryDocuments: ProcedureDocument[]
   onSelect: (uid: string | null) => void
   onPatch: (uid: string, patch: Partial<ItemDraft>) => void
   onRetype: (uid: string, type: ItemType) => void
@@ -28,6 +32,9 @@ export interface BuilderCtx {
   onAddOption: (uid: string) => void
   onPatchOption: (uid: string, option: string, patch: Partial<OptionDraft>) => void
   onRemoveOption: (uid: string, option: string) => void
+  /** Opens the attach-document dialog scoped to a question's own server key. */
+  onAttachDocument: (questionKey: string) => void
+  onRemoveDocument: (ref: DocumentRef) => void
 }
 
 export function BuilderQuestionCard({
@@ -148,6 +155,7 @@ function SectionRow({
 function Summary({ item, ctx }: { item: ItemDraft; ctx: BuilderCtx }) {
   const number = ctx.numbers.get(item)
   const issues = ctx.issues.get(item.uid) ?? []
+  const citedCount = item.key ? ctx.documents.filter((d) => d.questionKey === item.key).length : 0
   return (
     <button type="button" className="qsum" onClick={() => ctx.onSelect(item.uid)} aria-label={`Edit question ${number}`}>
       <span className="qnum">{number}</span>
@@ -172,6 +180,7 @@ function Summary({ item, ctx }: { item: ItemDraft; ctx: BuilderCtx }) {
           {item.critical && <span className="tag fail">Critical</span>}
           {item.evidenceRequired && <span className="tag line">Evidence required</span>}
           {item.workOrder && <span className="tag warn">Work order on fail</span>}
+          {citedCount > 0 && <span className="tag line">📎 {citedCount}</span>}
           {item.source && item.source !== 'MANUAL' && (
             <span className="tag line">
               {item.source === 'DOCUMENT' ? 'From document' : item.source === 'SUGGESTED' ? 'Suggested' : 'From template'}
@@ -348,6 +357,23 @@ function Expanded({
           />
         </div>
       )}
+
+      <div className="indent" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <DocumentRefList
+          refs={item.key ? ctx.documents.filter((d) => d.questionKey === item.key) : []}
+          library={ctx.libraryDocuments}
+          onRemove={ctx.onRemoveDocument}
+        />
+        <button
+          type="button"
+          className="link"
+          disabled={!item.key}
+          title={item.key ? undefined : 'Save this question first — a citation points at its server-minted key'}
+          onClick={() => item.key && ctx.onAttachDocument(item.key)}
+        >
+          + Attach document
+        </button>
+      </div>
 
       {choice && (
         <div className="indent" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
