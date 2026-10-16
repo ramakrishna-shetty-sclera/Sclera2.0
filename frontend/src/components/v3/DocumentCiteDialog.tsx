@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { createDocument, openDocument, readableSize, uploadFile } from '../../api/documents'
+import { openDocument, readableSize, uploadDocument } from '../../api/documents'
 import type { ProcedureDocument } from '../../api/types'
 
 /**
@@ -53,13 +53,7 @@ export function DocumentCiteDialog({
     setError(null)
     setUploading(true)
     try {
-      const uploaded = await uploadFile(file)
-      const doc = await createDocument({
-        name: file.name,
-        mimeType: file.type || undefined,
-        sizeBytes: file.size,
-        location: uploaded.location,
-      })
+      const doc = await uploadDocument(file)
       onUploaded(doc)
       setSelected((s) => ({ ...s, [doc.id]: true }))
     } catch (e) {
@@ -148,7 +142,7 @@ export function DocumentCiteDialog({
                     <button
                       type="button"
                       className="btn btn-quiet btn-xs"
-                      onClick={() => void openDocument(doc.location)}
+                      onClick={() => openDocument(doc.id)}
                     >
                       Open
                     </button>

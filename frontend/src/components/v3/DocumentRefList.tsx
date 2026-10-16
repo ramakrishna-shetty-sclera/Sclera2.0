@@ -12,7 +12,7 @@ export function ReadOnlyDocumentLinks({ refs, library }: { refs: DocumentRef[]; 
       {refs.map((ref) => {
         const doc = library.find((d) => d.id === ref.id)
         return doc ? (
-          <button key={ref.id} type="button" className="link" onClick={() => void openDocument(doc.location)}>
+          <button key={ref.id} type="button" className="link" onClick={() => openDocument(doc.id)}>
             📎 {doc.name}
             {!doc.active && ' (inactive)'}
           </button>
@@ -52,7 +52,7 @@ export function DocumentRefList({
           <li key={`${ref.id}-${ref.questionKey ?? ''}`} className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
             <span aria-hidden="true">📎</span>
             {doc ? (
-              <button type="button" className="link" onClick={() => void openDocument(doc.location)}>
+              <button type="button" className="link" onClick={() => openDocument(doc.id)}>
                 {doc.name}
               </button>
             ) : (
