@@ -1012,6 +1012,10 @@ export function TemplateEditorPage() {
               onDescription: setDescription,
               onChangeNote: setChangeNote,
               onMeta: (patch) => setMeta((m) => ({ ...m, ...patch })),
+              thresholds,
+              resultTypes,
+              hasSections: items.some((i) => i.type === 'SECTION'),
+              onThresholds: setThresholds,
             }}
             onImport={onAiImport}
             onAddItems={(added) =>

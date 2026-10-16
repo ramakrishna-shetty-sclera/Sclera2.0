@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ITEM_TYPES, hasFixedOptions, isChoice, typeLabel } from '../../api/document'
-import type { ItemType, ResultType } from '../../api/types'
+import type { ItemType, ResultType, Rollup } from '../../api/types'
+import { BandsEditor } from './BandsEditor'
 import { triggerOptions, type ItemDraft, type OptionDraft } from '../itemTree'
 import { resultDot } from './ReadOnlyChecklist'
 
@@ -168,6 +169,8 @@ function Summary({ item, ctx }: { item: ItemDraft; ctx: BuilderCtx }) {
               {item.unit ? ` (${item.unit})` : ''}
             </span>
           )}
+          {item.critical && <span className="tag fail">Critical</span>}
+          {item.evidenceRequired && <span className="tag line">Evidence required</span>}
           {item.workOrder && <span className="tag warn">Work order on fail</span>}
           {item.source && item.source !== 'MANUAL' && (
             <span className="tag line">
@@ -310,6 +313,19 @@ function Expanded({
             ))}
           </select>
         </div>
+        <div className="field" style={{ width: 110, flexShrink: 0 }}>
+          <label htmlFor={`wt-${item.uid}`}>Weight</label>
+          <input
+            id={`wt-${item.uid}`}
+            className={`input${item.weight.trim() !== '' && Number(item.weight) < 1 ? ' invalid' : ''}`}
+            type="number"
+            min={1}
+            value={item.weight}
+            placeholder="1"
+            title="How much this question counts against its siblings. Blank counts as 1."
+            onChange={(e) => ctx.onPatch(item.uid, { weight: e.target.value })}
+          />
+        </div>
       </div>
 
       {!showHelp && (
@@ -338,6 +354,7 @@ function Expanded({
           <div className="row small muted" style={{ gap: 10 }}>
             <span style={{ flex: 1, paddingLeft: 26 }}>Answers</span>
             <span>Result</span>
+            <span>Points</span>
           </div>
           {item.options.map((option, optionIndex) => (
             <div key={option.uid} className="optrow">
@@ -357,6 +374,38 @@ function Expanded({
                 resultTypes={ctx.resultTypes}
                 onChange={(result) => ctx.onPatchOption(item.uid, option.uid, { result })}
               />
+              <input
+                type="number"
+                aria-label={`Points for ${option.label || `answer ${optionIndex + 1}`}`}
+                className={`input soft sm${option.score.trim() !== '' && Number(option.score) < 0 ? ' invalid' : ''}`}
+                style={{ width: 70, flexShrink: 0 }}
+                value={option.score}
+                placeholder="Points"
+                disabled={option.excludeFromScoring}
+                title={
+                  option.excludeFromScoring
+                    ? 'Excluded from scoring — earns no points'
+                    : 'Points this answer is worth. Zero is a real score; blank means it is not scored at all.'
+                }
+                onChange={(e) => ctx.onPatchOption(item.uid, option.uid, { score: e.target.value })}
+              />
+              <label
+                className="row small"
+                style={{ gap: 4, flexShrink: 0, cursor: 'pointer' }}
+                title="Earns no points, and does not count toward the total either — choosing it cannot drag a score down"
+              >
+                <input
+                  type="checkbox"
+                  checked={option.excludeFromScoring}
+                  onChange={(e) =>
+                    ctx.onPatchOption(item.uid, option.uid, {
+                      excludeFromScoring: e.target.checked,
+                      score: e.target.checked ? '' : option.score,
+                    })
+                  }
+                />
+                N/A
+              </label>
               {canNest ? (
                 <button
                   type="button"
@@ -399,6 +448,26 @@ function Expanded({
               A follow-up points at an answer by its server-minted key, so adding the first one saves the draft.
             </p>
           )}
+          {item.follow.length > 0 && (
+            <div className="field" style={{ maxWidth: 420 }}>
+              <label
+                htmlFor={`fr-${item.uid}`}
+                title="A follow-up is conditional, so counting it like an ordinary question would make this score differently depending on answers nobody controls"
+              >
+                How its follow-ups contribute
+              </label>
+              <select
+                id={`fr-${item.uid}`}
+                className="select"
+                value={item.followRollup}
+                onChange={(e) => ctx.onPatch(item.uid, { followRollup: e.target.value as Rollup | '' })}
+              >
+                <option value="">Independent — they score on their own</option>
+                <option value="WORST">Worst — one failed follow-up fails this question</option>
+                <option value="AVERAGE">Average — this question's score is their mean</option>
+              </select>
+            </div>
+          )}
         </div>
       )}
 
@@ -430,6 +499,14 @@ function Expanded({
         </div>
       )}
 
+      {item.type === 'INTEGER' && (
+        <BandsEditor
+          rules={item.rules}
+          resultTypes={ctx.resultTypes}
+          onChange={(rules) => ctx.onPatch(item.uid, { rules })}
+        />
+      )}
+
       {!choice && item.type !== 'INTEGER' && item.type !== 'TEXT' && (
         <div
           className="indent"
@@ -456,6 +533,18 @@ function Expanded({
       <div className="divider indent" />
       <div className="indent qfoot">
         <Switch on={item.required} label="Required" onChange={(v) => ctx.onPatch(item.uid, { required: v })} />
+        <Switch
+          on={item.critical}
+          label="Critical"
+          title="A failure here fails the whole inspection, whatever the score says"
+          onChange={(v) => ctx.onPatch(item.uid, { critical: v })}
+        />
+        <Switch
+          on={item.evidenceRequired}
+          label="Evidence required"
+          title="An answer does not count until a photo or other evidence is attached"
+          onChange={(v) => ctx.onPatch(item.uid, { evidenceRequired: v })}
+        />
         {choice && (
           <Switch on={item.workOrder} label="Work order on fail" onChange={(v) => ctx.onPatch(item.uid, { workOrder: v })} />
         )}
@@ -497,9 +586,19 @@ function Expanded({
   )
 }
 
-export function Switch({ on, label, onChange }: { on: boolean; label: string; onChange: (v: boolean) => void }) {
+export function Switch({
+  on,
+  label,
+  onChange,
+  title,
+}: {
+  on: boolean
+  label: string
+  onChange: (v: boolean) => void
+  title?: string
+}) {
   return (
-    <button type="button" className="sw" role="switch" aria-checked={on} onClick={() => onChange(!on)}>
+    <button type="button" className="sw" role="switch" aria-checked={on} title={title} onClick={() => onChange(!on)}>
       <span className="track">
         <span className="knob" />
       </span>
