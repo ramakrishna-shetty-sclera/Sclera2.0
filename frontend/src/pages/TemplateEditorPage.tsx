@@ -11,7 +11,7 @@ import {
 import { importQuestions, type ImportResult } from '../api/ai'
 import { ApiError } from '../api/client'
 import { isChoice, numberItems } from '../api/document'
-import type { DocumentRef, ItemType, ResultType, TemplateMeta, Threshold } from '../api/types'
+import type { DefinitionDocument, DocumentRef, ItemType, ResultType, TemplateMeta, Threshold } from '../api/types'
 import { listResultTypes } from '../api/resultTypes'
 import { useAuth } from '../auth/AuthContext'
 import { Refusal } from '../components/Refusal'
@@ -248,6 +248,41 @@ export function TemplateEditorPage() {
     return run
   }
 
+  /**
+   * After a 409, re-reads the draft. When its content is still what this page
+   * last synced, only the rowVersion moved on (a stale tab, a draft opened
+   * again after a publish), so nothing of anyone's is at risk: adopt the new
+   * counter and report true. If the content differs, someone really edited it —
+   * leave the rowVersion alone so the conflict banner can protect their work.
+   */
+  async function adoptLatestVersion(): Promise<boolean> {
+    try {
+      const draft = await getDraft(id!)
+      const theirs = snapshotOf(
+        draft.definition.schema,
+        fromDocument(draft.definition),
+        draft.definition.thresholds ?? [],
+        draft.definition.documents ?? [],
+      )
+      if (theirs !== latest.current.savedSnapshot) return false
+      rowVersionRef.current = draft.rowVersion
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /** One save, retried once if the only thing wrong was a stale rowVersion. Call it inside the queue. */
+  async function saveWithRecovery(definition: DefinitionDocument, changeNote?: string) {
+    const send = () => saveDraft(id!, { definition, rowVersion: rowVersionRef.current!, changeNote })
+    try {
+      return await send()
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409 && (await adoptLatestVersion())) return send()
+      throw e
+    }
+  }
+
   const latest = useRef({
     id, editing, items, schema, thresholds, documents, changeNote, conflict, busy, savingFor, savedSnapshot,
   })
@@ -274,11 +309,10 @@ export function TemplateEditorPage() {
     setAutosave((a) => ({ ...a, phase: 'saving' }))
     try {
       const saved = await enqueue(() =>
-        saveDraft(s.id!, {
-          definition: toDocument(s.schema, sent, s.thresholds, s.documents),
-          rowVersion: rowVersionRef.current!,
-          changeNote: s.changeNote.trim() || undefined,
-        }),
+        saveWithRecovery(
+          toDocument(s.schema, sent, s.thresholds, s.documents),
+          s.changeNote.trim() || undefined,
+        ),
       )
       rowVersionRef.current = saved.rowVersion
       const minted = keysFromSaved(sent, saved.definition.items)
@@ -409,13 +443,7 @@ export function TemplateEditorPage() {
       }
 
       const definition = toDocument(schema, items, thresholds, documents)
-      const saved = await enqueue(() =>
-        saveDraft(id!, {
-          definition,
-          rowVersion: rowVersionRef.current!,
-          changeNote: changeNote.trim() || undefined,
-        }),
-      )
+      const saved = await enqueue(() => saveWithRecovery(definition, changeNote.trim() || undefined))
       rowVersionRef.current = saved.rowVersion
       const reloaded = fromDocument(saved.definition)
       setThresholds(saved.definition.thresholds ?? [])
@@ -538,13 +566,7 @@ export function TemplateEditorPage() {
         await updateProcedure(id!, { name: name.trim(), description: description.trim() || undefined, meta })
         setOriginal({ name: name.trim(), description: description.trim(), metaJson: JSON.stringify(meta) })
       }
-      const saved = await enqueue(() =>
-        saveDraft(id!, {
-          definition,
-          rowVersion: rowVersionRef.current!,
-          changeNote: changeNote.trim() || undefined,
-        }),
-      )
+      const saved = await enqueue(() => saveWithRecovery(definition, changeNote.trim() || undefined))
       rowVersionRef.current = saved.rowVersion
       const minted = keysFromSaved(items, saved.definition.items)
       setItems((prev) => applyKeys(prev, minted))
@@ -578,13 +600,7 @@ export function TemplateEditorPage() {
       if (identityChanged()) {
         await updateProcedure(id!, { name: name.trim(), description: description.trim() || undefined, meta })
       }
-      const saved = await enqueue(() =>
-        saveDraft(id!, {
-          definition,
-          rowVersion: rowVersionRef.current!,
-          changeNote: changeNote.trim() || undefined,
-        }),
-      )
+      const saved = await enqueue(() => saveWithRecovery(definition, changeNote.trim() || undefined))
       rowVersionRef.current = saved.rowVersion
       await publishProcedure(id!, saved.rowVersion)
       navigate(`/templates/${id}`)
@@ -605,11 +621,10 @@ export function TemplateEditorPage() {
       return await enqueue(async () => {
         const s = latest.current
         if (snapshotOf(s.schema, s.items, s.thresholds, s.documents) !== s.savedSnapshot) {
-          const saved = await saveDraft(s.id!, {
-            definition: toDocument(s.schema, s.items, s.thresholds, s.documents),
-            rowVersion: rowVersionRef.current!,
-            changeNote: s.changeNote.trim() || undefined,
-          })
+          const saved = await saveWithRecovery(
+            toDocument(s.schema, s.items, s.thresholds, s.documents),
+            s.changeNote.trim() || undefined,
+          )
           rowVersionRef.current = saved.rowVersion
         }
         const result = await importQuestions(s.id!, candidateIds)
