@@ -127,9 +127,13 @@ export function TemplateDetailPage() {
   }
 
   async function onPublish() {
-    if (!procedure || !version) return
+    if (!procedure || procedure.draftVersionNo == null) return
     await run(async () => {
-      const result = await publishProcedure(procedure.id, version.rowVersion)
+      // `version` is the published one this page shows, not the draft being
+      // published: its row version belongs to a different row and would trip
+      // the server's stale-draft check. Read the open draft and send its own.
+      const draft = await getDraft(procedure.id)
+      const result = await publishProcedure(procedure.id, draft.rowVersion)
       setNotice(
         result.newVersion
           ? `Published v${result.version.versionNo}.`
