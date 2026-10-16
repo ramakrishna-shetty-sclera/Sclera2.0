@@ -98,7 +98,7 @@ class ImportFileIT extends PostgresIntegrationTest {
         ProcedureDocument document = new ProcedureDocument();
         document.setOrgId(orgId);
         document.setName("Standard.pdf");
-        document.setLocation("stub-" + UUID.randomUUID());
+        document.setContent("stub content".getBytes());
         document.setUploadedAt(OffsetDateTime.now());
         return documents.saveAndFlush(document).getId();
     }

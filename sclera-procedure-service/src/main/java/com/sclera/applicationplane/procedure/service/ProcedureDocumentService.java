@@ -1,8 +1,6 @@
 package com.sclera.applicationplane.procedure.service;
 
-import com.sclera.applicationplane.procedure.client.storage.StorageClient;
 import com.sclera.applicationplane.procedure.domain.ProcedureDocument;
-import com.sclera.applicationplane.procedure.dto.ProcedureDocumentRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureDocumentResponse;
 import com.sclera.applicationplane.procedure.mapper.ProcedureDocumentMapper;
 import com.sclera.applicationplane.procedure.repository.ProcedureDocumentRepository;
@@ -10,18 +8,21 @@ import com.sclera.applicationplane.procedure.repository.VersionDocumentRefReposi
 import com.sclera.applicationplane.procedure.tenancy.PropertyContext;
 import com.sclera.controlplane.common.exception.BusinessRuleException;
 import com.sclera.controlplane.common.exception.ResourceNotFoundException;
+import com.sclera.controlplane.common.exception.ValidationException;
 import com.sclera.controlplane.common.security.OrgContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
 /**
  * The organization's (or one property's) library of reference documents.
- * Bytes live behind the helper service's storage port; this manages only the
- * metadata row and which procedures may cite it.
+ * Bytes live directly on the row — the same way {@code ai_document} already
+ * stores an AI source document — no second service, no Dapr call.
  */
 @Service
 @Transactional
@@ -29,28 +30,23 @@ public class ProcedureDocumentService {
 
     private final ProcedureDocumentRepository repository;
     private final ProcedureDocumentMapper mapper;
-    private final StorageClient storage;
     private final VersionDocumentRefRepository refs;
 
     public ProcedureDocumentService(ProcedureDocumentRepository repository, ProcedureDocumentMapper mapper,
-                                     StorageClient storage, VersionDocumentRefRepository refs) {
+                                     VersionDocumentRefRepository refs) {
         this.repository = repository;
         this.mapper = mapper;
-        this.storage = storage;
         this.refs = refs;
     }
 
     /**
-     * The bytes are already stored by the time this is called — upload goes
-     * straight to the helper service. This writes the library row, after
-     * confirming the location the caller sends back actually resolves to
-     * something, so a mistyped or expired location cannot be cited by a
-     * procedure that will fail to resolve it later.
+     * Stores the uploaded bytes directly on the new row, mirroring {@code
+     * AiDocumentService.upload} — no file-type restriction, unlike AI
+     * documents, since a reference document is never text-extracted.
      */
-    public ProcedureDocumentResponse create(ProcedureDocumentRequest request) {
-        if (!storage.resolves(request.location())) {
-            throw new BusinessRuleException(
-                    "No stored document found at this location; it may not have finished uploading");
+    public ProcedureDocumentResponse upload(MultipartFile file) {
+        if (file.isEmpty()) {
+            throw new ValidationException("The uploaded file is empty");
         }
 
         ProcedureDocument document = new ProcedureDocument();
@@ -60,10 +56,14 @@ public class ProcedureDocumentService {
         // organization level and shared.
         List<UUID> scope = PropertyContext.current();
         document.setPropertyId(scope.size() == 1 ? scope.get(0) : null);
-        document.setName(request.name().strip());
-        document.setMimeType(request.mimeType());
-        document.setSizeBytes(request.sizeBytes());
-        document.setLocation(request.location());
+        document.setName(file.getOriginalFilename());
+        document.setMimeType(file.getContentType() == null ? "application/octet-stream" : file.getContentType());
+        document.setSizeBytes(file.getSize());
+        try {
+            document.setContent(file.getBytes());
+        } catch (IOException e) {
+            throw new ValidationException("Could not read the uploaded file: " + e.getMessage());
+        }
         document.setUploadedBy(OrgContext.getUserId());
         document.setUploadedAt(OffsetDateTime.now());
 
@@ -83,6 +83,12 @@ public class ProcedureDocumentService {
     @Transactional(readOnly = true)
     public ProcedureDocumentResponse get(UUID id) {
         return mapper.toResponse(getOwned(id));
+    }
+
+    /** The row itself, for the content endpoint — name, mime type and bytes, never serialised into a JSON response. */
+    @Transactional(readOnly = true)
+    public ProcedureDocument getForContent(UUID id) {
+        return getOwned(id);
     }
 
     /**

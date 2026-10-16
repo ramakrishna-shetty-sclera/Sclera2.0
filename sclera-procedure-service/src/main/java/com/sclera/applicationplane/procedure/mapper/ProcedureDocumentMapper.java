@@ -14,7 +14,6 @@ public class ProcedureDocumentMapper {
                 document.getName(),
                 document.getMimeType(),
                 document.getSizeBytes(),
-                document.getLocation(),
                 document.isActive(),
                 document.getUploadedBy(),
                 document.getUploadedAt());

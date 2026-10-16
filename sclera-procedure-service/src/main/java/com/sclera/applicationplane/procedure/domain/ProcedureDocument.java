@@ -17,10 +17,12 @@ import java.util.UUID;
  * reaches every version that cites it rather than leaving stale copies frozen
  * in place.
  *
- * <p>Holds no bytes and no URL. {@link #location} is an opaque key into the
- * helper service's storage port; a download link is generated fresh on every
- * request, never stored, because a signed URL expires and a stored one would
- * be a dead link by the time anyone followed it.
+ * <p>{@link #content} holds the bytes directly, the same way {@code
+ * AiDocument} already does — no second service, no Dapr call. {@code
+ * property_id} and its row-level-security policy are kept even though {@code
+ * ai_document} has neither, because this row is cited across property
+ * boundaries by a procedure's own {@code definition_json}, which an AI
+ * document never is.
  */
 @Entity
 @Table(name = "procedure_document")
@@ -52,8 +54,8 @@ public class ProcedureDocument {
     @Column(name = "size_bytes")
     private Long sizeBytes;
 
-    @Column(nullable = false, updatable = false)
-    private String location;
+    @Column(nullable = false, updatable = false, columnDefinition = "bytea")
+    private byte[] content;
 
     @Column(nullable = false)
     private boolean active = true;
@@ -81,8 +83,8 @@ public class ProcedureDocument {
     public Long getSizeBytes() { return sizeBytes; }
     public void setSizeBytes(Long sizeBytes) { this.sizeBytes = sizeBytes; }
 
-    public String getLocation() { return location; }
-    public void setLocation(String location) { this.location = location; }
+    public byte[] getContent() { return content; }
+    public void setContent(byte[] content) { this.content = content; }
 
     public boolean isActive() { return active; }
     public void setActive(boolean active) { this.active = active; }

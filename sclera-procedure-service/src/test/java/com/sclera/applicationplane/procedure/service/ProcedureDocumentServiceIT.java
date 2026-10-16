@@ -1,23 +1,21 @@
 package com.sclera.applicationplane.procedure.service;
 
-import com.sclera.applicationplane.procedure.client.storage.StorageClient;
-import com.sclera.applicationplane.procedure.dto.ProcedureDocumentRequest;
 import com.sclera.applicationplane.procedure.dto.ProcedureDocumentResponse;
 import com.sclera.applicationplane.procedure.repository.ProcedureDocumentRepository;
 import com.sclera.applicationplane.procedure.support.PostgresIntegrationTest;
-import com.sclera.controlplane.common.exception.BusinessRuleException;
 import com.sclera.controlplane.common.exception.ResourceNotFoundException;
+import com.sclera.controlplane.common.exception.ValidationException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.when;
 
 /**
  * The reference-document library, against a real Postgres: row-level
@@ -34,11 +32,9 @@ class ProcedureDocumentServiceIT extends PostgresIntegrationTest {
     @Autowired
     private ProcedureDocumentRepository repository;
 
-    @MockBean
-    private StorageClient storage;
-
-    private ProcedureDocumentRequest request(String name, String location) {
-        return new ProcedureDocumentRequest(name, "application/pdf", 1024L, location);
+    private MultipartFile file(String name) {
+        return new MockMultipartFile("file", name, "application/pdf",
+                ("content of " + name).getBytes(StandardCharsets.UTF_8));
     }
 
     private List<String> visibleNames() {
@@ -46,25 +42,24 @@ class ProcedureDocumentServiceIT extends PostgresIntegrationTest {
     }
 
     @Test
-    void refusesALocationStorageDoesNotRecognise() {
+    void refusesAnEmptyFile() {
         UUID org = UUID.randomUUID();
-        when(storage.resolves(anyString())).thenReturn(false);
+        MultipartFile empty = new MockMultipartFile("file", "empty.pdf", "application/pdf", new byte[0]);
 
-        assertThatThrownBy(() -> asOrg(org, () -> service.create(request("NFPA 10.pdf", "stub-missing"))))
-                .isInstanceOf(BusinessRuleException.class)
-                .hasMessageContaining("No stored document found");
+        assertThatThrownBy(() -> asOrg(org, () -> service.upload(empty)))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("empty");
     }
 
     @Test
     void aDocumentBelongsToWhicheverPropertyItWasUploadedIn() {
         UUID org = UUID.randomUUID();
         UUID vdms001 = UUID.randomUUID();
-        when(storage.resolves(anyString())).thenReturn(true);
 
         ProcedureDocumentResponse inProperty =
-                asProperty(org, vdms001, () -> service.create(request("Local code.pdf", "stub-a")));
+                asProperty(org, vdms001, () -> service.upload(file("Local code.pdf")));
         ProcedureDocumentResponse orgWide =
-                asOrg(org, () -> service.create(request("NFPA 10.pdf", "stub-b")));
+                asOrg(org, () -> service.upload(file("NFPA 10.pdf")));
 
         assertThat(inProperty.propertyId()).isEqualTo(vdms001);
         assertThat(orgWide.propertyId()).isNull();
@@ -75,11 +70,10 @@ class ProcedureDocumentServiceIT extends PostgresIntegrationTest {
         UUID org = UUID.randomUUID();
         UUID vdms001 = UUID.randomUUID();
         UUID vdms002 = UUID.randomUUID();
-        when(storage.resolves(anyString())).thenReturn(true);
 
-        asProperty(org, vdms001, () -> service.create(request("VDMS001 only.pdf", "stub-a")));
-        asProperty(org, vdms002, () -> service.create(request("VDMS002 only.pdf", "stub-b")));
-        asOrg(org, () -> service.create(request("Shared standard.pdf", "stub-c")));
+        asProperty(org, vdms001, () -> service.upload(file("VDMS001 only.pdf")));
+        asProperty(org, vdms002, () -> service.upload(file("VDMS002 only.pdf")));
+        asOrg(org, () -> service.upload(file("Shared standard.pdf")));
 
         assertThat(asProperty(org, vdms001, this::visibleNames))
                 .containsExactlyInAnyOrder("VDMS001 only.pdf", "Shared standard.pdf");
@@ -91,10 +85,9 @@ class ProcedureDocumentServiceIT extends PostgresIntegrationTest {
     void organizationLevelSeesOnlyWhatIsShared() {
         UUID org = UUID.randomUUID();
         UUID vdms001 = UUID.randomUUID();
-        when(storage.resolves(anyString())).thenReturn(true);
 
-        asProperty(org, vdms001, () -> service.create(request("Property only.pdf", "stub-a")));
-        asOrg(org, () -> service.create(request("Shared standard.pdf", "stub-b")));
+        asProperty(org, vdms001, () -> service.upload(file("Property only.pdf")));
+        asOrg(org, () -> service.upload(file("Shared standard.pdf")));
 
         assertThat(asOrg(org, this::visibleNames)).containsExactly("Shared standard.pdf");
     }
@@ -104,11 +97,10 @@ class ProcedureDocumentServiceIT extends PostgresIntegrationTest {
         UUID org = UUID.randomUUID();
         UUID vdms001 = UUID.randomUUID();
         UUID vdms002 = UUID.randomUUID();
-        when(storage.resolves(anyString())).thenReturn(true);
 
-        asProperty(org, vdms001, () -> service.create(request("A.pdf", "stub-a")));
-        asProperty(org, vdms002, () -> service.create(request("B.pdf", "stub-b")));
-        asProperty(org, vdms002, () -> service.create(request("C.pdf", "stub-c")));
+        asProperty(org, vdms001, () -> service.upload(file("A.pdf")));
+        asProperty(org, vdms002, () -> service.upload(file("B.pdf")));
+        asProperty(org, vdms002, () -> service.upload(file("C.pdf")));
 
         long seenFromVdms001 = asProperty(org, vdms001, () -> repository.findAll().size());
         long seenFromVdms002 = asProperty(org, vdms002, () -> repository.findAll().size());
@@ -120,9 +112,8 @@ class ProcedureDocumentServiceIT extends PostgresIntegrationTest {
     @Test
     void deactivatingHidesItFromNewCitationsButActivateBringsItBack() {
         UUID org = UUID.randomUUID();
-        when(storage.resolves(anyString())).thenReturn(true);
 
-        UUID id = asOrg(org, () -> service.create(request("Draft standard.pdf", "stub-a")).id());
+        UUID id = asOrg(org, () -> service.upload(file("Draft standard.pdf")).id());
 
         asOrg(org, () -> service.deactivate(id));
         assertThat(asOrg(org, () -> service.list(true))).isEmpty();
@@ -136,9 +127,8 @@ class ProcedureDocumentServiceIT extends PostgresIntegrationTest {
     void aDocumentFromAnotherOrganizationIsNotFound() {
         UUID orgA = UUID.randomUUID();
         UUID orgB = UUID.randomUUID();
-        when(storage.resolves(anyString())).thenReturn(true);
 
-        UUID id = asOrg(orgA, () -> service.create(request("Org A only.pdf", "stub-a")).id());
+        UUID id = asOrg(orgA, () -> service.upload(file("Org A only.pdf")).id());
 
         assertThatThrownBy(() -> asOrg(orgB, () -> service.get(id)))
                 .isInstanceOf(ResourceNotFoundException.class);
