@@ -43,6 +43,11 @@ export function TemplateDetailPage() {
   const [version, setVersion] = useState<TemplateVersion | null>(null)
   const [versions, setVersions] = useState<TemplateVersionSummary[]>([])
   const [diff, setDiff] = useState<ProcedureDiff | null>(null)
+  const [compareFrom, setCompareFrom] = useState<string>('')
+  const [compareTo, setCompareTo] = useState<string>('')
+  const [compareResult, setCompareResult] = useState<ProcedureDiff | null>(null)
+  const [compareError, setCompareError] = useState<string | null>(null)
+  const [compareBusy, setCompareBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [refusal, setRefusal] = useState<unknown>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -110,6 +115,23 @@ export function TemplateDetailPage() {
       cancelled = true
     }
   }, [id, version, versions])
+
+  // Free compare, picked by hand — unlike the automatic diff above, which
+  // only ever shows a version against its immediate predecessor, this lets
+  // an author compare any two published versions (e.g. v1 against v5).
+  async function runCompare() {
+    if (!id || compareFrom === '' || compareTo === '' || compareFrom === compareTo) return
+    setCompareBusy(true)
+    setCompareError(null)
+    try {
+      setCompareResult(await diffVersions(id, Number(compareFrom), Number(compareTo)))
+    } catch (e) {
+      setCompareResult(null)
+      setCompareError(e instanceof Error ? e.message : 'Could not compare these versions')
+    } finally {
+      setCompareBusy(false)
+    }
+  }
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true)
@@ -201,6 +223,7 @@ export function TemplateDetailPage() {
   const meta = procedure.meta ?? {}
   const draftSummary = versions.find((v) => v.state === 'DRAFT')
   const draftSavedAt = draftSummary ? new Date(draftSummary.createdAt).toLocaleDateString() : null
+  const publishedVersions = versions.filter((v) => v.state === 'PUBLISHED')
   const items = version?.definition.items ?? []
   const flat = flattenItems(items)
   const questions = flat.filter((f) => f.item.type !== 'SECTION')
@@ -457,6 +480,60 @@ export function TemplateDetailPage() {
                     </button>
                   ))}
                 </div>
+                {publishedVersions.length >= 2 && (
+                  <div
+                    style={{
+                      padding: 12,
+                      borderTop: '1px solid var(--line)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 8,
+                    }}
+                  >
+                    <span className="small muted">Compare two versions</span>
+                    <div className="row" style={{ gap: 8 }}>
+                      <select
+                        className="select sm"
+                        aria-label="From version"
+                        value={compareFrom}
+                        onChange={(e) => setCompareFrom(e.target.value)}
+                      >
+                        <option value="">From…</option>
+                        {publishedVersions.map((v) => (
+                          <option key={v.id} value={v.versionNo}>
+                            v{v.versionNo}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        className="select sm"
+                        aria-label="To version"
+                        value={compareTo}
+                        onChange={(e) => setCompareTo(e.target.value)}
+                      >
+                        <option value="">To…</option>
+                        {publishedVersions.map((v) => (
+                          <option key={v.id} value={v.versionNo}>
+                            v{v.versionNo}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        className="btn btn-primary btn-xs"
+                        disabled={compareBusy || compareFrom === '' || compareTo === '' || compareFrom === compareTo}
+                        onClick={() => void runCompare()}
+                      >
+                        {compareBusy ? 'Comparing…' : 'Compare'}
+                      </button>
+                    </div>
+                    {compareError && <div className="alert-error">{compareError}</div>}
+                    {compareResult && (
+                      <div className="dcard" style={{ padding: 14 }}>
+                        <DiffSummary result={compareResult} />
+                      </div>
+                    )}
+                  </div>
+                )}
               </section>
             )}
           </aside>
