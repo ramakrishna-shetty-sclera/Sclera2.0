@@ -1,4 +1,4 @@
-import { apiFetch, apiUpload } from './client'
+import { apiDownload, apiFetch, apiUpload } from './client'
 import type { ProcedureDocument } from './types'
 
 // The reference-document library lives in the procedure service. Bytes are
@@ -37,6 +37,19 @@ export function deleteDocument(id: string): Promise<void> {
 /** Opens a document in a new tab — served directly from this service, no signed link to fetch first. */
 export function openDocument(id: string): void {
   window.open(`${BASE}/${id}/content`, '_blank', 'noopener')
+}
+
+/**
+ * Fetches a reference document's bytes, to hand to another system that needs
+ * its own copy — the AI document library's "From library" picker bridges a
+ * reference-only document into `ai_document` this way, by downloading it
+ * here and re-uploading it through `uploadAiDocument`, rather than the two
+ * systems ever sharing storage.
+ */
+export function fetchDocumentFile(doc: ProcedureDocument): Promise<File> {
+  return apiDownload(`${BASE}/${doc.id}/content`).then(
+    ({ blob }) => new File([blob], doc.name, { type: doc.mimeType || blob.type }),
+  )
 }
 
 /** '1.4 MB'. The size is metadata the author may leave out, so absent reads as nothing. */
