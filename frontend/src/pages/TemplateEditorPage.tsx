@@ -317,17 +317,17 @@ export function TemplateEditorPage() {
   }
 
   const latest = useRef({
-    id, editing, items, schema, thresholds, documents, changeNote, conflict, busy, savingFor, savedSnapshot,
+    id, editing, name, items, schema, thresholds, documents, changeNote, conflict, busy, savingFor, savedSnapshot,
   })
   latest.current = {
-    id, editing, items, schema, thresholds, documents, changeNote, conflict, busy, savingFor, savedSnapshot,
+    id, editing, name, items, schema, thresholds, documents, changeNote, conflict, busy, savingFor, savedSnapshot,
   }
 
   async function autosaveNow() {
     const s = latest.current
     const snapshot = snapshotOf(s.schema, s.items, s.thresholds, s.documents)
     const skip = autosaveSkipReason({
-      ready: s.editing && rowVersionRef.current !== null,
+      ready: s.editing && rowVersionRef.current !== null && s.name.trim() !== '',
       conflict: s.conflict,
       busy: s.busy || s.savingFor !== null,
       snapshot,
@@ -466,8 +466,9 @@ export function TemplateEditorPage() {
     setRefusal(null)
     try {
       if (!editing) {
+        if (!requireName()) return
         const created = await createProcedure({
-          name: name.trim() || 'Untitled procedure',
+          name: name.trim(),
           description: description.trim() || undefined,
           meta,
           definition: toDocument(schema, items, thresholds, documents),
@@ -572,16 +573,29 @@ export function TemplateEditorPage() {
   }
 
   /**
+   * A procedure is not created, saved, previewed or published until it has a
+   * name. The server refuses an empty one too, but the author should be told
+   * here, before any request, and be taken to the field.
+   */
+  function requireName(): boolean {
+    if (name.trim() !== '') return true
+    setError('Give the procedure a name first.')
+    document.getElementById('procedure-name')?.focus()
+    return false
+  }
+
+  /**
    * The docs/suggest save-first path: generation and chat are template-scoped,
    * so a brand-new procedure is created as a draft and the builder reopens on
    * the same tab, with any picked documents riding along in navigation state.
    */
   async function saveAndContinue(docIds: string[], tab: SideTab) {
+    if (!requireName()) return
     setBusy(true)
     setRefusal(null)
     try {
       const created = await createProcedure({
-        name: name.trim() || 'Untitled procedure',
+        name: name.trim(),
         description: description.trim() || undefined,
         meta,
         definition: currentDefinition(),
@@ -606,6 +620,7 @@ export function TemplateEditorPage() {
 
   /** True once the save actually went through — Preview waits on this before it opens. */
   async function onSave(leaveAfter = false): Promise<boolean> {
+    if (!requireName()) return false
     setBusy(true)
     setError(null)
     setRefusal(null)
@@ -673,6 +688,7 @@ export function TemplateEditorPage() {
   /** Saves, then publishes. The server's blockers come back as one refusal list. */
   async function onPublish() {
     if (!editing) return
+    if (!requireName()) return
     setShowErrors(true)
     setBusy(true)
     setError(null)
@@ -764,6 +780,7 @@ export function TemplateEditorPage() {
   let saveStatus: string
   if (!editing) saveStatus = 'Not saved yet'
   else if (conflict) saveStatus = 'Not saved — reload to see their version'
+  else if (!name.trim()) saveStatus = 'Not saved — give the procedure a name first'
   else if (autosave.phase === 'saving' || busy) saveStatus = 'Saving…'
   else if (autosave.phase === 'failed' && docDirty) saveStatus = 'Could not autosave — use Save draft'
   else if (waitingOn) saveStatus = `Waiting: ${waitingOn}`
@@ -838,6 +855,7 @@ export function TemplateEditorPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span className="small muted">{editing ? 'Editing draft' : 'New procedure'}</span>
             <input
+              id="procedure-name"
               className="title-input"
               aria-label="Procedure name"
               value={name}
@@ -885,25 +903,37 @@ export function TemplateEditorPage() {
                 </div>
               )}
             </div>
-            <button className="btn btn-quiet" disabled={busy || conflict} onClick={() => void onSave(true)}>
+            <button
+              className="btn btn-quiet"
+              disabled={busy || conflict || !name.trim()}
+              title={!name.trim() ? 'Give the procedure a name first' : undefined}
+              onClick={() => void onSave(true)}
+            >
               Save draft
             </button>
             <button
               className="btn btn-outline"
-              disabled={busy || conflict || !editing || isEffectivelyEmpty(items)}
+              disabled={busy || conflict || !editing || !name.trim() || isEffectivelyEmpty(items)}
               title={
                 !editing
                   ? 'Save the procedure first'
-                  : isEffectivelyEmpty(items)
-                    ? 'Add a question first'
-                    : undefined
+                  : !name.trim()
+                    ? 'Give the procedure a name first'
+                    : isEffectivelyEmpty(items)
+                      ? 'Add a question first'
+                      : undefined
               }
               onClick={() => void openPreview()}
             >
               {previewBusy ? 'Saving…' : 'Preview'}
             </button>
             {editing && (
-              <button className="btn btn-primary" disabled={busy || conflict} onClick={() => void onPublish()}>
+              <button
+                className="btn btn-primary"
+                disabled={busy || conflict || !name.trim()}
+                title={!name.trim() ? 'Give the procedure a name first' : undefined}
+                onClick={() => void onPublish()}
+              >
                 Publish
               </button>
             )}
