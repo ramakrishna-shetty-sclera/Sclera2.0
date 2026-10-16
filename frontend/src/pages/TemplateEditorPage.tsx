@@ -90,6 +90,8 @@ const snapshotOf = (
 interface PendingFollow {
   addFollowAt?: number[]
   optionIndex?: number
+  /** Same idea as addFollowAt, for a document citation started before the question had a server key. */
+  attachDocumentAt?: number[]
   /** Documents picked before the procedure existed ("create from documents", docs-tab save-first). */
   docIds?: string[]
   /** Which side tab to land on after the navigation a create forces. */
@@ -257,6 +259,11 @@ export function TemplateEditorPage() {
         }
         setItems(loadedItems)
         setLoaded(true)
+        if (pending?.attachDocumentAt) {
+          const target = atPath(loadedItems, pending.attachDocumentAt)
+          if (target?.key) openCiteDialog(target.key)
+          navigate(location.pathname, { replace: true, state: null })
+        }
       })
       .catch((e) => {
         if (cancelled) return
@@ -522,6 +529,62 @@ export function TemplateEditorPage() {
   /** `undefined` cites the whole procedure; a question's own server key cites just that question. */
   function openCiteDialog(questionKey?: string) {
     setCiteFor({ questionKey })
+  }
+
+  /**
+   * Opens the attach-document dialog scoped to this question's own server
+   * key. Exactly like onAddFollow, a question typed a moment ago has no key
+   * yet, so that path saves the draft first (or creates the procedure, for
+   * a question added before it existed at all) and carries the click across.
+   */
+  async function onAttachDocument(uid: string) {
+    const item = findIn(items, uid)
+    if (!item) return
+    if (item.key) {
+      openCiteDialog(item.key)
+      return
+    }
+
+    const path = pathTo(items, uid)
+    if (!path) return
+
+    setSavingFor(uid)
+    setRefusal(null)
+    try {
+      if (!editing) {
+        if (!requireName()) return
+        const created = await createProcedure({
+          name: name.trim(),
+          description: description.trim() || undefined,
+          meta,
+          definition: toDocument(schema, items, thresholds, documents),
+        })
+        navigate(`/templates/${created.id}/edit`, { state: { attachDocumentAt: path } })
+        return
+      }
+
+      const definition = toDocument(schema, items, thresholds, documents)
+      const saved = await enqueue(() => saveWithRecovery(definition, changeNote.trim() || undefined))
+      rowVersionRef.current = saved.rowVersion
+      setVersionNo(saved.versionNo)
+      const reloaded = fromDocument(saved.definition)
+      setThresholds(saved.definition.thresholds ?? [])
+      setDocuments(saved.definition.documents ?? [])
+      setSavedSnapshot(snapshotOf(schema, reloaded, saved.definition.thresholds, saved.definition.documents))
+      failedSnapshot.current = null
+      setItems(reloaded)
+      const target = atPath(reloaded, path)
+      if (target?.key) openCiteDialog(target.key)
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        setConflict(true)
+        setError('Someone else saved this draft while you were editing it.')
+      } else {
+        setRefusal(e instanceof Error ? e : new Error('Could not save'))
+      }
+    } finally {
+      setSavingFor(null)
+    }
   }
 
   function onDocumentUploaded(doc: ProcedureDocument) {
@@ -834,7 +897,7 @@ export function TemplateEditorPage() {
     onAddOption,
     onPatchOption,
     onRemoveOption,
-    onAttachDocument: openCiteDialog,
+    onAttachDocument: (uid) => void onAttachDocument(uid),
     onRemoveDocument: removeDocumentRef,
   }
 

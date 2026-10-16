@@ -32,8 +32,8 @@ export interface BuilderCtx {
   onAddOption: (uid: string) => void
   onPatchOption: (uid: string, option: string, patch: Partial<OptionDraft>) => void
   onRemoveOption: (uid: string, option: string) => void
-  /** Opens the attach-document dialog scoped to a question's own server key. */
-  onAttachDocument: (questionKey: string) => void
+  /** Attaches a document to this question — saves the draft first if it has no server key yet, same as onAddFollow. */
+  onAttachDocument: (uid: string) => void
   onRemoveDocument: (ref: DocumentRef) => void
 }
 
@@ -560,11 +560,10 @@ function Expanded({
         <button
           type="button"
           className="btn btn-quiet btn-xs"
-          disabled={!item.key}
-          title={item.key ? undefined : 'Save this question first — a citation points at its server-minted key'}
-          onClick={() => item.key && ctx.onAttachDocument(item.key)}
+          disabled={saving}
+          onClick={() => ctx.onAttachDocument(item.uid)}
         >
-          📎 Attach document
+          {saving ? 'Saving…' : '📎 Attach document'}
         </button>
         <div className="row" style={{ marginLeft: 'auto', gap: 2 }}>
           <button className="ibtn" type="button" aria-label="Move up" disabled={index === 0} onClick={() => ctx.onMove(item.uid, -1)}>
