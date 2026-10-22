@@ -9,7 +9,7 @@ export function ChecklistFillPage() {
   if (!id) return null
 
   return (
-    <div>
+    <div className="v3">
       <div className="page-head">
         <span />
         <button className="btn" onClick={() => navigate(-1)}>

@@ -47,7 +47,7 @@ export function ScanPage() {
 
   if (error && !service) {
     return (
-      <div className="empty-state">
+      <div className="v3 empty-state">
         <div className="empty-icon">❓</div>
         <p className="empty-title">Unknown QR code</p>
         <p className="muted">{error}</p>
@@ -58,11 +58,11 @@ export function ScanPage() {
     )
   }
 
-  if (!service) return <p className="muted">Resolving QR…</p>
+  if (!service) return <p className="v3 muted">Resolving QR…</p>
 
   if (raisedId) {
     return (
-      <div>
+      <div className="v3">
         <div className="page-head">
           <div>
             <h1>Request raised ✓</h1>
@@ -78,7 +78,7 @@ export function ScanPage() {
   }
 
   return (
-    <div className="scan-wrap">
+    <div className="v3 scan-wrap">
       <form className="card scan-card" onSubmit={onRaise}>
         <div className="empty-icon" aria-hidden>
           📱

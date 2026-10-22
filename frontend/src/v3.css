@@ -1513,3 +1513,294 @@
   margin: 6px 0 0;
   padding-left: 20px;
 }
+
+/*
+ * ---- the rest of the app, dark ----
+ *
+ * Every other screen (Locations, Assets, Tasks, Result types, Inspections,
+ * Reactive services, …) still uses the original "classic" classes from
+ * styles.css — .card, .table, .badge-*, the shared <Modal>, and a page's own
+ * one-off classes (.rt-*, .tree-*, .map-*, .dash-card, .stat, …). Those
+ * classes are unscoped there, so the page just gets `className="v3"` on its
+ * own root element and these overrides re-skin the exact same markup dark —
+ * no page was rewritten onto the Procedures screens' own component set.
+ */
+.v3 .card {
+  background: var(--surface);
+  border-color: var(--line);
+}
+.v3 .table {
+  background: var(--surface);
+  border-color: var(--line);
+}
+.v3 .table th,
+.v3 .table td {
+  border-bottom-color: var(--line-soft);
+}
+.v3 .table th {
+  background: var(--raised);
+  color: var(--muted);
+}
+.v3 .clickable:hover td {
+  background: var(--raised);
+}
+.v3 .badge-gray {
+  background: var(--chip-neutral);
+  color: var(--text);
+}
+.v3 .badge-blue {
+  background: var(--chip-info);
+  color: var(--on-info);
+}
+.v3 .badge-green {
+  background: var(--chip-success);
+  color: var(--on-success);
+}
+.v3 .badge-red {
+  background: var(--chip-error);
+  color: var(--on-error);
+}
+.v3 .badge-amber {
+  background: var(--chip-warning);
+  color: var(--on-warning);
+}
+.v3 .modal-backdrop {
+  background: rgba(0, 0, 0, 0.7);
+}
+.v3 .modal {
+  background: var(--surface);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+}
+.v3 .btn-soft {
+  background: var(--tonal);
+  border-color: var(--tonal);
+  color: var(--selected-text);
+}
+.v3 .btn-soft:hover:not(:disabled) {
+  background: #453a13;
+}
+.v3 .alert-info {
+  background: var(--chip-info);
+  border: 1px solid var(--info);
+  color: var(--on-info);
+}
+.v3 .field-error {
+  color: var(--error-line);
+}
+.v3 .empty-state {
+  background: var(--surface);
+  border-color: var(--line-strong);
+}
+.v3 .danger-text,
+.v3 .fail-toggle {
+  color: var(--error-line);
+}
+
+/* home */
+.v3 .dash-card {
+  background: var(--surface);
+  border-color: var(--line);
+}
+.v3 .dash-card:hover {
+  border-color: var(--action);
+  box-shadow: 0 6px 18px rgba(255, 196, 0, 0.12);
+}
+.v3 .dash-card-blurb {
+  color: var(--muted);
+}
+
+/* stat boxes (Assets, Tasks, Locations) */
+.v3 .stat-label {
+  color: var(--muted);
+}
+
+/* location tree */
+.v3 .tree-children {
+  border-left-color: var(--line-soft);
+}
+.v3 .tree-row {
+  background: var(--surface);
+  border-color: var(--line);
+}
+.v3 .tree-row:hover {
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
+}
+.v3 .tree-meta {
+  color: var(--muted);
+}
+.v3 .icon-building {
+  background: var(--chip-info);
+}
+.v3 .icon-floor {
+  background: var(--chip-success);
+}
+.v3 .icon-location {
+  background: var(--chip-warning);
+}
+
+/* task map */
+.v3 .map-legend {
+  color: var(--muted);
+}
+.v3 .map-building,
+.v3 .map-location {
+  background: var(--surface);
+  border-color: var(--line);
+}
+.v3 .map-floor {
+  background: var(--raised);
+  border-color: var(--line);
+}
+.v3 .map-unassigned {
+  border-left-color: var(--dim);
+  background: var(--raised);
+}
+.v3 .map-asset-name {
+  color: var(--muted);
+}
+
+/* assets table extras */
+.v3 .pill-ip {
+  background: var(--chip-info);
+  color: var(--on-info);
+}
+.v3 .pill-nonip {
+  background: var(--chip-neutral);
+  color: var(--text);
+}
+.v3 .ip {
+  background: var(--raised);
+  color: var(--text);
+}
+.v3 .loc-chip {
+  background: var(--chip-warning);
+  color: var(--on-warning);
+}
+.v3 .icon-btn {
+  color: var(--muted);
+}
+.v3 .icon-btn:hover {
+  background: var(--raised);
+  border-color: var(--line);
+}
+
+/* inspection config form/detail */
+.v3 .day-chip {
+  background: var(--surface);
+  border-color: var(--line-strong);
+  color: var(--muted);
+}
+.v3 .day-chip.day-on {
+  background: var(--action);
+  border-color: var(--action);
+  color: var(--on-action);
+}
+.v3 .toggle-row {
+  border-top-color: var(--line-soft);
+}
+.v3 .toggle-help {
+  color: var(--muted);
+}
+.v3 .switch {
+  background: var(--line-strong);
+}
+.v3 .switch::after {
+  background: var(--surface);
+}
+.v3 .switch:checked {
+  background: var(--action);
+}
+.v3 .detail-grid dt {
+  color: var(--muted);
+}
+.v3 .muted-card {
+  background: var(--raised);
+}
+
+/* tagging / targets */
+.v3 .tagged-proc {
+  background: var(--raised);
+  border-color: var(--line);
+}
+.v3 .cond-row {
+  background: var(--surface);
+  border-color: var(--line);
+}
+.v3 .target-table th {
+  background: transparent;
+}
+
+/* reactive services / QR / scan */
+.v3 .qr-box img {
+  border-color: var(--line);
+}
+.v3 .qr-url {
+  background: var(--raised);
+}
+
+/* result types */
+.v3 .rt-handle {
+  color: var(--muted);
+}
+.v3 .rt-drop-target td {
+  box-shadow: inset 0 2px 0 var(--action);
+}
+.v3 .rt-swatch {
+  border-color: var(--line-strong);
+}
+.v3 .applies-row {
+  border-top-color: var(--line-soft);
+}
+.v3 .key-chip {
+  background: var(--raised);
+  border-color: var(--line);
+}
+.v3 .chip-remove {
+  color: var(--muted);
+}
+.v3 .chip-remove:hover {
+  color: var(--error-line);
+}
+.v3 .link-button {
+  color: var(--action);
+}
+
+/* lists, previews, pager */
+.v3 .history-list li,
+.v3 .doc-item,
+.v3 .preview-sections li,
+.v3 .question-block {
+  border-top-color: var(--line-soft);
+}
+.v3 .doc-follow {
+  border-left-color: var(--line-soft);
+}
+.v3 .doc-section,
+.v3 .doc-result {
+  color: var(--muted);
+}
+.v3 .answer-row input[readonly] {
+  background: var(--raised);
+  color: var(--muted);
+}
+.v3 .field-stale {
+  border-color: var(--warning);
+}
+.v3 .field-invalid {
+  border-color: var(--fail);
+}
+.v3 .pager {
+  color: var(--muted);
+}
+.v3 .pager button {
+  background: var(--surface);
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+.v3 .photo-preview {
+  border-color: var(--line);
+}
+.v3 .signature-pad {
+  background: var(--surface);
+  border-color: var(--line-strong);
+}

@@ -120,11 +120,15 @@ export function InspectionConfigFormPage() {
   }
 
   if (!loaded) {
-    return error ? <div className="alert alert-error">{error}</div> : <p className="muted">Loading…</p>
+    return (
+      <div className="v3">
+        {error ? <div className="alert alert-error">{error}</div> : <p className="muted">Loading…</p>}
+      </div>
+    )
   }
 
   return (
-    <form onSubmit={onSubmit}>
+    <form className="v3" onSubmit={onSubmit}>
       <div className="page-head">
         <div>
           <h1>{editing ? 'Edit inspection' : 'New inspection'}</h1>

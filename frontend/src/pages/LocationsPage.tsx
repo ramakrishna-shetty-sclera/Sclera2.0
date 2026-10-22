@@ -137,7 +137,7 @@ export function LocationsPage() {
   }
 
   return (
-    <div>
+    <div className="v3">
       <div className="page-head">
         <div>
           <h1>Locations</h1>

@@ -198,7 +198,7 @@ export function TaskMapPage() {
   const hasUnassigned = model.unassigned.checklists.length > 0 || model.unassigned.assets.length > 0
 
   return (
-    <div>
+    <div className="v3">
       <div className="page-head">
         <div>
           <h1>Task Map</h1>

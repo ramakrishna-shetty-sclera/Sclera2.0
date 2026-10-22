@@ -59,7 +59,11 @@ export function InspectionRunPage() {
   const allQuestions: Question[] = useMemo(() => sections.flatMap((s) => s.questions), [sections])
 
   if (!inspection) {
-    return error ? <div className="alert alert-error">{error}</div> : <p className="muted">Loading…</p>
+    return (
+      <div className="v3">
+        {error ? <div className="alert alert-error">{error}</div> : <p className="muted">Loading…</p>}
+      </div>
+    )
   }
 
   const editable = inspection.status === 'IN_PROGRESS'
@@ -102,7 +106,7 @@ export function InspectionRunPage() {
     }, 'Inspection completed.')
 
   return (
-    <div>
+    <div className="v3">
       <div className="page-head">
         <div>
           <h1>{inspection.templateName}</h1>

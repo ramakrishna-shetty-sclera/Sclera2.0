@@ -51,7 +51,7 @@ export function AssetsPage() {
   }
 
   return (
-    <div>
+    <div className="v3">
       <div className="page-head">
         <div>
           <h1>Assets</h1>

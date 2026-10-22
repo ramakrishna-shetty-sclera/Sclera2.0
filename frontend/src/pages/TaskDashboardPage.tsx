@@ -67,7 +67,7 @@ export function TaskDashboardPage() {
   ).length
 
   return (
-    <div>
+    <div className="v3">
       <div className="page-head">
         <div>
           <h1>Task Dashboard</h1>

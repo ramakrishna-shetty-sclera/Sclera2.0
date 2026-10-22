@@ -32,7 +32,11 @@ export function InspectionConfigDetailPage() {
   }
 
   if (!config) {
-    return error ? <div className="alert alert-error">{error}</div> : <p className="muted">Loading…</p>
+    return (
+      <div className="v3">
+        {error ? <div className="alert alert-error">{error}</div> : <p className="muted">Loading…</p>}
+      </div>
+    )
   }
 
   const days = WEEKDAYS.filter((d) => config.scheduleDays.includes(d))
@@ -44,7 +48,7 @@ export function InspectionConfigDetailPage() {
   ].filter(Boolean) as string[]
 
   return (
-    <div>
+    <div className="v3">
       <div className="page-head">
         <div>
           <h1>{config.name}</h1>

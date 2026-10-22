@@ -64,7 +64,7 @@ export function InspectionsPage() {
   }
 
   return (
-    <div>
+    <div className="v3">
       <div className="page-head">
         <h1>Inspections</h1>
         <div className="page-actions">

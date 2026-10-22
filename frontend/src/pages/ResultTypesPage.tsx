@@ -108,7 +108,7 @@ export function ResultTypesPage() {
   }
 
   return (
-    <div>
+    <div className="v3">
       <div className="page-head">
         <div>
           <h1>Result types</h1>

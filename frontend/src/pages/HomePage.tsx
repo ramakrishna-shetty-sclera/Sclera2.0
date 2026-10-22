@@ -56,7 +56,7 @@ const CARDS: DashboardCard[] = [
 
 export function HomePage() {
   return (
-    <div>
+    <div className="v3">
       <div className="page-head">
         <div>
           <h1>Home</h1>
