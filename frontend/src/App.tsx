@@ -31,6 +31,8 @@ function initialsOf(user: { firstName: string | null; lastName: string | null; e
   return (user.email ?? '?').slice(0, 2).toUpperCase()
 }
 
+const SIDEBAR_COLLAPSED_KEY = 'sclera.sidebar.collapsed'
+
 function Layout() {
   const { user, initializing, logout } = useAuth()
   const navigate = useNavigate()
@@ -38,6 +40,27 @@ function Layout() {
   // Which property the pages are scoped to. Keying the outlet on it re-mounts
   // the current page on a switch, so it fetches again with the new header.
   const [scope, setScope] = useState<string | null>(getSelectedProperty())
+  // Purely a per-browser display preference, so it lives in localStorage —
+  // the same treatment the selected property already gets.
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+
+  function toggleCollapsed() {
+    setCollapsed((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0')
+      } catch {
+        // per-browser convenience only — nothing breaks if it can't persist
+      }
+      return next
+    })
+  }
 
   if (initializing) return <p className="muted center-note">Checking session…</p>
   // Preserve the deep link (e.g. a scanned /scan/:token QR) across login.
@@ -47,11 +70,19 @@ function Layout() {
 
   return (
     <div className="app">
-      <aside className="sidebar">
+      <aside className={`sidebar${collapsed ? ' collapsed' : ''}`}>
         <div className="sidebar-brand">
           <NavLink to="/" className="brand" end>
-            Sclera
+            <span className="brand-text">Sclera</span>
           </NavLink>
+          <button
+            type="button"
+            className="sidebar-toggle"
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            onClick={toggleCollapsed}
+          >
+            {collapsed ? '▶' : '◀'}
+          </button>
         </div>
         <nav className="sidebar-nav">
           <div className="nav-group">
@@ -60,19 +91,19 @@ function Layout() {
               <span className="nav-icon" aria-hidden="true">
                 🏢
               </span>
-              Locations
+              <span className="nav-text">Locations</span>
             </NavLink>
             <NavLink to="/assets" className="nav-item">
               <span className="nav-icon" aria-hidden="true">
                 📦
               </span>
-              Assets
+              <span className="nav-text">Assets</span>
             </NavLink>
             <NavLink to="/tasks" className="nav-item">
               <span className="nav-icon" aria-hidden="true">
                 ☑
               </span>
-              Tasks
+              <span className="nav-text">Tasks</span>
             </NavLink>
           </div>
           <div className="nav-group">
@@ -81,13 +112,13 @@ function Layout() {
               <span className="nav-icon" aria-hidden="true">
                 📋
               </span>
-              Procedures
+              <span className="nav-text">Procedures</span>
             </NavLink>
             <NavLink to="/settings/result-types" className="nav-item">
               <span className="nav-icon" aria-hidden="true">
                 🏷
               </span>
-              Result types
+              <span className="nav-text">Result types</span>
             </NavLink>
           </div>
           <div className="nav-group">
@@ -96,13 +127,13 @@ function Layout() {
               <span className="nav-icon" aria-hidden="true">
                 🔍
               </span>
-              Inspections
+              <span className="nav-text">Inspections</span>
             </NavLink>
             <NavLink to="/reactive-services" className="nav-item">
               <span className="nav-icon" aria-hidden="true">
                 ⚡
               </span>
-              Reactive
+              <span className="nav-text">Reactive</span>
             </NavLink>
           </div>
         </nav>
