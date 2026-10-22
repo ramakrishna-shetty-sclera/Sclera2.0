@@ -103,6 +103,33 @@
   width: auto;
   margin: 0;
 }
+/*
+ * A plain, unclassed <input>/<select>/<textarea> — the convention every
+ * "classic" page's own forms use — never got a dark background: the generic
+ * rule above sets layout only, and styles.css's unscoped
+ * `input,select,textarea{background:#fff}` is still the only rule that sets
+ * one. Checkboxes/radios/color/file inputs are excluded: they render
+ * natively and already have their own treatment below.
+ */
+.v3 input:not([type='checkbox']):not([type='radio']):not([type='color']):not([type='file']),
+.v3 select,
+.v3 textarea {
+  background: var(--surface);
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+.v3 input:not([type='checkbox']):not([type='radio']):not([type='color']):not([type='file']):focus,
+.v3 select:focus,
+.v3 textarea:focus {
+  outline: 2px solid var(--action);
+  border-color: var(--action);
+}
+.v3 input:not([type='checkbox']):not([type='radio']):not([type='color']):not([type='file']):disabled,
+.v3 select:disabled,
+.v3 textarea:disabled {
+  background: var(--raised);
+  color: var(--dim);
+}
 .v3 input::placeholder,
 .v3 textarea::placeholder {
   color: var(--muted);
@@ -167,6 +194,21 @@
   letter-spacing: 0.25px;
   white-space: nowrap;
   text-decoration: none;
+}
+/*
+ * A bare `.btn` with no colour modifier (Edit, Cancel, Back, …) never got a
+ * dark hover: styles.css's unscoped `.btn:hover:not(:disabled){background:
+ * #f3f4f6}` is MORE specific than the plain `.v3 .btn` rule above (three
+ * class-level selectors against two), so it kept winning on hover — a light
+ * background behind light text, i.e. invisible. Every modifier (-primary,
+ * -danger, -outline, -quiet, -tonal) already has its own `.v3`-scoped hover
+ * rule below, so this is excluded from all of them to avoid overriding those.
+ */
+.v3
+  .btn:not(.btn-primary):not(.btn-danger):not(.btn-outline):not(.btn-quiet):not(.btn-tonal):not(
+    .btn-soft
+  ):hover:not(:disabled) {
+  background: var(--raised);
 }
 .v3 .btn-xs {
   height: 24px;
