@@ -129,7 +129,10 @@ function readCsrfCookie(): string | null {
   return null
 }
 
-function gatewayHeaders(extra: Record<string, string> = {}): Record<string, string> {
+function gatewayHeaders(
+  extra: Record<string, string> = {},
+  omitPropertyHeader = false,
+): Record<string, string> {
   const headers: Record<string, string> = {
     'X-Requested-With': 'sclera-spa',
     'X-Correlation-ID': crypto.randomUUID(),
@@ -137,7 +140,7 @@ function gatewayHeaders(extra: Record<string, string> = {}): Record<string, stri
   }
   const csrf = readCsrfCookie()
   if (csrf) headers['X-CSRF-Token'] = csrf
-  if (selectedProperty) headers['X-Sclera-Property'] = selectedProperty
+  if (selectedProperty && !omitPropertyHeader) headers['X-Sclera-Property'] = selectedProperty
   return headers
 }
 
@@ -180,6 +183,13 @@ export async function apiFetch<T>(
      */
     form?: FormData
     query?: Record<string, string | number | undefined>
+    /**
+     * Skip X-Sclera-Property on this one call, regardless of which property is
+     * currently selected. Used to author at organization level while standing
+     * inside a property — the backend decides scope solely from this header's
+     * presence, so omitting it is what makes the procedure organization-wide.
+     */
+    omitPropertyHeader?: boolean
   } = {},
 ): Promise<ApiResult<T>> {
   let url = path
@@ -195,7 +205,10 @@ export async function apiFetch<T>(
   const res = await fetch(url, {
     method: options.method ?? 'GET',
     credentials: 'same-origin',
-    headers: gatewayHeaders(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+    headers: gatewayHeaders(
+      options.body !== undefined ? { 'Content-Type': 'application/json' } : {},
+      options.omitPropertyHeader,
+    ),
     body: options.form ?? (options.body !== undefined ? JSON.stringify(options.body) : undefined),
   })
 

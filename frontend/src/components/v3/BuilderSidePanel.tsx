@@ -42,6 +42,8 @@ export interface SidePanelDetails {
   resultTypes: ResultType[]
   hasSections: boolean
   onThresholds: (next: Threshold[]) => void
+  /** No property is selected — there is nothing for "This property" to mean, so it is not offered. */
+  atOrgLevel: boolean
 }
 
 export type SideTab = 'details' | 'templates' | 'docs' | 'suggest'
@@ -338,7 +340,9 @@ function DetailsTab({ details }: { details: SidePanelDetails }) {
             ['PROPERTY', 'This property', 'Only the property it was authored in'],
             ['ORG', 'Entire organization', 'All properties'],
           ] as ['PROPERTY' | 'ORG', string, string][]
-        ).map(([key, label, sub]) => (
+        )
+          .filter(([key]) => !details.atOrgLevel || key !== 'PROPERTY')
+          .map(([key, label, sub]) => (
           <button
             key={key}
             type="button"

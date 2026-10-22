@@ -9,7 +9,7 @@ import {
   updateProcedure,
 } from '../api/templates'
 import { importQuestions, type ImportResult } from '../api/ai'
-import { ApiError } from '../api/client'
+import { ApiError, getSelectedProperty } from '../api/client'
 import { ITEM_TYPES, isChoice, numberItems, typeLabel } from '../api/document'
 import { listDocuments } from '../api/documents'
 import type {
@@ -214,6 +214,20 @@ export function TemplateEditorPage() {
   const [sideTab, setSideTab] = useState<SideTab>(
     (location.state as PendingFollow | null)?.sideTab ?? (initialDocIds.current.length ? 'docs' : 'details'),
   )
+  // No property selected — standing at organization level, where "This
+  // property" has nothing to mean. The Availability picker hides that option
+  // here, and create requests at ORG availability skip the property header
+  // (see createProcedure) so the backend actually creates an org-wide row.
+  const atOrgLevel = getSelectedProperty() == null
+
+  // A procedure's Availability choice was made while standing in a property,
+  // and is now being viewed from organization level — "This property" is no
+  // longer offered, so it must not still read as selected.
+  useEffect(() => {
+    if (atOrgLevel && meta.availability === 'PROPERTY') {
+      setMeta((m) => ({ ...m, availability: 'ORG' }))
+    }
+  }, [atOrgLevel, meta.availability])
 
   useEffect(() => {
     listResultTypes(true)
@@ -1186,6 +1200,7 @@ export function TemplateEditorPage() {
               resultTypes,
               hasSections: items.some((i) => i.type === 'SECTION'),
               onThresholds: setThresholds,
+              atOrgLevel,
             }}
             onImport={onAiImport}
             onAddItems={(added) =>

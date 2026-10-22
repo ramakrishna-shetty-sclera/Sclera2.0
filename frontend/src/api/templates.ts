@@ -49,9 +49,20 @@ export function getProcedure(id: string): Promise<ProcedureTemplate> {
   return apiFetch<ProcedureTemplate>(`${PROCEDURES}/${id}`).then((r) => r.data)
 }
 
-/** Also opens draft v1, with or without a starting document. */
+/**
+ * Also opens draft v1, with or without a starting document.
+ *
+ * `propertyId` on the created row is decided entirely by whether the request
+ * carries `X-Sclera-Property` — never by anything in the body. So an author
+ * standing inside a property who explicitly picked "Entire organization" in
+ * the Availability field needs that header left off this one call, or the
+ * backend has no way to know the procedure should be organization-wide.
+ */
 export function createProcedure(body: CreateProcedureRequest): Promise<ProcedureTemplate> {
-  return apiFetch<ProcedureTemplate>(PROCEDURES, { method: 'POST', body }).then((r) => r.data)
+  const omitPropertyHeader = body.meta?.availability === 'ORG'
+  return apiFetch<ProcedureTemplate>(PROCEDURES, { method: 'POST', body, omitPropertyHeader }).then(
+    (r) => r.data,
+  )
 }
 
 /** Name and description only — they are identity, not version content. */
