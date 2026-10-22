@@ -67,6 +67,11 @@ function Layout() {
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />
 
   const displayName = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email || 'User'
+  // The dark, edge-to-edge pages (Procedures and everything under it) need
+  // .content to give up its centered-960px layout entirely. Driven from the
+  // route rather than a CSS `:has()` selector on the rendered child, so it
+  // does not depend on that selector actually matching in every browser.
+  const isFullBleedRoute = location.pathname.startsWith('/templates')
 
   return (
     <div className="app">
@@ -164,7 +169,7 @@ function Layout() {
             </button>
           </div>
         </header>
-        <main className="content">
+        <main className={`content${isFullBleedRoute ? ' content-full' : ''}`}>
           <Outlet key={scope ?? 'organization'} />
         </main>
       </div>

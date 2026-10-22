@@ -33,9 +33,9 @@ h2 {
   width: 220px;
   display: flex;
   flex-direction: column;
-  background: #111827;
+  background: #0b0b0d;
   color: #f9fafb;
-  border-right: 1px solid #1f2937;
+  border-right: 1px solid #26262a;
   transition: width 0.15s ease;
 }
 
@@ -49,7 +49,7 @@ h2 {
   justify-content: space-between;
   gap: 8px;
   padding: 16px 20px;
-  border-bottom: 1px solid #1f2937;
+  border-bottom: 1px solid #26262a;
 }
 
 .sidebar.collapsed .sidebar-brand {
@@ -85,7 +85,7 @@ h2 {
 }
 
 .sidebar-toggle:hover {
-  background: #1f2937;
+  background: #161618;
   color: #f9fafb;
 }
 
@@ -142,7 +142,7 @@ h2 {
 }
 
 .nav-item:hover {
-  background: #1f2937;
+  background: #161618;
 }
 
 .nav-item.active {
@@ -155,7 +155,7 @@ h2 {
   align-items: center;
   gap: 10px;
   padding: 14px 16px;
-  border-top: 1px solid #1f2937;
+  border-top: 1px solid #26262a;
 }
 
 .sidebar.collapsed .sidebar-user {
@@ -219,7 +219,7 @@ h2 {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  background: #111827;
+  background: #0b0b0d;
   color: #f9fafb;
   padding: 0 24px;
   height: 52px;
@@ -252,6 +252,15 @@ h2 {
   max-width: 960px;
   margin: 0 auto;
   padding: 24px 16px 64px;
+}
+
+/* The dark, edge-to-edge pages (Procedures and everything under it) —
+   applied via App.tsx reading the route, not a CSS :has() selector on the
+   routed child, so it does not depend on that selector matching. */
+.content.content-full {
+  max-width: none;
+  margin: 0;
+  padding: 0;
 }
 
 .page-head {
