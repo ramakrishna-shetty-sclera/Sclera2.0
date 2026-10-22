@@ -22,6 +22,15 @@ import { TemplateDetailPage } from './pages/TemplateDetailPage'
 import { TemplateEditorPage } from './pages/TemplateEditorPage'
 import { ResultTypesPage } from './pages/ResultTypesPage'
 
+/** Two letters for the sidebar avatar — initials if we have a name, else the start of the email. */
+function initialsOf(user: { firstName: string | null; lastName: string | null; email: string | null }): string {
+  const f = user.firstName?.trim()?.[0]
+  const l = user.lastName?.trim()?.[0]
+  if (f && l) return `${f}${l}`.toUpperCase()
+  if (f) return f.toUpperCase()
+  return (user.email ?? '?').slice(0, 2).toUpperCase()
+}
+
 function Layout() {
   const { user, initializing, logout } = useAuth()
   const navigate = useNavigate()
@@ -34,39 +43,100 @@ function Layout() {
   // Preserve the deep link (e.g. a scanned /scan/:token QR) across login.
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />
 
+  const displayName = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email || 'User'
+
   return (
     <div className="app">
-      <header className="topbar">
-        <NavLink to="/" className="brand" end>
-          Sclera
-        </NavLink>
-        <nav>
-          <NavLink to="/locations">Locations</NavLink>
-          <NavLink to="/assets">Assets</NavLink>
-          <NavLink to="/templates">Procedures</NavLink>
-          <NavLink to="/settings/result-types">Result types</NavLink>
-          <NavLink to="/inspection-configs">Inspections</NavLink>
-          <NavLink to="/reactive-services">Reactive</NavLink>
-          <NavLink to="/tasks">Tasks</NavLink>
-        </nav>
-        <div className="topbar-right">
-          <PropertySwitcher onChange={setScope} />
-          <span className="user-chip">{user.email ?? user.id}</span>
-          <button
-            className="btn btn-ghost"
-            onClick={() => {
-              // The next person to sign in on this tab starts at organization level.
-              setSelectedProperty(null)
-              logout().then(() => navigate('/login'))
-            }}
-          >
-            Sign out
-          </button>
+      <aside className="sidebar">
+        <div className="sidebar-brand">
+          <NavLink to="/" className="brand" end>
+            Sclera
+          </NavLink>
         </div>
-      </header>
-      <main className="content">
-        <Outlet key={scope ?? 'organization'} />
-      </main>
+        <nav className="sidebar-nav">
+          <div className="nav-group">
+            <span className="nav-label">Operations</span>
+            <NavLink to="/locations" className="nav-item">
+              <span className="nav-icon" aria-hidden="true">
+                🏢
+              </span>
+              Locations
+            </NavLink>
+            <NavLink to="/assets" className="nav-item">
+              <span className="nav-icon" aria-hidden="true">
+                📦
+              </span>
+              Assets
+            </NavLink>
+            <NavLink to="/tasks" className="nav-item">
+              <span className="nav-icon" aria-hidden="true">
+                ☑
+              </span>
+              Tasks
+            </NavLink>
+          </div>
+          <div className="nav-group">
+            <span className="nav-label">Procedures</span>
+            <NavLink to="/templates" className="nav-item">
+              <span className="nav-icon" aria-hidden="true">
+                📋
+              </span>
+              Procedures
+            </NavLink>
+            <NavLink to="/settings/result-types" className="nav-item">
+              <span className="nav-icon" aria-hidden="true">
+                🏷
+              </span>
+              Result types
+            </NavLink>
+          </div>
+          <div className="nav-group">
+            <span className="nav-label">Inspections</span>
+            <NavLink to="/inspection-configs" className="nav-item">
+              <span className="nav-icon" aria-hidden="true">
+                🔍
+              </span>
+              Inspections
+            </NavLink>
+            <NavLink to="/reactive-services" className="nav-item">
+              <span className="nav-icon" aria-hidden="true">
+                ⚡
+              </span>
+              Reactive
+            </NavLink>
+          </div>
+        </nav>
+        <div className="sidebar-user">
+          <span className="avatar" aria-hidden="true">
+            {initialsOf(user)}
+          </span>
+          <span className="who">
+            <span className="who-name">{displayName}</span>
+            <span className="who-email">{user.email}</span>
+          </span>
+        </div>
+      </aside>
+      <div className="appmain">
+        <header className="topbar">
+          <div className="topbar-right">
+            <PropertySwitcher onChange={setScope} />
+            <span className="user-chip">{user.email ?? user.id}</span>
+            <button
+              className="btn btn-ghost"
+              onClick={() => {
+                // The next person to sign in on this tab starts at organization level.
+                setSelectedProperty(null)
+                logout().then(() => navigate('/login'))
+              }}
+            >
+              Sign out
+            </button>
+          </div>
+        </header>
+        <main className="content">
+          <Outlet key={scope ?? 'organization'} />
+        </main>
+      </div>
     </div>
   )
 }

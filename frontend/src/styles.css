@@ -20,46 +20,152 @@ h2 {
 }
 
 .app {
+  display: flex;
   min-height: 100vh;
 }
 
-.topbar {
+/* The app's own left-hand navigation rail (docs/procedures-v3.html reference
+   design) — grouped sections with a label each, unlike the old single-row
+   topbar nav. Routes, labels and behaviour are unchanged from before; only
+   the layout and grouping are new. */
+.sidebar {
+  flex-shrink: 0;
+  width: 220px;
   display: flex;
-  align-items: center;
-  gap: 24px;
+  flex-direction: column;
   background: #111827;
   color: #f9fafb;
-  padding: 0 24px;
-  height: 52px;
+  border-right: 1px solid #1f2937;
+}
+
+.sidebar-brand {
+  padding: 16px 20px;
+  border-bottom: 1px solid #1f2937;
 }
 
 .brand {
   font-weight: 700;
   font-size: 18px;
   letter-spacing: 0.5px;
+  color: #f9fafb;
+  text-decoration: none;
 }
 
-.topbar nav {
-  display: flex;
-  gap: 4px;
+.sidebar-nav {
   flex: 1;
+  overflow-y: auto;
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
-.topbar nav a {
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-label {
+  padding: 0 10px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   color: #d1d5db;
   text-decoration: none;
-  padding: 6px 12px;
+  padding: 8px 10px;
   border-radius: 6px;
   font-size: 14px;
 }
 
-.topbar nav a:hover {
+.nav-icon {
+  font-size: 14px;
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.nav-item:hover {
   background: #1f2937;
 }
 
-.topbar nav a.active {
+.nav-item.active {
   background: #2563eb;
   color: #fff;
+}
+
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-top: 1px solid #1f2937;
+}
+
+.avatar {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #2563eb;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.who-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f9fafb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.who-email {
+  font-size: 11px;
+  color: #9ca3af;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The right-hand column: a slim header (now holding only the property
+   switcher and sign-out, since navigation moved into .sidebar) above the
+   routed page. */
+.appmain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  background: #111827;
+  color: #f9fafb;
+  padding: 0 24px;
+  height: 52px;
+  flex-shrink: 0;
 }
 
 .topbar-right {
