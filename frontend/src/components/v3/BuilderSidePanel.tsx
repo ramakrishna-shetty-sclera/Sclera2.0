@@ -274,7 +274,7 @@ function VocabSelect({
   return (
     <div className="field" style={{ flex: 1 }}>
       <label htmlFor={id}>{label}</label>
-      <select id={id} className="input" value={value} onChange={(e) => onChange(e.target.value)}>
+      <select id={id} className="select" value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">{emptyLabel ?? 'Select…'}</option>
         {!known && value !== '' && <option value={value}>{value}</option>}
         {options.map((o) => (
