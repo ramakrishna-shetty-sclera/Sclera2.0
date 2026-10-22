@@ -237,6 +237,176 @@ h2 {
   color: #9ca3af;
 }
 
+/* Search by procedure name; the results reuse .topbar-panel below. */
+.topbar-search {
+  position: relative;
+  margin-right: 8px;
+}
+
+.topbar-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #9ca3af;
+  pointer-events: none;
+}
+
+.topbar-search-input {
+  width: 240px;
+  margin: 0;
+  padding: 7px 10px 7px 32px;
+  font-size: 13px;
+  background: #161618;
+  color: #eff2f5;
+  border: 1px solid #3f4e5c;
+  border-radius: 18px;
+}
+
+.topbar-search-input::placeholder {
+  color: #9ca3af;
+}
+
+.topbar-search-input:focus {
+  outline: 2px solid #ffc400;
+  outline-offset: 1px;
+}
+
+.topbar-panel.topbar-search-list {
+  top: 40px;
+  right: auto;
+  left: 0;
+  width: 360px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+}
+
+.topbar-search-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.topbar-search-item.active {
+  background: #312a10;
+  color: #ffdb77;
+}
+
+.topbar-search-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-search-meta {
+  flex-shrink: 0;
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.topbar-search-note {
+  padding: 8px 10px;
+  color: #9ca3af;
+}
+
+/* The bell and the "?" — outline icons, one panel open at a time. */
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.topbar-action {
+  position: relative;
+}
+
+.topbar-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: transparent;
+  color: #d1d5db;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.topbar-icon:hover,
+.topbar-icon.open {
+  background: #1f2937;
+  color: #f9fafb;
+}
+
+.topbar-icon:focus-visible {
+  outline: 2px solid #ffc400;
+  outline-offset: 2px;
+}
+
+.topbar-panel {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  z-index: 50;
+  width: 280px;
+  padding: 14px 16px;
+  background: #161618;
+  color: #eff2f5;
+  border: 1px solid #3f4e5c;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.topbar-panel.wide {
+  width: 360px;
+}
+
+.topbar-panel h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: #ffffff;
+}
+
+.topbar-panel h3:not(:first-child) {
+  margin-top: 14px;
+}
+
+.topbar-panel ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.topbar-panel li + li {
+  margin-top: 6px;
+}
+
+.topbar-panel kbd {
+  padding: 0 5px;
+  font: inherit;
+  font-size: 12px;
+  background: #26262a;
+  border: 1px solid #3f4e5c;
+  border-radius: 4px;
+}
+
+.topbar-empty {
+  margin: 0 0 4px;
+  color: #eff2f5;
+}
+
+.topbar-hint {
+  margin: 0;
+  color: #9ca3af;
+}
+
 /* The property dropdown sits on the dark top bar, not in a light form. */
 .property-switcher {
   width: auto;

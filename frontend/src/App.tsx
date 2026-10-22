@@ -3,6 +3,8 @@ import { Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate } fr
 import { getSelectedProperty, setSelectedProperty } from './api/client'
 import { useAuth } from './auth/AuthContext'
 import { PropertySwitcher } from './components/PropertySwitcher'
+import { TopBarActions } from './components/TopBarActions'
+import { TopBarSearch } from './components/TopBarSearch'
 import { LoginPage } from './pages/LoginPage'
 import { HomePage } from './pages/HomePage'
 import { LocationsPage } from './pages/LocationsPage'
@@ -155,7 +157,9 @@ function Layout() {
       <div className="appmain">
         <header className="topbar">
           <div className="topbar-right">
+            <TopBarSearch />
             <PropertySwitcher onChange={setScope} />
+            <TopBarActions />
             <span className="user-chip">{user.email ?? user.id}</span>
             <button
               className="btn btn-ghost"
